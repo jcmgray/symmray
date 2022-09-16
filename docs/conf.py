@@ -35,7 +35,7 @@ extensions = [
     'sphinx.ext.napoleon',
 ]
 
-jupyter_execute_notebooks = "off"
+nb_execution_mode = "off"
 myst_heading_anchors = 4
 
 # sphinx-autoapi
@@ -85,5 +85,5 @@ html_static_path = ['_static']
 # TODO:
 # html_favicon = "_static/logo-favicon.ico"
 
-# def setup(app):
-#     app.add_css_file("my-styles.css")
+def setup(app):
+    app.add_css_file("my-styles.css")

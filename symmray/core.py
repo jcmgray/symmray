@@ -1,8 +1,10 @@
+import math
 import functools
 import itertools
 from collections import defaultdict
 
 import autoray as ar
+from autoray.lazy.core import find_full_reshape
 
 
 # defining symmetries just requires composition function (which returns the
@@ -45,33 +47,47 @@ class BlockIndex:
 
     @property
     def chargemap(self):
+        """A mapping from charge to size."""
         return self._chargemap
 
     @property
     def flow(self):
+        """Whether the index flows 'inwards' / (+ve) = ``False`` or 'outwards'
+        / (-ve) = ``True``. I.e. the sign is given by ``(-1) ** flow``.
+        """
         return self._flow
 
     @property
     def subinfo(self):
+        """Information about the subindices of this index and their extents if
+        this index was formed from fusing.
+        """
         return self._subinfo
 
     @property
     def charges(self):
+        """The charges of this index."""
         return self._chargemap.keys()
 
     @property
     def sizes(self):
+        """The sizes of the blocks of this index."""
         return self._chargemap.values()
 
     @property
     def size_total(self):
+        """The total size of this index, i.e. the sum of the sizes of all
+        blocks.
+        """
         return sum(self._chargemap.values())
 
     @property
     def num_charges(self):
+        """The number of charges."""
         return len(self._chargemap)
 
     def copy(self):
+        """A copy of this index."""
         new = self.__new__(self.__class__)
         new._chargemap = self._chargemap.copy()
         new._flow = self._flow
@@ -79,8 +95,7 @@ class BlockIndex:
         return new
 
     def conj(self):
-        """A copy of this index with the flow reversed.
-        """
+        """A copy of this index with the flow reversed."""
         new = self.__new__(self.__class__)
         new._chargemap = self._chargemap.copy()
         new._flow = not self._flow
@@ -88,8 +103,7 @@ class BlockIndex:
         return new
 
     def size_of(self, c):
-        """The size of the block with charge ``c``.
-        """
+        """The size of the block with charge ``c``."""
         return self._chargemap[c]
 
     def matches(self, other):
@@ -140,12 +154,19 @@ class SubIndexInfo:
         self.extents = extents
 
     def conj(self):
+        """A copy of this subindex information with the relevant flows
+        reversed.
+        """
         new = self.__new__(self.__class__)
         new.indices = tuple(ix.conj() for ix in self.indices)
         new.extents = self.extents
         return new
 
     def matches(self, other):
+        """Whether this subindex information matches ``other`` subindex
+        information, namely, whether the ``indices`` and ``extents`` match.
+        For debugging.
+        """
         return (
             all(i.matches(j) for i, j in zip(self.indices, other.indices))
             and self.extents == other.extents
@@ -191,6 +212,9 @@ def replace_with_seq(it, index, seq):
 
 
 def accum_for_split(sizes):
+    """Take a sequence of block sizes and return the sequence of linear
+    partitions, suitable for use with the ``split`` function.
+    """
     x = [0]
     for size in sizes:
         x.append(x[-1] + size)
@@ -198,17 +222,77 @@ def accum_for_split(sizes):
 
 
 def nested_dict():
-    """Return an arbitrarily nest-able dict.
-    """
+    """Return an arbitrarily nest-able dict."""
     return defaultdict(nested_dict)
 
 
 def nested_setitem(d, keys, value):
-    """Set a value in an arbitrarily nested dict.
-    """
+    """Set a value in an arbitrarily nested dict."""
     for key in keys[:-1]:
         d = d[key]
     d[keys[-1]] = value
+
+
+@functools.lru_cache(2**15)
+def reshape_to_fuse_axes(shape, newshape):
+    """Assuming only fuses need to happen, convert from ``reshhape`` form to
+    ``fuse`` form -  a sequence of axes groups.
+    """
+    i = 0
+    d = 1
+    groups = []
+    group = []
+    for dnew in newshape:
+        while dnew > d:
+            # accumulate the next axis
+            d *= shape[i]
+            group.append(i)
+            i += 1
+        if d != dnew:
+            raise ValueError(f"Cannot reshape {shape} to {newshape}")
+        if len(group) > 1:
+            # only record fused axes
+            groups.append(tuple(group))
+        # reset
+        d = 1
+        group = []
+    return tuple(groups)
+
+
+def reshape_to_unfuse_axes(indices, newshape):
+    """Assuming only unfuses need to happen, convert from ``reshape`` form to
+    a sequence of ``axes`` to be supplied to ``unfuse``.
+    """
+    i = 0
+    d = 1
+    unfused = []
+    for j, ix in enumerate(indices):
+        dold = ix.size_total
+        if ix.subinfo is None:
+            # unfused axis, just make sure dimension matches
+            if dold != newshape[i]:
+                shape = tuple(ix.size_total for ix in indices)
+                raise ValueError(
+                    f"Cannot reshape {shape} to {newshape}, "
+                    f"axis {j} has size {dold} but new axis has size {d}"
+                )
+            i += 1
+        else:
+            # fused axis, make all subindex dimensions match too
+            unfused.append(j)
+            for subindex in ix.subinfo.indices:
+                dsub = newshape[i]
+                if dsub != subindex.size_total:
+                    shape = tuple(ix.size_total for ix in indices)
+                    raise ValueError(
+                        f"Cannot reshape {shape} to {newshape}, "
+                        f"subindex sizes for axes {j} do not match"
+                    )
+                d *= dsub
+                i += 1
+            d = 1
+
+    return tuple(sorted(unfused, reverse=True))
 
 
 class BlockArray:
@@ -242,34 +326,47 @@ class BlockArray:
 
     @property
     def indices(self):
+        """The indices of the array."""
         return self._indices
 
     @property
     def blocks(self):
+        """The blocks of the array."""
         return self._blocks
 
     @property
     def sizes(self):
+        """The sizes of each index."""
         return tuple(ix.sizes for ix in self._indices)
 
     @property
     def charges(self):
+        """The possible charges of each index."""
         return tuple(ix.charges for ix in self._indices)
 
     @property
     def flows(self):
+        """The flows of each index."""
         return tuple(ix.flow for ix in self._indices)
 
     @property
     def charge_total(self):
+        """The total charge of the array."""
         return self._charge_total
 
     @property
     def shape(self):
+        """The shape of the array, i.e. product of total size of each index."""
         return tuple(ix.size_total for ix in self._indices)
 
     @property
+    def size(self):
+        """The number of possible elements in this array, if it was dense."""
+        return math.prod(self.shape)
+
+    @property
     def ndim(self):
+        """The number of dimensions/indices."""
         return len(self._indices)
 
     def _get_any_array(self):
@@ -285,6 +382,7 @@ class BlockArray:
 
     @property
     def num_blocks(self):
+        """The number of blocks in the array."""
         return len(self._blocks)
 
     def copy(self):
@@ -452,6 +550,8 @@ class BlockArray:
         return _recurse_all_charges()
 
     def conj(self):
+        """Return the complex conjugate of this block array, including the
+        indices."""
         new = self.copy()
         _conj = ar.get_lib_fn(new.backend, "conj")
         new.apply_to_arrays(_conj)
@@ -459,6 +559,7 @@ class BlockArray:
         return new
 
     def transpose(self, axes=None):
+        """Transpose the block array."""
         _transpose = ar.get_lib_fn(self.backend, "transpose")
 
         if axes is None:
@@ -633,7 +734,7 @@ class BlockArray:
 
     def unfuse(self, axis):
         """Unfuse the ``axis`` index, which must carry subindex information,
-        likely from a fusing operation.
+        likely generated automatically from a fusing operation.
         """
         backend = self.backend
         _split = ar.get_lib_fn(backend, "split")
@@ -704,6 +805,34 @@ class BlockArray:
         )
         return s
 
+    def _reshape_via_fuse(self, newshape):
+        axes_groups = reshape_to_fuse_axes(self.shape, newshape)
+        return self.fuse(*axes_groups)
+
+    def _reshape_via_unfuse(self, newshape):
+        fused_axes = reshape_to_unfuse_axes(self.indices, newshape)
+        # n.b. these are returned in descending order already
+        new = self
+        for i in fused_axes:
+            new = new.unfuse(i)
+        return new
+
+    def reshape(self, newshape):
+        """Reshape the block array to ``newshape``, assuming it can be done by
+        purly fusing, or unfusing the relevant indices.
+        """
+        if not isinstance(newshape, tuple):
+            newshape = tuple(newshape)
+        newshape = find_full_reshape(newshape, self.size)
+        if len(newshape) < self.ndim:
+            return self._reshape_via_fuse(newshape)
+        elif len(newshape) > self.ndim:
+            return self._reshape_via_unfuse(newshape)
+        elif newshape == self.shape:
+            return self.copy()
+        else:
+            raise ValueError("reshape must be pure fuse or unfuse.")
+
     def __repr__(self):
         return (
             f"BlockArray(indices={self.indices}, "
@@ -720,7 +849,14 @@ def transpose(a, axes=None):
     return a.transpose(axes)
 
 
-def tensordot_by_blocks(a, b, left_axes, axes_a, axes_b, right_axes):
+def reshape(a, newshape):
+    return a.reshape(newshape)
+
+
+def tensordot_via_blocks(a, b, left_axes, axes_a, axes_b, right_axes):
+    """Perform a tensordot between two block arrays, performing the contraction
+    of each pair of aligned blocks separately.
+    """
     aligned_blocks = defaultdict(list)
 
     # iterate over all valid sectors of the new BlockArray
@@ -786,7 +922,7 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     axes_b, right_axes = ((0,), (1,)) if right_axes else ((0,), ())
 
     # tensordot the fused blocks
-    cf = tensordot_by_blocks(af, bf, left_axes, axes_a, axes_b, right_axes)
+    cf = tensordot_via_blocks(af, bf, left_axes, axes_a, axes_b, right_axes)
 
     # unfuse result into (*left_axes, *right_axes)
     return cf.unfuse_all()
@@ -810,6 +946,6 @@ def tensordot(a, b, axes=2, mode="auto"):
     if mode != "blocks":
         _tdot = tensordot_via_fused
     else:
-        _tdot = tensordot_by_blocks
+        _tdot = tensordot_via_blocks
 
     return _tdot(a, b, left_axes, axes_a, axes_b, right_axes)

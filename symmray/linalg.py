@@ -46,14 +46,14 @@ def svd(x):
     _svd = get_lib_fn(x.backend, "linalg.svd")
 
     u_blocks = {}
-    s = {}
+    s_store = {}
     v_blocks = {}
     new_chargemap = {}
 
     for sector, array in x.blocks.items():
         u, s, v = _svd(array)
         u_blocks[sector] = u
-        s[sector] = s
+        s_store[sector] = s
         v_blocks[sector] = v
         new_chargemap[sector[1]] = u.shape[1]
 
@@ -68,4 +68,4 @@ def svd(x):
         charge_total=symmetry(),
         blocks=v_blocks,
     )
-    return u, s, v
+    return u, s_store, v
