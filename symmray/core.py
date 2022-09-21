@@ -19,6 +19,9 @@ def z2_symmetry(*charges):
 symmetry = z2_symmetry
 
 
+# --------------------------------------------------------------------------- #
+
+
 class BlockIndex:
     """An index of a blocked tensor.
 
@@ -181,6 +184,9 @@ class SubIndexInfo:
                 ")",
             ]
         )
+
+
+# --------------------------------------------------------------------------- #
 
 
 def permuted(it, perm):
@@ -719,7 +725,10 @@ class BlockArray:
                 # for unfusing
                 subinfo=SubIndexInfo(
                     indices=tuple(old_indices[i] for i in gaxes),
-                    extents=dict(subindex_extents[g]),
+                    extents={
+                        c: tuple(sorted(charge_extent.items()))
+                        for c, charge_extent in subindex_extents[g].items()
+                    },
                 ),
             )
             for g, gaxes in enumerate(axes_groups)
@@ -745,7 +754,7 @@ class BlockArray:
 
         # info for how to split/slice the linear index into sub charges
         subindex_splits = {
-            c: accum_for_split(x[1] for x in sorted(charge_extent.items()))
+            c: accum_for_split(x[1] for x in charge_extent)
             for c, charge_extent in subinfo.extents.items()
         }
 
@@ -758,7 +767,7 @@ class BlockArray:
             splits = subindex_splits[old_charge]
             new_arrays = _split(array, splits, axis=axis)
 
-            for subsector, new_array in zip(charge_extent, new_arrays):
+            for (subsector, _), new_array in zip(charge_extent, new_arrays):
                 # expand the old charge into the new subcharges
                 new_key = replace_with_seq(sector, axis, subsector)
 
@@ -839,6 +848,9 @@ class BlockArray:
             f"charge_total={self._charge_total}, "
             f"num_blocks={self.num_blocks})"
         )
+
+
+# --------------------------------------------------------------------------- #
 
 
 def conj(x):
@@ -929,6 +941,10 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
 
 def tensordot(a, b, axes=2, mode="auto"):
+
+    # a.check()
+    # b.check()
+
     # parse the axes argument for single integer and also negative indices
     if isinstance(axes, int):
         axes_a = tuple(range(a.ndim - axes, a.ndim))
@@ -948,4 +964,6 @@ def tensordot(a, b, axes=2, mode="auto"):
     else:
         _tdot = tensordot_via_blocks
 
-    return _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
+    c = _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
+    # c.check()
+    return c
