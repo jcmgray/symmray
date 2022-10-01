@@ -489,10 +489,24 @@ class BlockArray:
     def from_blocks(cls, blocks, flows, charge_total=None):
         """Create a block array from a dictionary of blocks and sequence of
         flows.
+
+        Parameters
+        ----------
+        blocks : dict[tuple[hashable], array_like]
+            A mapping of each 'sector' (tuple of charges) to the data array.
+        flows : tuple[bool]
+            The flow of each index.
+        charge_total : hashable
+            The total charge of the array. If not given, it will be
+            taken as the identity / zero element.
+
+        Returns
+        -------
+        BlockArray
         """
         self = cls.__new__(cls)
         if charge_total is None:
-            charge_total = symmetry()
+            self._charge_total = symmetry()
         else:
             self._charge_total = charge_total
         self._blocks = dict(blocks)
@@ -521,6 +535,57 @@ class BlockArray:
         )
 
         return self
+
+    @classmethod
+    def from_dense(cls, array, index_maps, flows, charge_total=None):
+        """Create a block array from a dense array by supplying a mapping for
+        each axis that labels each linear index with a particular charge.
+
+        Parameters
+        ----------
+        array : array_like
+            The dense array.
+        """
+        # first we work out which indices of which axes belong to which charges
+        charge_groups = []
+        for d, index_map in zip(array.shape, index_maps):
+            which_charge = {}
+            for i in range(d):
+                which_charge.setdefault(index_map[i], []).append(i)
+            charge_groups.append(which_charge)
+
+        # then we recusively visit all the potential blocks, by slicing using
+        # the above generated charge groupings
+        blocks = {}
+        ndim = array.ndim
+        all_sliced = [slice(None)] * ndim
+
+        def _recurse(ary, j=0, sector=()):
+            if j < ndim:
+                for charge, indices in charge_groups[j].items():
+                    # for each charge, select all the indices along axis j
+                    # that belong to it, then recurse further
+                    selector = all_sliced.copy()
+                    selector[j] = indices
+                    subarray = ary[tuple(selector)]
+                    _recurse(subarray, j + 1, sector + (charge,))
+            else:
+                # we have reached a fully specified block
+                if symmetry(*sector) == charge_total:
+                    # ... but only add valid ones:
+                    blocks[sector] = ary
+
+        # generate the blocks
+        _recurse(array)
+
+        # generate the indices -> the charge_map is simply the group size
+        indices = [
+            BlockIndex({c: len(g) for c, g in charge_group.items()}, flow=flow)
+            for charge_group, flow in zip(charge_groups, flows)
+        ]
+
+        # create the block array!
+        return cls(blocks=blocks, indices=indices, charge_total=charge_total)
 
     def apply_to_arrays(self, fn):
         """Apply the ``fn`` inplace to the array of every block."""
