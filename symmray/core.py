@@ -545,6 +545,15 @@ class BlockArray:
         ----------
         array : array_like
             The dense array.
+        index_maps : tuple[dict[int, hashable]]
+            A mapping for each axis that labels each linear index with a
+            particular charge. There should be ``ndim`` such mappings, each of
+            size ``shape[i]``.
+        flows : tuple[bool]
+            The flow of each index.
+        charge_total : hashable
+            The total charge of the array. If not given, it will be
+            taken as the identity / zero element.
         """
         # first we work out which indices of which axes belong to which charges
         charge_groups = []
