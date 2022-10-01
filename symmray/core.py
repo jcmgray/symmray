@@ -555,6 +555,9 @@ class BlockArray:
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
         """
+        if charge_total is None:
+            charge_total = symmetry()
+
         # first we work out which indices of which axes belong to which charges
         charge_groups = []
         for d, index_map in zip(array.shape, index_maps):
