@@ -109,12 +109,7 @@ def svd(x):
 
 
 def svd_truncated(
-    x,
-    cutoff=-1.0,
-    cutoff_mode=3,
-    max_bond=-1,
-    absorb=0,
-    renorm=0
+    x, cutoff=-1.0, cutoff_mode=3, max_bond=-1, absorb=0, renorm=0
 ):
     """Truncated svd or raw array ``x``.
 
@@ -147,14 +142,14 @@ def svd_truncated(
     # first perform untruncated svd
     U, s, VH = svd(x)
 
-    if (cutoff > 0.0):
+    if cutoff > 0.0:
         raise NotImplementedError("cutoff > 0.0 not implemented yet.")
 
     if max_bond > 0:
 
         # first combine all singular values into a single, sorted array
-        sall = do('concatenate', tuple(s.values()), like=backend)
-        sall = do('sort', sall, like=backend)[::-1]
+        sall = do("concatenate", tuple(s.values()), like=backend)
+        sall = do("sort", sall, like=backend)[::-1]
 
         # now find the absolute sigular value at the cutoff
         absolute_cutoff = sall[max_bond]
@@ -164,7 +159,9 @@ def svd_truncated(
 
         for sector in s:
             # check how many singular values from this sector are validi
-            n_chi = do('count_nonzero', s[sector] > absolute_cutoff, like=backend)
+            n_chi = do(
+                "count_nonzero", s[sector] > absolute_cutoff, like=backend
+            )
 
             if n_chi == 0:
                 # TODO: drop the block?
@@ -189,7 +186,7 @@ def svd_truncated(
         elif absorb == 1:
             VH.blocks[sector] *= s[sector].reshape((-1, 1))
         elif absorb == 0:
-            s_sqrt = do('sqrt', s[sector], like=backend)
+            s_sqrt = do("sqrt", s[sector], like=backend)
             U.blocks[sector] *= s_sqrt.reshape((1, -1))
             VH.blocks[sector] *= s_sqrt.reshape((-1, 1))
 

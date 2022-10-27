@@ -5,6 +5,7 @@ from .core import (
     tensordot,
     transpose,
     symmetry,
+    symmsign,
 )
 
 from . import linalg
@@ -17,4 +18,5 @@ __all__ = (
     "tensordot",
     "transpose",
     "symmetry",
+    "symmsign",
 )

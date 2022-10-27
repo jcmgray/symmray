@@ -16,7 +16,24 @@ def z2_symmetry(*charges):
     return sum(charges) % 2
 
 
+@functools.lru_cache(2**15)
+def u1_symmetry(*charges):
+    return sum(charges)
+
+
+@functools.lru_cache(2**10)
+def scalar_symmsign(charge, flow):
+    return {
+        False: charge,
+        True: -charge,
+    }[flow]
+
+
+z2_symmsign = scalar_symmsign
+u1_symmsign = scalar_symmsign
+
 symmetry = z2_symmetry
+symmsign = z2_symmsign
 
 
 # --------------------------------------------------------------------------- #
@@ -115,7 +132,10 @@ class BlockIndex:
         whether their subindices match, if they have any. For debugging.
         """
         return (
-            (self.chargemap == other.chargemap)
+            all(
+                self.chargemap[k] == other.chargemap[k]
+                for k in set(self.chargemap).intersection(other.chargemap)
+            )
             and (self.flow ^ other.flow)
             and (
                 (self.subinfo is other.subinfo is None)
@@ -222,21 +242,11 @@ def accum_for_split(sizes):
     partitions, suitable for use with the ``split`` function.
     """
     x = [0]
+    s = []
     for size in sizes:
         x.append(x[-1] + size)
-    return tuple(x[1:-1])
-
-
-def nested_dict():
-    """Return an arbitrarily nest-able dict."""
-    return defaultdict(nested_dict)
-
-
-def nested_setitem(d, keys, value):
-    """Set a value in an arbitrarily nested dict."""
-    for key in keys[:-1]:
-        d = d[key]
-    d[keys[-1]] = value
+        s.append(slice(x[-2], x[-1]))
+    return s
 
 
 @functools.lru_cache(2**15)
@@ -391,6 +401,25 @@ class BlockArray:
         """The number of blocks in the array."""
         return len(self._blocks)
 
+    @property
+    def sectors(self):
+        return tuple(self._blocks.keys())
+
+    def gen_signed_sectors(self):
+        flows = self.flows
+        for sector in self.blocks:
+            yield tuple(symmsign(c, f) for c, f in zip(sector, flows))
+
+    def get_sparsity(self):
+        """Return the sparsity of the array, i.e. the number of blocks
+        divided by the number of possible blocks.
+        """
+        num_possible_blocks = sum(
+            symmetry(*sector) == self.charge_total
+            for sector in self.gen_signed_sectors()
+        )
+        return self.num_blocks / num_possible_blocks
+
     def copy(self):
         """Copy this block array."""
         new = self.__new__(self.__class__)
@@ -403,10 +432,10 @@ class BlockArray:
         """Check if a sector is valid for the block array, i.e., whether the
         total symmetry charge is satisfied.
         """
-        flowed_sector = (
-            -c if i.flow else c for c, i in zip(sector, self._indices)
+        signed_sector = (
+            symmsign(c, i.flow) for c, i in zip(sector, self._indices)
         )
-        block_charge = symmetry(*flowed_sector)
+        block_charge = symmetry(*signed_sector)
         return block_charge == self.charge_total
 
     def gen_valid_sectors(self):
@@ -425,6 +454,33 @@ class BlockArray:
                 di == dj
                 for di, dj in zip(array.shape, self.get_block_shape(sector))
             )
+
+    def allclose(self, other, **allclose_opts):
+        """Test whether this ``BlockArray`` is close to another, that is,
+        has all the same sectors, and the corresponding arrays are close.
+
+        Parameters
+        ----------
+        other : BlockArray
+            The other array to compare to.
+        allclose_opts
+            Keyword arguments to pass to `allclose`.
+
+        Returns
+        -------
+        bool
+        """
+        _allclose = ar.get_lib_fn(self.backend, "allclose")
+        other_blocks = other.blocks.copy()
+        for sector, array in self.blocks.items():
+            if sector not in other_blocks:
+                return False
+            other_array = other_blocks.pop(sector)
+            if not _allclose(array, other_array, **allclose_opts):
+                return False
+        if other_blocks:
+            return False
+        return True
 
     @classmethod
     def from_fill_fn(
@@ -583,7 +639,11 @@ class BlockArray:
                     _recurse(subarray, j + 1, sector + (charge,))
             else:
                 # we have reached a fully specified block
-                if symmetry(*sector) == charge_total:
+                signed_sector = tuple(
+                    symmsign(charge, flow)
+                    for charge, flow in zip(sector, flows)
+                )
+                if symmetry(*signed_sector) == charge_total:
                     # ... but only add valid ones:
                     blocks[sector] = ary
 
@@ -599,10 +659,33 @@ class BlockArray:
         # create the block array!
         return cls(blocks=blocks, indices=indices, charge_total=charge_total)
 
+    def get_params(self):
+        """Get the parameters of this block array as a pytree (dict).
+
+        Returns
+        -------
+        dict[tuple, array_like]
+        """
+        return self.blocks.copy()
+
+    def set_params(self, params):
+        """Set the parameters of this block array from a pytree (dict).
+
+        Parameters
+        ----------
+        params : dict[tuple, array_like]
+        """
+        self.blocks.update(params)
+
     def apply_to_arrays(self, fn):
         """Apply the ``fn`` inplace to the array of every block."""
         for sector, array in self._blocks.items():
             self._blocks[sector] = fn(array)
+
+    def item(self):
+        """Convert the block array to a scalar if it is a scalar block array."""
+        (array,) = self.blocks.values()
+        return array.item()
 
     def to_dense(self):
         """Convert this block array to a dense array."""
@@ -625,7 +708,7 @@ class BlockArray:
                 # partial sector -> recurse further
                 arrays = tuple(
                     _recurse_all_charges(partial_sector + (c,))
-                    for c in self.indices[i].charges
+                    for c in sorted(self.indices[i].charges)
                 )
                 # then concatenate along the current axis
                 return _concat(arrays, axis=i)
@@ -692,14 +775,22 @@ class BlockArray:
         _concatenate = ar.get_lib_fn(backend, "concatenate")
 
         # which group does each axis appear in, if any
-        num_groups = len(axes_groups)
-        ax2group = {ax: g for g, axes in enumerate(axes_groups) for ax in axes}
+        ax2group = {}
+        # what flow each group has
+        group_flows = []
+        old_indices = self._indices
+        for g, gaxes in enumerate(axes_groups):
+            # take the flow of the group to match the first axis
+            group_flows.append(old_indices[gaxes[0]].flow)
+            for ax in gaxes:
+                ax2group[ax] = g
+        # assign `None` to ungrouped axes
         for i in range(self.ndim):
             ax2group.setdefault(i, None)
 
         # the permutation will be the same for every block: precalculate
-        # n.b. all new groups will be inserted at the *first fused axis*
-        position = min((min(g) for g in axes_groups))
+        # n.b. all new groups will be inserted at the *first fused axis*:
+        position = min((min(gaxes) for gaxes in axes_groups))
         axes_before = tuple(
             ax for ax in range(position) if ax2group[ax] is None
         )
@@ -713,17 +804,18 @@ class BlockArray:
         )
 
         # track where each axis will be in the new array
+        num_groups = len(axes_groups)
         new_axes = {ax: ax for ax in axes_before}
-        for i, g in enumerate(axes_groups):
-            for ax in g:
-                new_axes[ax] = position + i
-        for i, ax in enumerate(axes_after):
-            new_axes[ax] = position + num_groups + i
+        for g, gaxes in enumerate(axes_groups):
+            for ax in gaxes:
+                new_axes[ax] = position + g
+        for g, ax in enumerate(axes_after):
+            new_axes[ax] = position + num_groups + g
         new_ndim = len(axes_before) + num_groups + len(axes_after)
 
-        old_indices = self._indices
-        new_blocks = nested_dict()
-        subindex_extents = [defaultdict(dict) for _ in range(num_groups)]
+        # then we process the blocks one by one into new fused sectors
+        new_blocks = {}
+        subinfos = [{} for _ in range(num_groups)]
 
         for sector, array in self.blocks.items():
             # keep track of a perm+shape in order to fuse the actual array
@@ -733,13 +825,17 @@ class BlockArray:
             # only the parts of the sector that will be fused
             subsectors = [[] for g in range(num_groups)]
 
-            for i, c in enumerate(sector):
-                # the size of charge `c` on the `i`th axis
-                ix = old_indices[i]
+            # n.b. we have to use `perm` here, not `enumerate(sector)`, so
+            # that subsectors are built in matching order for tensordot e.g.
+            for ax in perm:
+                # the size of charge `c` along axis `ax`
+                c = sector[ax]
+                ix = old_indices[ax]
                 d = ix.size_of(c)
 
-                g = ax2group[i]
-                new_ax = new_axes[i]
+                # which group is this axis in, if any, and where is it going
+                g = ax2group[ax]
+                new_ax = new_axes[ax]
                 if g is None:
                     # not fusing, new value is just copied
                     new_sector[new_ax] = c
@@ -747,74 +843,111 @@ class BlockArray:
                 else:
                     # fusing: need to accumulate
                     new_shape[new_ax] *= d
-                    new_sector[new_ax] = symmetry(
-                        new_sector[new_ax], -c if ix.flow else c
-                    )
                     subsectors[g].append(c)
+                    # need to match current flow to group flow
+                    flowed_c = symmsign(c, group_flows[g] ^ ix.flow)
+                    new_sector[new_ax] = symmetry(new_sector[new_ax], flowed_c)
 
             # make hashable
             new_sector = tuple(new_sector)
             new_shape = tuple(new_shape)
 
-            # fuse (via transpose+reshape) the actual array, to concat, later
+            # fuse (via transpose+reshape) the actual array, to concat later
             new_array = _transpose(array, perm)
             new_array = _reshape(new_array, new_shape)
-            # the following is like performing:
-            # new_blocks[new_sector][subsect0][subsect1]... = new_array
-            nested_setitem(
-                new_blocks, (new_sector, *map(tuple, subsectors)), new_array
-            )
+
+            # group the subblock into the correct new fused block
+            subsectors = tuple(map(tuple, subsectors))
+            new_blocks.setdefault(new_sector, {})[subsectors] = new_array
 
             # keep track of the new blocksize of each fused index, for unfusing
+            # and also missing blocks
             for g, subsector in enumerate(subsectors):
                 new_charge = new_sector[position + g]
                 new_size = new_shape[position + g]
-                subindex_extents[g][new_charge][tuple(subsector)] = new_size
+                subinfos[g][subsector] = (new_charge, new_size)
+
+        # sort and accumulate subsectors into their new charges for each group
+        chargemaps = []
+        extents = []
+        for g in range(num_groups):
+            chargemap = {}
+            extent = {}
+            for subsector, (new_charge, new_size) in sorted(
+                subinfos[g].items()
+            ):
+                if new_charge not in chargemap:
+                    chargemap[new_charge] = new_size
+                    extent[new_charge] = [(subsector, new_size)]
+                else:
+                    chargemap[new_charge] += new_size
+                    extent[new_charge].append((subsector, new_size))
+            chargemaps.append(chargemap)
+            extents.append(extent)
+
+        new_indices = (
+            *(old_indices[ax] for ax in axes_before),
+            # the new fused indices
+            *(
+                BlockIndex(
+                    chargemap=chargemaps[g],
+                    flow=group_flows[g],
+                    # for unfusing
+                    subinfo=SubIndexInfo(
+                        indices=tuple(old_indices[i] for i in axes_groups[g]),
+                        extents=extents[g],
+                    ),
+                )
+                for g in range(num_groups)
+            ),
+            *(old_indices[ax] for ax in axes_after),
+        )
+
+        def _recurse_sorted_concat(new_sector, g=0, subkey=()):
+            new_charge = new_sector[position + g]
+            new_subkeys = [
+                (*subkey, subsector) for subsector, _ in extents[g][new_charge]
+            ]
+
+            if g == num_groups:
+                # final group (/level of recursion), get actual arrays
+                arrays = []
+                for new_subkey in new_subkeys:
+                    try:
+                        array = new_blocks[new_sector][new_subkey]
+                    except KeyError:
+                        # subsector is missing - need to create zeros
+                        shape_before = (
+                            old_indices[ax].size_of(new_sector[new_axes[ax]])
+                            for ax in axes_before
+                        )
+                        shape_new = (
+                            subinfos[g][ss][1]
+                            for g, ss in enumerate(new_subkey)
+                        )
+                        shape_after = (
+                            old_indices[ax].size_of(new_sector[new_axes[ax]])
+                            for ax in axes_after
+                        )
+                        new_shape = (*shape_before, *shape_new, *shape_after)
+                        array = ar.do("zeros", shape=new_shape, like=backend)
+                    arrays.append(array)
+            else:
+                # recurse to next group
+                arrays = (
+                    _recurse_sorted_concat(new_sector, g + 1, new_subkey)
+                    for new_subkey in new_subkeys
+                )
+
+            return _concatenate(tuple(arrays), axis=position + g)
 
         new = self.__new__(self.__class__)
         new._charge_total = self._charge_total
-
-        def _recurse_sorted_concat(d, group_level=0):
-            if group_level == num_groups:
-                return d  # is lowest level -> i.e. the actual arrays
-            # else, recurse and concat the next level down
-            return _concatenate(
-                tuple(
-                    _recurse_sorted_concat(x[1], group_level + 1)
-                    for x in sorted(d.items(), key=lambda x: x[0])
-                ),
-                axis=position + group_level,
-            )
-
+        new._indices = new_indices
         new._blocks = {
-            k: _recurse_sorted_concat(v) for k, v in new_blocks.items()
+            new_sector: _recurse_sorted_concat(new_sector)
+            for new_sector in new_blocks
         }
-
-        # the unique sequence of new charges/sizes in ascending order
-        grouped_indices = (
-            BlockIndex(
-                chargemap={
-                    c: sum(charge_extent.values())
-                    for c, charge_extent in subindex_extents[g].items()
-                },
-                flow=None,
-                # flow=old_indices[gaxes[0]].flow,
-                # for unfusing
-                subinfo=SubIndexInfo(
-                    indices=tuple(old_indices[i] for i in gaxes),
-                    extents={
-                        c: tuple(sorted(charge_extent.items()))
-                        for c, charge_extent in subindex_extents[g].items()
-                    },
-                ),
-            )
-            for g, gaxes in enumerate(axes_groups)
-        )
-        new._indices = (
-            *(old_indices[ax] for ax in axes_before),
-            *grouped_indices,
-            *(old_indices[ax] for ax in axes_after),
-        )
 
         return new
 
@@ -830,10 +963,11 @@ class BlockArray:
         subinfo = self.indices[axis].subinfo
 
         # info for how to split/slice the linear index into sub charges
-        subindex_splits = {
+        subindex_slices = {
             c: accum_for_split(x[1] for x in charge_extent)
             for c, charge_extent in subinfo.extents.items()
         }
+        selector = tuple(slice(None) for _ in range(axis))
 
         new_blocks = {}
         for sector, array in self.blocks.items():
@@ -841,8 +975,11 @@ class BlockArray:
             old_shape = array.shape
 
             charge_extent = subinfo.extents[old_charge]
-            splits = subindex_splits[old_charge]
-            new_arrays = _split(array, splits, axis=axis)
+
+            new_arrays = []
+            for slc in subindex_slices[old_charge]:
+                new_arrays.append(array[(*selector, slc)])
+            # new_arrays = _split(array, splits, axis=axis)
 
             for (subsector, _), new_array in zip(charge_extent, new_arrays):
                 # expand the old charge into the new subcharges
@@ -920,10 +1057,17 @@ class BlockArray:
             raise ValueError("reshape must be pure fuse or unfuse.")
 
     def __repr__(self):
-        return (
-            f"BlockArray(indices={self.indices}, "
-            f"charge_total={self._charge_total}, "
-            f"num_blocks={self.num_blocks})"
+        return "".join(
+            [
+                f"BlockArray(",
+                (
+                    f"indices={self.indices}, "
+                    if self.indices
+                    else f"{self.item()}, "
+                ),
+                f"charge_total={self._charge_total}, ",
+                f"num_blocks={self.num_blocks})",
+            ]
         )
 
 
@@ -1000,7 +1144,67 @@ def tensordot_via_blocks(a, b, left_axes, axes_a, axes_b, right_axes):
     return new
 
 
+def drop_misaligned_sectors(a, b, axes_a, axes_b):
+    """Eagerly drop misaligned sectors of ``a`` and ``b`` so that they can be
+    contracted via fusing.
+
+    Parameters
+    ----------
+    a, b : BlockArray
+        The arrays to be contracted.
+    axes_a, axes_b : tuple[int]
+        The axes that will be contracted, defined like in `tensordot`.
+
+    Returns
+    -------
+    a, b : BlockArray
+        The new arrays with misaligned sectors dropped.
+    """
+    # compute the intersection of fused charges for a and b
+    sub_sectors_a = {
+        sector: tuple(sector[ax] for ax in axes_a) for sector in a.sectors
+    }
+    sub_sectors_b = {
+        sector: tuple(sector[ax] for ax in axes_b) for sector in b.sectors
+    }
+    allowed_subsectors = set(sub_sectors_a.values()).intersection(
+        sub_sectors_b.values()
+    )
+
+    # filter out sectors of a and b that are not aligned
+    new_blocks_a = {
+        sector: array
+        for sector, array in a.blocks.items()
+        if sub_sectors_a[sector] in allowed_subsectors
+    }
+    new_blocks_b = {
+        sector: array
+        for sector, array in b.blocks.items()
+        if sub_sectors_b[sector] in allowed_subsectors
+    }
+
+    return (
+        BlockArray(a.indices, a.charge_total, new_blocks_a),
+        BlockArray(b.indices, b.charge_total, new_blocks_b),
+    )
+
+
 def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
+    """Perform a tensordot between two block arrays, by first fusing both into
+    matrices and unfusing afterwards.
+
+    Parameters
+    ----------
+    a, b : BlockArray
+        The arrays to be contracted.
+    left_axes : tuple[int]
+        The axes of ``a`` that will not be contracted.
+    axes_a, axes_b : tuple[int]
+        The axes that will be contracted, defined like in `tensordot`.
+    right_axes : tuple[int]
+        The axes of ``b`` that will not be contracted.
+    """
+    a, b = drop_misaligned_sectors(a, b, axes_a, axes_b)
 
     # fuse into matrices or maybe vectors
     af = a.fuse(left_axes, axes_a)
