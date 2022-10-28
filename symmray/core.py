@@ -7,38 +7,6 @@ import autoray as ar
 from autoray.lazy.core import find_full_reshape
 
 
-# defining symmetries just requires composition function (which returns the
-# identity element if empty) and probably a negation function for non-int reprs
-
-
-@functools.lru_cache(2**15)
-def z2_symmetry(*charges):
-    return sum(charges) % 2
-
-
-@functools.lru_cache(2**15)
-def u1_symmetry(*charges):
-    return sum(charges)
-
-
-@functools.lru_cache(2**10)
-def scalar_symmsign(charge, flow):
-    return {
-        False: charge,
-        True: -charge,
-    }[flow]
-
-
-z2_symmsign = scalar_symmsign
-u1_symmsign = scalar_symmsign
-
-symmetry = z2_symmetry
-symmsign = z2_symmsign
-
-
-# --------------------------------------------------------------------------- #
-
-
 class BlockIndex:
     """An index of a blocked tensor.
 
@@ -54,11 +22,7 @@ class BlockIndex:
         this index was formed from fusing.
     """
 
-    __slots__ = (
-        "_chargemap",
-        "_flow",
-        "_subinfo",
-    )
+    __slots__ = ("_chargemap", "_flow", "_subinfo")
 
     def __init__(self, chargemap, flow=False, subinfo=None):
         self._chargemap = dict(chargemap)
@@ -311,6 +275,15 @@ def reshape_to_unfuse_axes(indices, newshape):
     return tuple(sorted(unfused, reverse=True))
 
 
+_blockarray_slots = (
+    "_indices",
+    "_blocks",
+    "_charge_total",
+    # "symmetry",
+    # "symmsign",
+)
+
+
 class BlockArray:
     """A block sparse array with symmetry constraints.
 
@@ -324,11 +297,7 @@ class BlockArray:
         A mapping of each 'sector' (tuple of charges) to the data array.
     """
 
-    __slots__ = (
-        "_indices",
-        "_blocks",
-        "_charge_total",
-    )
+    __slots__ = _blockarray_slots
 
     def __init__(
         self,
@@ -405,21 +374,6 @@ class BlockArray:
     def sectors(self):
         return tuple(self._blocks.keys())
 
-    def gen_signed_sectors(self):
-        flows = self.flows
-        for sector in self.blocks:
-            yield tuple(symmsign(c, f) for c, f in zip(sector, flows))
-
-    def get_sparsity(self):
-        """Return the sparsity of the array, i.e. the number of blocks
-        divided by the number of possible blocks.
-        """
-        num_possible_blocks = sum(
-            symmetry(*sector) == self.charge_total
-            for sector in self.gen_signed_sectors()
-        )
-        return self.num_blocks / num_possible_blocks
-
     def copy(self):
         """Copy this block array."""
         new = self.__new__(self.__class__)
@@ -428,14 +382,29 @@ class BlockArray:
         new._blocks = self._blocks.copy()
         return new
 
+    def gen_signed_sectors(self):
+        flows = self.flows
+        for sector in self.blocks:
+            yield tuple(self.symmsign(c, f) for c, f in zip(sector, flows))
+
+    def get_sparsity(self):
+        """Return the sparsity of the array, i.e. the number of blocks
+        divided by the number of possible blocks.
+        """
+        num_possible_blocks = sum(
+            self.symmetry(*sector) == self.charge_total
+            for sector in self.gen_signed_sectors()
+        )
+        return self.num_blocks / num_possible_blocks
+
     def is_valid_sector(self, sector):
         """Check if a sector is valid for the block array, i.e., whether the
         total symmetry charge is satisfied.
         """
         signed_sector = (
-            symmsign(c, i.flow) for c, i in zip(sector, self._indices)
+            self.symmsign(c, i.flow) for c, i in zip(sector, self._indices)
         )
-        block_charge = symmetry(*signed_sector)
+        block_charge = self.symmetry(*signed_sector)
         return block_charge == self.charge_total
 
     def gen_valid_sectors(self):
@@ -502,17 +471,17 @@ class BlockArray:
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
         """
-        new = cls.__new__(cls)
-        new._indices = tuple(indices)
+        self = cls.__new__(cls)
+        self._indices = tuple(indices)
         if charge_total is None:
-            charge_total = symmetry()
+            charge_total = cls.symmetry()
         else:
-            new._charge_total = charge_total
-        new._blocks = {
-            sector: fill_fn(new.get_block_shape(sector))
-            for sector in new.gen_valid_sectors()
+            self._charge_total = charge_total
+        self._blocks = {
+            sector: fill_fn(self.get_block_shape(sector))
+            for sector in self.gen_valid_sectors()
         }
-        return new
+        return self
 
     @classmethod
     def random(cls, indices, charge_total=None, seed=None, dist="normal"):
@@ -562,7 +531,7 @@ class BlockArray:
         """
         self = cls.__new__(cls)
         if charge_total is None:
-            self._charge_total = symmetry()
+            self._charge_total = cls.symmetry()
         else:
             self._charge_total = charge_total
         self._blocks = dict(blocks)
@@ -612,7 +581,7 @@ class BlockArray:
             taken as the identity / zero element.
         """
         if charge_total is None:
-            charge_total = symmetry()
+            charge_total = cls.symmetry()
 
         # first we work out which indices of which axes belong to which charges
         charge_groups = []
@@ -640,10 +609,10 @@ class BlockArray:
             else:
                 # we have reached a fully specified block
                 signed_sector = tuple(
-                    symmsign(charge, flow)
+                    cls.symmsign(charge, flow)
                     for charge, flow in zip(sector, flows)
                 )
-                if symmetry(*signed_sector) == charge_total:
+                if cls.symmetry(*signed_sector) == charge_total:
                     # ... but only add valid ones:
                     blocks[sector] = ary
 
@@ -821,7 +790,7 @@ class BlockArray:
             # keep track of a perm+shape in order to fuse the actual array
             new_shape = [1] * new_ndim
             # the key of the new fused block to add this block to
-            new_sector = [symmetry()] * new_ndim
+            new_sector = [self.symmetry()] * new_ndim
             # only the parts of the sector that will be fused
             subsectors = [[] for g in range(num_groups)]
 
@@ -845,8 +814,8 @@ class BlockArray:
                     new_shape[new_ax] *= d
                     subsectors[g].append(c)
                     # need to match current flow to group flow
-                    flowed_c = symmsign(c, group_flows[g] ^ ix.flow)
-                    new_sector[new_ax] = symmetry(new_sector[new_ax], flowed_c)
+                    flowed_c = self.symmsign(c, group_flows[g] ^ ix.flow)
+                    new_sector[new_ax] = self.symmetry(new_sector[new_ax], flowed_c)
 
             # make hashable
             new_sector = tuple(new_sector)
@@ -909,7 +878,7 @@ class BlockArray:
                 (*subkey, subsector) for subsector, _ in extents[g][new_charge]
             ]
 
-            if g == num_groups:
+            if g == num_groups - 1:
                 # final group (/level of recursion), get actual arrays
                 arrays = []
                 for new_subkey in new_subkeys:
@@ -1059,7 +1028,7 @@ class BlockArray:
     def __repr__(self):
         return "".join(
             [
-                f"BlockArray(",
+                f"{self.__class__.__name__}(",
                 (
                     f"indices={self.indices}, "
                     if self.indices
@@ -1137,9 +1106,9 @@ def tensordot_via_blocks(a, b, left_axes, axes_a, axes_b, right_axes):
                 arrays_suba, arrays_subb, axes=stacked_axes
             )
 
-    new = BlockArray.__new__(BlockArray)
+    new = a.__new__(a.__class__)
     new._indices = without(a.indices, axes_a) + without(b.indices, axes_b)
-    new._charge_total = symmetry(a.charge_total, b.charge_total)
+    new._charge_total = new.symmetry(a.charge_total, b.charge_total)
     new._blocks = new_blocks
     return new
 
@@ -1184,8 +1153,8 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b):
     }
 
     return (
-        BlockArray(a.indices, a.charge_total, new_blocks_a),
-        BlockArray(b.indices, b.charge_total, new_blocks_b),
+        a.__class__(a.indices, a.charge_total, new_blocks_a),
+        b.__class__(b.indices, b.charge_total, new_blocks_b),
     )
 
 
@@ -1248,3 +1217,42 @@ def tensordot(a, b, axes=2, mode="auto"):
     c = _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
     # c.check()
     return c
+
+
+# --------------------------------------------------------------------------- #
+
+# defining an abelian symmetry requires two functions:
+# - `symmetry(*charges)`: a function that composes charges, including returning
+#   the identity charge when called with no arguments
+# - `symmsign(charge, flow)`: a function that possibly negates a charge
+#   depending on the boolean `flow`
+
+
+@functools.lru_cache(2**15)
+def z2_symmetry(*charges):
+    return sum(charges) % 2
+
+
+@functools.lru_cache(2**10)
+def scalar_symmsign(charge, flow):
+    return {
+        False: charge,
+        True: -charge,
+    }[flow]
+
+
+@functools.lru_cache(2**15)
+def u1_symmetry(*charges):
+    return sum(charges)
+
+
+class Z2Array(BlockArray):
+    __slots__ = _blockarray_slots
+    symmetry = staticmethod(z2_symmetry)
+    symmsign = staticmethod(scalar_symmsign)
+
+
+class U1Array(BlockArray):
+    __slots__ = _blockarray_slots
+    symmetry = staticmethod(u1_symmetry)
+    symmsign = staticmethod(scalar_symmsign)

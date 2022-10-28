@@ -2,7 +2,7 @@ import functools
 
 from autoray import do, get_lib_fn, register_function
 
-from .core import BlockArray, BlockIndex, symmetry
+from .core import BlockIndex
 
 
 def _get_qr_fn(backend, stabilized=False):
@@ -55,14 +55,14 @@ def qr(x, stabilized=False):
         new_chargemap[sector[1]] = q.shape[1]
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
-    q = BlockArray(
+    q = x.__class__(
         indices=(x.indices[0], bond_index),
         charge_total=x.charge_total,
         blocks=q_blocks,
     )
-    r = BlockArray(
+    r = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
-        charge_total=symmetry(),
+        charge_total=x.symmetry(),
         blocks=r_blocks,
     )
     return q, r
@@ -95,14 +95,14 @@ def svd(x):
         new_chargemap[sector[1]] = u.shape[1]
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
-    u = BlockArray(
+    u = x.__class__(
         indices=(x.indices[0], bond_index),
         charge_total=x.charge_total,
         blocks=u_blocks,
     )
-    v = BlockArray(
+    v = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
-        charge_total=symmetry(),
+        charge_total=x.symmetry(),
         blocks=v_blocks,
     )
     return u, s_store, v
