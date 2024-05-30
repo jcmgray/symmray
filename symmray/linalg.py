@@ -3,13 +3,10 @@ import functools
 import autoray as ar
 
 from .block_core import BlockIndex
-from .interface import tensordot
 
 
 def norm(x):
-    xx = tensordot(x.conj(), x, x.ndim)
-    xx, = xx.blocks.values()
-    return ar.do("sqrt", ar.do("abs", xx))
+    return x.norm()
 
 
 def _get_qr_fn(backend, stabilized=False):

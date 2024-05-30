@@ -732,6 +732,18 @@ class BlockArray:
 
         return _recurse_all_charges()
 
+    def __float__(self):
+        return float(self.item())
+
+    def __complex__(self):
+        return complex(self.item())
+
+    def __int__(self):
+        return int(self.item())
+
+    def __bool__(self):
+        return bool(self.item())
+
     def __mul__(self, other):
         if isinstance(other, BlockArray):
             raise NotImplementedError("Multiplication of block arrays.")
@@ -1109,6 +1121,19 @@ class BlockArray:
         else:
             raise ValueError("reshape must be pure fuse or unfuse.")
 
+    def norm(self):
+        """Get the frobenius norm of the block array."""
+        backend = self.backend
+        _sum = ar.get_lib_fn(backend, "sum")
+        _abs = ar.get_lib_fn(backend, "abs")
+        return (
+            functools.reduce(
+                operator.add,
+                (_sum(_abs(x) ** 2) for x in self.blocks.values()),
+            )
+            ** 0.5
+        )
+
     def __repr__(self):
         return "".join(
             [
@@ -1157,7 +1182,6 @@ def tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
                 new_blocks[new_sector] = arrays_suba, arrays_subb
             arrays_suba.append(array_a)
             arrays_subb.append(array_b)
-
 
     # XXX: this has better performance, but only works w/ shape-matching blocks
     # stacked_axes = (

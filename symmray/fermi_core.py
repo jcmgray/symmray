@@ -116,16 +116,21 @@ class FermionicArray(BlockArray):
             # nothing to do
             return new
 
+        new_phases = new.phases.copy()
+
         for sector in new.sectors:
             parity = sum(new.symmetry.parity(sector[ax]) for ax in axs) % 2
 
             if parity:
-                new_phase = -new._phases.get(sector, 1)
+                new_phase = -new_phases.get(sector, 1)
                 if new_phase == 1:
-                    new._phases.pop(sector, None)
+                    new_phases.pop(sector, None)
                 else:
                     # only keep non-trivial phases
-                    new._phases[sector] = new_phase
+                    new_phases[sector] = new_phase
+
+        new._phases = new_phases
+
         return new
 
     def phase_resolve(self, inplace=False):
