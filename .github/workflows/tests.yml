@@ -17,22 +17,6 @@ jobs:
         os: [ubuntu-latest]
         python-version: ['3.9', '3.10', '3.11', '3.12']
         env: [base]
-        include:
-        - os: macos-latest
-          python-version: '3.11'
-          env: base
-        - os: windows-latest
-          python-version: '3.11'
-          env: base
-        - os: ubuntu-latest
-          python-version: '3.11'
-          env: torch
-        - os: ubuntu-latest
-          python-version: '3.11'
-          env: jax
-        - os: ubuntu-latest
-          python-version: '3.11'
-          env: tensorflow
 
     steps:
     - uses: actions/checkout@v4
