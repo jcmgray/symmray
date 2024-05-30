@@ -29,11 +29,21 @@ setup(
         'autoray',
     ],
     extras_require={
+        "tests": [
+            "numpy",
+            "coverage",
+            "pytest",
+            "pytest-cov",
+        ],
         'docs': [
-            'sphinx',
+            'sphinx>=2.0',
             'sphinx-autoapi',
+            'astroid<3',
+            'sphinx-copybutton',
             'myst-nb',
             'furo',
+            'setuptools_scm',
+            'ipython!=8.7.0',
         ],
     },
     project_urls={  # Optional
