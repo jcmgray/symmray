@@ -1,18 +1,25 @@
 import functools
 
-from autoray import do, get_lib_fn, register_function
+import autoray as ar
 
-from .core import BlockIndex
+from .block_core import BlockIndex
+from .interface import tensordot
+
+
+def norm(x):
+    xx = tensordot(x.conj(), x, x.ndim)
+    xx, = xx.blocks.values()
+    return ar.do("sqrt", ar.do("abs", xx))
 
 
 def _get_qr_fn(backend, stabilized=False):
-    _qr = get_lib_fn(backend, "linalg.qr")
+    _qr = ar.get_lib_fn(backend, "linalg.qr")
 
     if not stabilized:
         return _qr
 
     try:
-        _qr_stab = get_lib_fn(backend, "qr_stabilized")
+        _qr_stab = ar.get_lib_fn(backend, "qr_stabilized")
 
         def _qr(x):
             q, _, r = _qr_stab(x)
@@ -20,9 +27,9 @@ def _get_qr_fn(backend, stabilized=False):
 
     except ImportError:
         _qr_ubstab = _qr
-        _diag = get_lib_fn(backend, "diag")
-        _reshape = get_lib_fn(backend, "reshape")
-        _sign = get_lib_fn(backend, "sign")
+        _diag = ar.get_lib_fn(backend, "diag")
+        _reshape = ar.get_lib_fn(backend, "reshape")
+        _sign = ar.get_lib_fn(backend, "sign")
 
         def _qr(x):
             q, r = _qr_ubstab(x)
@@ -52,7 +59,7 @@ def qr(x, stabilized=False):
         q, r = _qr(array)
         q_blocks[sector] = q
         r_blocks[sector] = r
-        new_chargemap[sector[1]] = q.shape[1]
+        new_chargemap[sector[1]] = ar.shape(q)[1]
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
     q = x.__class__(
@@ -62,7 +69,7 @@ def qr(x, stabilized=False):
     )
     r = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
-        charge_total=x.symmetry(),
+        charge_total=x.symmetry.combine(),
         blocks=r_blocks,
     )
     return q, r
@@ -80,7 +87,7 @@ def svd(x):
             f" got {x.ndim}D. Consider fusing first."
         )
 
-    _svd = get_lib_fn(x.backend, "linalg.svd")
+    _svd = ar.get_lib_fn(x.backend, "linalg.svd")
 
     u_blocks = {}
     s_store = {}
@@ -92,7 +99,7 @@ def svd(x):
         u_blocks[sector] = u
         s_store[sector] = s
         v_blocks[sector] = v
-        new_chargemap[sector[1]] = u.shape[1]
+        new_chargemap[sector[1]] = ar.shape(u)[1]
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
     u = x.__class__(
@@ -102,14 +109,39 @@ def svd(x):
     )
     v = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
-        charge_total=x.symmetry(),
+        charge_total=x.symmetry.combine(),
         blocks=v_blocks,
     )
     return u, s_store, v
 
 
+def argsort(seq):
+    return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+@functools.lru_cache(maxsize=2**14)
+def calc_sub_max_bonds(sizes, max_bond):
+    # overall fraction of the total bond dimension to use
+    frac = max_bond / sum(sizes)
+
+    if frac >= 1.0:
+        # keep all singular values
+        return sizes
+
+    # number of singular values to keep in each sector
+    sub_max_bonds = [int(frac * s) for s in sizes]
+
+    # distribute any remaining singular values to the smallest sectors
+    rem = max_bond - sum(sub_max_bonds)
+
+    for i in argsort(sub_max_bonds)[:rem]:
+        sub_max_bonds[i] += 1
+
+    return tuple(sub_max_bonds)
+
+
 def svd_truncated(
-    x, cutoff=-1.0, cutoff_mode=3, max_bond=-1, absorb=0, renorm=0
+    x, cutoff=-1.0, cutoff_mode=4, max_bond=-1, absorb=0, renorm=0
 ):
     """Truncated svd or raw array ``x``.
 
@@ -137,44 +169,77 @@ def svd_truncated(
     """
     backend = x.backend
 
-    # x.check()
-
     # first perform untruncated svd
     U, s, VH = svd(x)
 
+    if renorm:
+        raise NotImplementedError("renorm not implemented yet.")
+
     if cutoff > 0.0:
-        raise NotImplementedError("cutoff > 0.0 not implemented yet.")
-
-    if max_bond > 0:
-
         # first combine all singular values into a single, sorted array
-        sall = do("concatenate", tuple(s.values()), like=backend)
-        sall = do("sort", sall, like=backend)[::-1]
+        sall = ar.do("concatenate", tuple(s.values()), like=backend)
+        sall = ar.do("sort", sall, like=backend)
 
-        # now find the absolute sigular value at the cutoff
-        absolute_cutoff = sall[max_bond]
+        if cutoff_mode == 1:
+            # absolute cutoff
+            abs_cutoff = cutoff
+        elif cutoff_mode == 2:
+            # relative cutoff
+            abs_cutoff = sall[-1] * cutoff
+        else:
+            # possible square singular values
+            power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
+            if power == 1:
+                # sum1 or rsum1
+                cum_spow = ar.do("cumsum", sall, 0, like=backend)
+            else:
+                # sum2 or rsum2
+                cum_spow = ar.do("cumsum", sall**power, 0, like=backend)
 
-        # U.check()
-        # VH.check()
+            if cutoff_mode in (4, 6):
+                # rsum1 or rsum2: relative cumulative cutoff
+                cond = cum_spow > cutoff * cum_spow[-1]
+            else:
+                # sum1 or sum2: absolute cumulative cutoff
+                cond = cum_spow > cutoff
 
-        for sector in s:
-            # check how many singular values from this sector are validi
-            n_chi = do(
-                "count_nonzero", s[sector] > absolute_cutoff, like=backend
-            )
+            # translate to total number of singular values to keep
+            n_chi_all = ar.do("count_nonzero", cond, like=backend)
+            # and then to an absolute cutoff value
+            abs_cutoff = sall[-n_chi_all]
 
-            if n_chi == 0:
-                # TODO: drop the block?
-                raise NotImplementedError
+        if 0 < max_bond < ar.size(sall):
+            # also take into account a total maximum bond
+            max_bond_cutoff = sall[-max_bond - 1]
+            if max_bond_cutoff > abs_cutoff:
+                abs_cutoff = max_bond_cutoff
 
-            # slice the values and left and right vectors
-            s[sector] = s[sector][:n_chi]
-            U.blocks[sector] = U.blocks[sector][:, :n_chi]
-            VH.blocks[sector] = VH.blocks[sector][:n_chi, :]
+        # now find number of values to keep per sector
+        sub_max_bonds = [
+            int(ar.do("count_nonzero", ss >= abs_cutoff, like=backend))
+            for ss in s.values()
+        ]
+    else:
+        # size of each sector
+        sector_sizes = tuple(map(ar.size, s.values()))
+        # distribute max_bond proportionally to sector sizes
+        sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
 
-            # make sure the index chargemaps are updated too
-            U.indices[-1].chargemap[sector[-1]] = n_chi
-            VH.indices[0].chargemap[sector[0]] = n_chi
+    for sector, n_chi in zip(s, sub_max_bonds):
+        # check how many singular values from this sector are valid
+
+        if n_chi == 0:
+            # TODO: drop the block?
+            raise NotImplementedError
+
+        # slice the values and left and right vectors
+        s[sector] = s[sector][:n_chi]
+        U.blocks[sector] = U.blocks[sector][:, :n_chi]
+        VH.blocks[sector] = VH.blocks[sector][:n_chi, :]
+
+        # make sure the index chargemaps are updated too
+        U.indices[-1].chargemap[sector[-1]] = n_chi
+        VH.indices[0].chargemap[sector[0]] = n_chi
 
     if absorb is None:
         return U, s, VH
@@ -186,16 +251,13 @@ def svd_truncated(
         elif absorb == 1:
             VH.blocks[sector] *= s[sector].reshape((-1, 1))
         elif absorb == 0:
-            s_sqrt = do("sqrt", s[sector], like=backend)
+            s_sqrt = ar.do("sqrt", s[sector], like=backend)
             U.blocks[sector] *= s_sqrt.reshape((1, -1))
             VH.blocks[sector] *= s_sqrt.reshape((-1, 1))
-
-    # U.check()
-    # VH.check()
 
     return U, None, VH
 
 
 # these are used by quimb for compressed contraction and gauging
-register_function("symmray", "qr_stabilized", qr_stabilized)
-register_function("symmray", "svd_truncated", svd_truncated)
+ar.register_function("symmray", "qr_stabilized", qr_stabilized)
+ar.register_function("symmray", "svd_truncated", svd_truncated)

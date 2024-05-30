@@ -1,10 +1,14 @@
-import math
 import functools
 import itertools
+import math
+import operator
 from collections import defaultdict
 
 import autoray as ar
 from autoray.lazy.core import find_full_reshape
+
+from .interface import tensordot
+from .symmetries import get_symmetry
 
 
 class BlockIndex:
@@ -90,10 +94,25 @@ class BlockIndex:
         """The size of the block with charge ``c``."""
         return self._chargemap[c]
 
+    def check(self):
+        """Check that the index is well-formed, i.e. all sizes are positive."""
+        for c, d in self._chargemap.items():
+            if d <= 0:
+                raise ValueError(
+                    f"Size of charge {c} is {d}, must be positive."
+                )
+            if not isinstance(d, int):
+                raise ValueError(f"Size of charge {c} is {d}, must be an int.")
+
     def matches(self, other):
         """Whether this index matches ``other`` index, namely, whether the
         ``chargemap`` of each matches, their flows are opposite, and also
         whether their subindices match, if they have any. For debugging.
+
+        Parameters
+        ----------
+        other : BlockIndex
+            The other index to compare to.
         """
         return (
             all(
@@ -163,8 +182,8 @@ class SubIndexInfo:
         return "".join(
             [
                 f"{self.__class__.__name__}(",
-                f"indices={self.indices}",
-                f", extents={self.extents}",
+                f"indices={self.indices}, ",
+                f"extents={self.extents}",
                 ")",
             ]
         )
@@ -215,7 +234,7 @@ def accum_for_split(sizes):
 
 @functools.lru_cache(2**15)
 def reshape_to_fuse_axes(shape, newshape):
-    """Assuming only fuses need to happen, convert from ``reshhape`` form to
+    """Assuming only fuses need to happen, convert from ``reshape`` form to
     ``fuse`` form -  a sequence of axes groups.
     """
     i = 0
@@ -279,8 +298,6 @@ _blockarray_slots = (
     "_indices",
     "_blocks",
     "_charge_total",
-    # "symmetry",
-    # "symmsign",
 )
 
 
@@ -291,8 +308,10 @@ class BlockArray:
     ----------
     indices : tuple[BlockIndex]
         The indices of the array.
-    charge_total : hashable
-        The total charge of the array.
+    charge_total : hashable, optionals
+        The total charge of the array, if not given it will be inferred from
+        either the first sector or set to the identity charge, if no sectors
+        are given.
     blocks : dict[tuple[hashable], array_like]
         A mapping of each 'sector' (tuple of charges) to the data array.
     """
@@ -302,12 +321,37 @@ class BlockArray:
     def __init__(
         self,
         indices,
-        charge_total,
+        charge_total=None,
         blocks=(),
     ):
         self._indices = tuple(indices)
-        self._charge_total = charge_total
         self._blocks = dict(blocks)
+
+        if charge_total is None:
+            if self._blocks:
+                # infer the charge total from any sector
+                sector = next(iter(self._blocks))
+                self._charge_total = self.symmetry.combine(*sector)
+            else:
+                # default to the identity charge
+                self._charge_total = self.symmetry.combine()
+        else:
+            self._charge_total = charge_total
+
+    def copy(self):
+        """Copy this block array."""
+        new = self.__new__(self.__class__)
+        new._indices = self._indices
+        new._charge_total = self._charge_total
+        new._blocks = self._blocks.copy()
+        return new
+
+    def copy_with(self, indices=None, blocks=None):
+        new = self.__new__(self.__class__)
+        new._indices = self._indices if indices is None else indices
+        new._charge_total = self._charge_total
+        new._blocks = self._blocks.copy() if blocks is None else blocks
+        return new
 
     @property
     def indices(self):
@@ -374,25 +418,19 @@ class BlockArray:
     def sectors(self):
         return tuple(self._blocks.keys())
 
-    def copy(self):
-        """Copy this block array."""
-        new = self.__new__(self.__class__)
-        new._indices = self._indices
-        new._charge_total = self._charge_total
-        new._blocks = self._blocks.copy()
-        return new
-
     def gen_signed_sectors(self):
         flows = self.flows
         for sector in self.blocks:
-            yield tuple(self.symmsign(c, f) for c, f in zip(sector, flows))
+            yield tuple(
+                self.symmetry.negate(c, f) for c, f in zip(sector, flows)
+            )
 
     def get_sparsity(self):
         """Return the sparsity of the array, i.e. the number of blocks
         divided by the number of possible blocks.
         """
         num_possible_blocks = sum(
-            self.symmetry(*sector) == self.charge_total
+            self.symmetry.combine(*sector) == self.charge_total
             for sector in self.gen_signed_sectors()
         )
         return self.num_blocks / num_possible_blocks
@@ -402,9 +440,10 @@ class BlockArray:
         total symmetry charge is satisfied.
         """
         signed_sector = (
-            self.symmsign(c, i.flow) for c, i in zip(sector, self._indices)
+            self.symmetry.negate(c, i.flow)
+            for c, i in zip(sector, self._indices)
         )
-        block_charge = self.symmetry(*signed_sector)
+        block_charge = self.symmetry.combine(*signed_sector)
         return block_charge == self.charge_total
 
     def gen_valid_sectors(self):
@@ -417,11 +456,15 @@ class BlockArray:
 
     def check(self):
         """Check that all the block sizes and charges are consistent."""
+        for idx in self.indices:
+            idx.check()
         for sector, array in self.blocks.items():
             assert self.is_valid_sector(sector)
             assert all(
                 di == dj
-                for di, dj in zip(array.shape, self.get_block_shape(sector))
+                for di, dj in zip(
+                    ar.shape(array), self.get_block_shape(sector)
+                )
             )
 
     def allclose(self, other, **allclose_opts):
@@ -472,11 +515,14 @@ class BlockArray:
             taken as the identity / zero element.
         """
         self = cls.__new__(cls)
+
         self._indices = tuple(indices)
+
         if charge_total is None:
-            charge_total = cls.symmetry()
+            self._charge_total = cls.symmetry.combine()
         else:
             self._charge_total = charge_total
+
         self._blocks = {
             sector: fill_fn(self.get_block_shape(sector))
             for sector in self.gen_valid_sectors()
@@ -531,7 +577,7 @@ class BlockArray:
         """
         self = cls.__new__(cls)
         if charge_total is None:
-            self._charge_total = cls.symmetry()
+            self._charge_total = cls.symmetry.combine()
         else:
             self._charge_total = charge_total
         self._blocks = dict(blocks)
@@ -540,7 +586,7 @@ class BlockArray:
         charge_size_maps = [{} for _ in range(ndim)]
 
         for sector, array in self.blocks.items():
-            for i, (c, d) in enumerate(zip(sector, array.shape)):
+            for i, (c, d) in enumerate(zip(sector, ar.shape(array))):
                 d = int(d)
                 d_existing = charge_size_maps[i].get(c, None)
                 if d_existing is None:
@@ -580,12 +626,14 @@ class BlockArray:
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
         """
+        # XXX: warn if invalid blocks are non-zero?
+
         if charge_total is None:
-            charge_total = cls.symmetry()
+            charge_total = cls.symmetry.combine()
 
         # first we work out which indices of which axes belong to which charges
         charge_groups = []
-        for d, index_map in zip(array.shape, index_maps):
+        for d, index_map in zip(ar.shape(array), index_maps):
             which_charge = {}
             for i in range(d):
                 which_charge.setdefault(index_map[i], []).append(i)
@@ -594,7 +642,7 @@ class BlockArray:
         # then we recusively visit all the potential blocks, by slicing using
         # the above generated charge groupings
         blocks = {}
-        ndim = array.ndim
+        ndim = ar.ndim(array)
         all_sliced = [slice(None)] * ndim
 
         def _recurse(ary, j=0, sector=()):
@@ -609,10 +657,10 @@ class BlockArray:
             else:
                 # we have reached a fully specified block
                 signed_sector = tuple(
-                    cls.symmsign(charge, flow)
+                    cls.symmetry.negate(charge, flow)
                     for charge, flow in zip(sector, flows)
                 )
-                if cls.symmetry(*signed_sector) == charge_total:
+                if cls.symmetry.combine(*signed_sector) == charge_total:
                     # ... but only add valid ones:
                     blocks[sector] = ary
 
@@ -659,11 +707,11 @@ class BlockArray:
     def to_dense(self):
         """Convert this block array to a dense array."""
         backend = self.backend
-        _zeros = ar.get_lib_fn(backend, "zeros")
+        _ex_array = self._get_any_array()
         _concat = ar.get_lib_fn(backend, "concatenate")
 
         def filler(shape):
-            return _zeros(shape, dtype=self.dtype)
+            return ar.do("zeros", shape, like=_ex_array)
 
         def _recurse_all_charges(partial_sector=()):
             i = len(partial_sector)
@@ -684,33 +732,60 @@ class BlockArray:
 
         return _recurse_all_charges()
 
-    def conj(self):
+    def __mul__(self, other):
+        if isinstance(other, BlockArray):
+            raise NotImplementedError("Multiplication of block arrays.")
+
+        new = self.copy()
+        new.apply_to_arrays(lambda x: x * other)
+        return new
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __truediv__(self, other):
+        if isinstance(other, BlockArray):
+            raise NotImplementedError("Division of block arrays.")
+
+        new = self.copy()
+        new.apply_to_arrays(lambda x: x / other)
+        return new
+
+    def __rtruediv__(self, other):
+        if isinstance(other, BlockArray):
+            raise NotImplementedError("Division of block arrays.")
+
+        new = self.copy()
+        new.apply_to_arrays(lambda x: other / x)
+        return new
+
+    def conj(self, inplace=False):
         """Return the complex conjugate of this block array, including the
         indices."""
-        new = self.copy()
+        new = self if inplace else self.copy()
         _conj = ar.get_lib_fn(new.backend, "conj")
         new.apply_to_arrays(_conj)
         new._indices = tuple(ix.conj() for ix in self._indices)
         return new
 
-    def transpose(self, axes=None):
+    def transpose(self, axes=None, inplace=False):
         """Transpose the block array."""
-        _transpose = ar.get_lib_fn(self.backend, "transpose")
+        new = self if inplace else self.copy()
+
+        _transpose = ar.get_lib_fn(new.backend, "transpose")
 
         if axes is None:
             # reverse the axes
-            axes = tuple(range(self.ndim - 1, -1, -1))
+            axes = tuple(range(new.ndim - 1, -1, -1))
 
-        new = self.__new__(self.__class__)
-        new._indices = permuted(self._indices, axes)
-        new._charge_total = self.charge_total
+        new._indices = permuted(new._indices, axes)
         new._blocks = {
             permuted(sector, axes): _transpose(array, axes)
-            for sector, array in self.blocks.items()
+            for sector, array in new.blocks.items()
         }
         return new
 
-    def fuse(self, *axes_groups):
+    def fuse(self, *axes_groups, inplace=False):
         """Fuse the give group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
         the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
@@ -732,6 +807,8 @@ class BlockArray:
             The axes to fuse. Each group of axes will be fused into a single
             axis.
         """
+        # XXX: error or warn about empty groups?
+
         # handle empty groups
         axes_groups = tuple(filter(None, axes_groups))
         if not axes_groups:
@@ -790,7 +867,7 @@ class BlockArray:
             # keep track of a perm+shape in order to fuse the actual array
             new_shape = [1] * new_ndim
             # the key of the new fused block to add this block to
-            new_sector = [self.symmetry()] * new_ndim
+            new_sector = [self.symmetry.combine()] * new_ndim
             # only the parts of the sector that will be fused
             subsectors = [[] for g in range(num_groups)]
 
@@ -801,6 +878,11 @@ class BlockArray:
                 c = sector[ax]
                 ix = old_indices[ax]
                 d = ix.size_of(c)
+
+                if not isinstance(d, int):
+                    raise ValueError(
+                        f"Expected integer size, got {d} of type {type(d)}."
+                    )
 
                 # which group is this axis in, if any, and where is it going
                 g = ax2group[ax]
@@ -814,8 +896,12 @@ class BlockArray:
                     new_shape[new_ax] *= d
                     subsectors[g].append(c)
                     # need to match current flow to group flow
-                    flowed_c = self.symmsign(c, group_flows[g] ^ ix.flow)
-                    new_sector[new_ax] = self.symmetry(new_sector[new_ax], flowed_c)
+                    flowed_c = self.symmetry.negate(
+                        c, group_flows[g] ^ ix.flow
+                    )
+                    new_sector[new_ax] = self.symmetry.combine(
+                        new_sector[new_ax], flowed_c
+                    )
 
             # make hashable
             new_sector = tuple(new_sector)
@@ -910,8 +996,7 @@ class BlockArray:
 
             return _concatenate(tuple(arrays), axis=position + g)
 
-        new = self.__new__(self.__class__)
-        new._charge_total = self._charge_total
+        new = self if inplace else self.copy()
         new._indices = new_indices
         new._blocks = {
             new_sector: _recurse_sorted_concat(new_sector)
@@ -920,7 +1005,7 @@ class BlockArray:
 
         return new
 
-    def unfuse(self, axis):
+    def unfuse(self, axis, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
         likely generated automatically from a fusing operation.
         """
@@ -941,7 +1026,7 @@ class BlockArray:
         new_blocks = {}
         for sector, array in self.blocks.items():
             old_charge = sector[axis]
-            old_shape = array.shape
+            old_shape = ar.shape(array)
 
             charge_extent = subinfo.extents[old_charge]
 
@@ -963,9 +1048,8 @@ class BlockArray:
                 # reshape and store!
                 new_blocks[new_key] = _reshape(new_array, new_shape)
 
-        new = self.__new__(self.__class__)
+        new = self if inplace else self.copy()
         new._indices = replace_with_seq(self.indices, axis, subinfo.indices)
-        new._charge_total = self._charge_total
         new._blocks = new_blocks
         return new
 
@@ -987,9 +1071,9 @@ class BlockArray:
         for i in range(self.ndim):
             s += (
                 f"    ({self.shape[i]} = "
-                f"{f'+'.join(map(str, self.sizes[i]))} : "
+                f"{'+'.join(map(str, self.sizes[i]))} : "
                 f"{'+' if self.flows[i] else '-'}"
-                f"[{f','.join(map(str, self.charges[i]))}]),\n"
+                f"[{','.join(map(str, self.charges[i]))}]),\n"
             )
         s += (
             f"], num_blocks={self.num_blocks}, backend={self.backend}, "
@@ -1032,7 +1116,7 @@ class BlockArray:
                 (
                     f"indices={self.indices}, "
                     if self.indices
-                    else f"{self.item()}, "
+                    else f"{self._get_any_array()}, "
                 ),
                 f"charge_total={self._charge_total}, ",
                 f"num_blocks={self.num_blocks})",
@@ -1043,19 +1127,7 @@ class BlockArray:
 # --------------------------------------------------------------------------- #
 
 
-def conj(x):
-    return x.conj()
-
-
-def transpose(a, axes=None):
-    return a.transpose(axes)
-
-
-def reshape(a, newshape):
-    return a.reshape(newshape)
-
-
-def tensordot_via_blocks(a, b, left_axes, axes_a, axes_b, right_axes):
+def tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
     """Perform a tensordot between two block arrays, performing the contraction
     of each pair of aligned blocks separately.
     """
@@ -1086,29 +1158,39 @@ def tensordot_via_blocks(a, b, left_axes, axes_a, axes_b, right_axes):
             arrays_suba.append(array_a)
             arrays_subb.append(array_b)
 
-    stacked_axes = (
-        (0,) + tuple(ax + 1 for ax in axes_a),
-        (0,) + tuple(ax + 1 for ax in axes_b),
-    )
+
+    # XXX: this has better performance, but only works w/ shape-matching blocks
+    # stacked_axes = (
+    #     (0,) + tuple(ax + 1 for ax in axes_a),
+    #     (0,) + tuple(ax + 1 for ax in axes_b),
+    # )
+    # for sector, (arrays_suba, arrays_subb) in new_blocks.items():
+    #     if len(arrays_suba) == 1:
+    #         # only one aligned block pair, simply tensordot
+    #         new_blocks[sector] = _tensordot(
+    #             arrays_suba[0], arrays_subb[0], axes=(axes_a, axes_b)
+    #         )
+    #     else:
+    #         # multiple aligned blocks: stack and tensordot including new
+    #         # stacked axis, which effectively sums over it
+    #         arrays_suba = _stack(tuple(arrays_suba))
+    #         arrays_subb = _stack(tuple(arrays_subb))
+    #         new_blocks[sector] = _tensordot(
+    #             arrays_suba, arrays_subb, axes=stacked_axes
+    #         )
 
     for sector, (arrays_suba, arrays_subb) in new_blocks.items():
-        if len(arrays_suba) == 1:
-            # only one aligned block pair, simply tensordot
-            new_blocks[sector] = _tensordot(
-                arrays_suba[0], arrays_subb[0], axes=(axes_a, axes_b)
-            )
-        else:
-            # multiple aligned blocks: stack and tensordot including new
-            # stacked axis, which effectively sums over it
-            arrays_suba = _stack(tuple(arrays_suba))
-            arrays_subb = _stack(tuple(arrays_subb))
-            new_blocks[sector] = _tensordot(
-                arrays_suba, arrays_subb, axes=stacked_axes
-            )
+        new_blocks[sector] = functools.reduce(
+            operator.add,
+            (
+                _tensordot(a, b, axes=(axes_a, axes_b))
+                for a, b in zip(arrays_suba, arrays_subb)
+            ),
+        )
 
     new = a.__new__(a.__class__)
     new._indices = without(a.indices, axes_a) + without(b.indices, axes_b)
-    new._charge_total = new.symmetry(a.charge_total, b.charge_total)
+    new._charge_total = new.symmetry.combine(a.charge_total, b.charge_total)
     new._blocks = new_blocks
     return new
 
@@ -1152,10 +1234,7 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b):
         if sub_sectors_b[sector] in allowed_subsectors
     }
 
-    return (
-        a.__class__(a.indices, a.charge_total, new_blocks_a),
-        b.__class__(b.indices, b.charge_total, new_blocks_b),
-    )
+    return a.copy_with(blocks=new_blocks_a), b.copy_with(blocks=new_blocks_b)
 
 
 def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
@@ -1179,80 +1258,92 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     af = a.fuse(left_axes, axes_a)
     bf = b.fuse(axes_b, right_axes)
 
-    # handle possible 'vector' cases
-    left_axes, axes_a = ((0,), (1,)) if left_axes else ((), (0,))
-    axes_b, right_axes = ((0,), (1,)) if right_axes else ((0,), ())
+    # handle potential vector and scalar cases
+    left_axes, axes_a = {
+        (False, False): ((), ()),  # left scalar
+        (False, True): ((), (0,)),  # left vector inner
+        (True, False): ((0,), ()),  # left vector outer
+        (True, True): ((0,), (1,)),  # left matrix
+    }[bool(left_axes), bool(axes_a)]
+
+    axes_b, right_axes = {
+        (False, False): ((), ()),  # right scalar
+        (False, True): ((), (0,)),  # right vector outer
+        (True, False): ((0,), ()),  # right vector inner
+        (True, True): ((0,), (1,)),  # right matrix
+    }[bool(axes_b), bool(right_axes)]
 
     # tensordot the fused blocks
-    cf = tensordot_via_blocks(af, bf, left_axes, axes_a, axes_b, right_axes)
+    cf = tensordot_blockwise(af, bf, left_axes, axes_a, axes_b, right_axes)
 
     # unfuse result into (*left_axes, *right_axes)
     return cf.unfuse_all()
 
 
-def tensordot(a, b, axes=2, mode="auto"):
-
-    # a.check()
-    # b.check()
+@tensordot.register(BlockArray)
+def tensordot_blocked(a, b, axes=2, mode="auto"):
+    """ """
+    ndim_a = a.ndim
+    ndim_b = b.ndim
 
     # parse the axes argument for single integer and also negative indices
     if isinstance(axes, int):
-        axes_a = tuple(range(a.ndim - axes, a.ndim))
+        axes_a = tuple(range(ndim_a - axes, ndim_a))
         axes_b = tuple(range(0, axes))
     else:
         axes_a, axes_b = axes
-        axes_a = tuple(x % a.ndim for x in axes_a)
-        axes_b = tuple(x % b.ndim for x in axes_b)
+        axes_a = tuple(x % ndim_a for x in axes_a)
+        axes_b = tuple(x % ndim_b for x in axes_b)
         if not len(axes_a) == len(axes_b):
             raise ValueError("Axes must have same length.")
 
-    left_axes = without(range(a.ndim), axes_a)
-    right_axes = without(range(b.ndim), axes_b)
+    for ax_a, ax_b in zip(axes_a, axes_b):
+        if not a.indices[ax_a].matches(b.indices[ax_b]):
+            raise ValueError("Axes are not matching.")
 
-    if mode != "blocks":
+    left_axes = without(range(ndim_a), axes_a)
+    right_axes = without(range(ndim_b), axes_b)
+
+    if mode == "auto":
+        if len(axes_a) == 0:
+            mode = "blockwise"
+        else:
+            mode = "fused"
+
+    if mode == "fused":
         _tdot = tensordot_via_fused
+    elif mode == "blockwise":
+        _tdot = tensordot_blockwise
     else:
-        _tdot = tensordot_via_blocks
+        raise ValueError(f"Unknown tensordot mode: {mode}.")
 
     c = _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
-    # c.check()
+
+    c.check()
+    cf = tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
+    cb = tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
+    if not cf.allclose(cb):
+        breakpoint()
+        tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
+        raise ValueError("Blocks do not match.")
+
     return c
 
 
 # --------------------------------------------------------------------------- #
 
-# defining an abelian symmetry requires two functions:
-# - `symmetry(*charges)`: a function that composes charges, including returning
-#   the identity charge when called with no arguments
-# - `symmsign(charge, flow)`: a function that possibly negates a charge
-#   depending on the boolean `flow`
-
-
-@functools.lru_cache(2**15)
-def z2_symmetry(*charges):
-    return sum(charges) % 2
-
-
-@functools.lru_cache(2**10)
-def scalar_symmsign(charge, flow):
-    return {
-        False: charge,
-        True: -charge,
-    }[flow]
-
-
-@functools.lru_cache(2**15)
-def u1_symmetry(*charges):
-    return sum(charges)
-
 
 class Z2Array(BlockArray):
+    """A block array with Z2 symmetry."""
+
     __slots__ = _blockarray_slots
-    symmetry = staticmethod(z2_symmetry)
-    symmsign = staticmethod(scalar_symmsign)
+
+    symmetry = get_symmetry("Z2")
 
 
 class U1Array(BlockArray):
+    """A block array with U1 symmetry."""
+
     __slots__ = _blockarray_slots
-    symmetry = staticmethod(u1_symmetry)
-    symmsign = staticmethod(scalar_symmsign)
+
+    symmetry = get_symmetry("U1")

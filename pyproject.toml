@@ -1,2 +1,18 @@
-[tool.black]
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools>=45",
+    "setuptools_scm[toml]>=6.2"
+]
+
+[tool.setuptools_scm]
+write_to = "symmray/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+filterwarnings = "once"
+
+[tool.ruff]
 line-length = 79
+target-version = "py38"
+ignore = ["E741"]
