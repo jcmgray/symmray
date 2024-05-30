@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+jobs:
+  run-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        env: [base]
+        include:
+        - os: macos-latest
+          python-version: '3.11'
+          env: base
+        - os: windows-latest
+          python-version: '3.11'
+          env: base
+        - os: ubuntu-latest
+          python-version: '3.11'
+          env: torch
+        - os: ubuntu-latest
+          python-version: '3.11'
+          env: jax
+        - os: ubuntu-latest
+          python-version: '3.11'
+          env: tensorflow
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install micromamba
+      uses: mamba-org/setup-micromamba@v1
+      with:
+        environment-file: ci/requirements/py-${{ matrix.env }}.yml
+        environment-name: test-env
+        create-args: >-
+          python=${{ matrix.python-version }}
+        cache-environment: true
+
+    - name: Test with pytest
+      run: pytest --cov=symmray tests/ --cov-report=xml tests
+
+    - name: Report to codecov
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
