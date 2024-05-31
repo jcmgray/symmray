@@ -1371,3 +1371,19 @@ class U1Array(BlockArray):
     __slots__ = _blockarray_slots
 
     symmetry = get_symmetry("U1")
+
+
+class Z2Z2Array(BlockArray):
+    """A block array with Z2 x Z2 symmetry."""
+
+    __slots__ = _blockarray_slots
+
+    symmetry = get_symmetry("Z2Z2")
+
+
+class U1U1Array(BlockArray):
+    """A block array with U1 x U1 symmetry."""
+
+    __slots__ = _blockarray_slots
+
+    symmetry = get_symmetry("U1U1")

@@ -6,6 +6,7 @@ from .block_core import BlockIndex
 
 
 def norm(x):
+    """Compute the frobenius norm of a BlockArray."""
     return x.norm()
 
 
@@ -55,8 +56,10 @@ def qr(x, stabilized=False):
     for sector, array in x.blocks.items():
         q, r = _qr(array)
         q_blocks[sector] = q
-        r_blocks[sector] = r
         new_chargemap[sector[1]] = ar.shape(q)[1]
+        # on r charge_total is 0, and flows always opposite
+        r_sector = (sector[1], sector[1])
+        r_blocks[r_sector] = r
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
     q = x.__class__(
@@ -94,8 +97,10 @@ def svd(x):
     for sector, array in x.blocks.items():
         u, s, v = _svd(array)
         u_blocks[sector] = u
-        s_store[sector] = s
-        v_blocks[sector] = v
+        # v charge_total is 0, and flows always opposite
+        sv_sector = (sector[1], sector[1])
+        s_store[sv_sector] = s
+        v_blocks[sv_sector] = v
         new_chargemap[sector[1]] = ar.shape(u)[1]
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
@@ -135,6 +140,26 @@ def calc_sub_max_bonds(sizes, max_bond):
         sub_max_bonds[i] += 1
 
     return tuple(sub_max_bonds)
+
+
+class BlockSingularValues:
+    __slots__ = ("s_store", "_size")
+
+    def __init__(self, s_store):
+        self.s_store = s_store
+        self._size = None
+
+    ndim = 1
+
+    @property
+    def size(self):
+        if self._size is None:
+            self._size = sum(ar.size(s) for s in self.s_store.values())
+        return self._size
+
+    @property
+    def shape(self):
+        return (self.size,)
 
 
 def svd_truncated(
@@ -226,8 +251,9 @@ def svd_truncated(
         # check how many singular values from this sector are valid
 
         if n_chi == 0:
-            # TODO: drop the block?
-            raise NotImplementedError
+            # TODO: drop the block? Error?
+            # raise NotImplementedError
+            n_chi = 1
 
         # slice the values and left and right vectors
         s[sector] = s[sector][:n_chi]
@@ -239,7 +265,7 @@ def svd_truncated(
         VH.indices[0].chargemap[sector[0]] = n_chi
 
     if absorb is None:
-        return U, s, VH
+        return U, BlockSingularValues(s), VH
 
     # absorb the singular values block by block
     for sector in s:

@@ -9,34 +9,38 @@ class Symmetry(ABC):
 
     @abstractmethod
     def valid(self, *charges):
-        """Check if all charges are valid for the symmetry.
-        """
+        """Check if all charges are valid for the symmetry."""
         raise NotImplementedError
 
     @abstractmethod
     def combine(self, *charges):
-        """Combine / add charges according to the symmetry.
-        """
+        """Combine / add charges according to the symmetry."""
         raise NotImplementedError
 
     @abstractmethod
-    def negate(self, charge, flow):
-        """Negate a charge according to the symmetry.
-        """
+    def negate(self, charge, flow=True):
+        """Negate a charge according to the symmetry."""
         raise NotImplementedError
 
     @abstractmethod
     def parity(self, charge):
-        """Return the parity, 0 or 1, of a charge according to the symmetry.
-        """
+        """Return the parity, 0 or 1, of a charge according to the symmetry."""
         raise NotImplementedError
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}>"
 
 
 @functools.lru_cache(2**14)
-def scalar_negate(charge, flow):
+def negate_scalar(charge, flow):
     if flow:
         return -charge
     return charge
+
+
+@functools.lru_cache(2**14)
+def negate_tuple(charge, flow):
+    return tuple(negate_scalar(c, flow) for c in charge)
 
 
 class Z2(Symmetry):
@@ -48,8 +52,9 @@ class Z2(Symmetry):
     def combine(self, *charges):
         return sum(charges) % 2
 
-    def negate(self, charge, flow):
-        return scalar_negate(charge, flow)
+    def negate(self, charge, flow=True):
+        # Z2 is self-inverse
+        return charge
 
     def parity(self, charge):
         return charge % 2
@@ -64,11 +69,60 @@ class U1(Symmetry):
     def combine(self, *charges):
         return sum(charges)
 
-    def negate(self, charge, flow):
-        return scalar_negate(charge, flow)
+    def negate(self, charge, flow=True):
+        return negate_scalar(charge, flow)
 
     def parity(self, charge):
         return charge % 2
+
+
+class Z2Z2(Symmetry):
+    __slots__ = ()
+
+    def valid(self, *charges):
+        return all(
+            isinstance(charge, tuple)
+            and charge[0] in {0, 1}
+            and charge[1] in {0, 1}
+            for charge in charges
+        )
+
+    def combine(self, *charges):
+        return (
+            sum(charge[0] for charge in charges) % 2,
+            sum(charge[1] for charge in charges) % 2,
+        )
+
+    def negate(self, charge, flow=True):
+        # Z2Z2 is self-inverse
+        return charge
+
+    def parity(self, charge):
+        return (charge[0] + charge[1]) % 2
+
+
+class U1U1(Symmetry):
+    __slots__ = ()
+
+    def valid(self, *charges):
+        return all(
+            isinstance(charge, tuple)
+            and isinstance(charge[0], int)
+            and isinstance(charge[1], int)
+            for charge in charges
+        )
+
+    def combine(self, *charges):
+        return (
+            sum(charge[0] for charge in charges),
+            sum(charge[1] for charge in charges),
+        )
+
+    def negate(self, charge, flow=True):
+        return negate_tuple(charge, flow)
+
+    def parity(self, charge):
+        return (charge[0] + charge[1]) % 2
 
 
 @functools.lru_cache(2**14)
@@ -89,10 +143,13 @@ def get_symmetry(symmetry):
         return Z2()
     elif symmetry == "U1":
         return U1()
+    elif symmetry == "Z2Z2":
+        return Z2Z2()
+    elif symmetry == "U1U1":
+        return U1U1()
     elif isinstance(symmetry, Symmetry):
         return symmetry
     raise ValueError(f"Unknown symmetry: {symmetry}")
-
 
 
 @functools.lru_cache(maxsize=2**15)
