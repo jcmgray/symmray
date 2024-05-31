@@ -771,6 +771,26 @@ class BlockArray:
         new.apply_to_arrays(lambda x: other / x)
         return new
 
+    def _do_reduction(self, fn):
+        """Perform an (associative) reduction operation on blocks of the array."""
+        if isinstance(fn, str):
+            fn = ar.get_lib_fn(self.backend, fn)
+            _stack = ar.get_lib_fn(self.backend, "stack")
+        block_results = tuple(map(fn, self.blocks.values()))
+        return fn(_stack(block_results))
+
+    def max(self):
+        """Get the maximum element from any block in the array."""
+        return self._do_reduction("max")
+
+    def min(self):
+        """Get the minimum element from any block in the array."""
+        return self._do_reduction("min")
+
+    def sum(self):
+        """Get the sum of all elements in the array."""
+        return self._do_reduction("sum")
+
     def conj(self, inplace=False):
         """Return the complex conjugate of this block array, including the
         indices."""
@@ -1343,13 +1363,13 @@ def tensordot_blocked(a, b, axes=2, mode="auto"):
 
     c = _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
 
-    c.check()
-    cf = tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
-    cb = tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
-    if not cf.allclose(cb):
-        breakpoint()
-        tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
-        raise ValueError("Blocks do not match.")
+    # c.check()
+    # cf = tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
+    # cb = tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
+    # if not cf.allclose(cb):
+    #     breakpoint()
+    #     tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
+    #     raise ValueError("Blocks do not match.")
 
     return c
 

@@ -8,6 +8,21 @@ def conj(x, **kwargs):
     return x.conj(**kwargs)
 
 
+def max(x):
+    """Return the maximum value of a `symmray` array."""
+    return x.max()
+
+
+def min(x):
+    """Return the minimum value of a `symmray` array."""
+    return x.min()
+
+
+def sum(x):
+    """Return the sum of a `symmray` array."""
+    return x.sum()
+
+
 def reshape(a, newshape, **kwargs):
     """Reshape a `symmray` array, via fusing or unfusing."""
     return a.reshape(newshape, **kwargs)
