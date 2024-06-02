@@ -9,6 +9,7 @@ from autoray.lazy.core import find_full_reshape
 
 from .interface import tensordot
 from .symmetries import get_symmetry
+from .base_core import DictArray
 
 
 class BlockIndex:
@@ -301,7 +302,7 @@ _blockarray_slots = (
 )
 
 
-class BlockArray:
+class BlockArray(DictArray):
     """A block sparse array with symmetry constraints.
 
     Parameters
@@ -359,11 +360,6 @@ class BlockArray:
         return self._indices
 
     @property
-    def blocks(self):
-        """The blocks of the array."""
-        return self._blocks
-
-    @property
     def sizes(self):
         """The sizes of each index."""
         return tuple(ix.sizes for ix in self._indices)
@@ -398,25 +394,6 @@ class BlockArray:
         """The number of dimensions/indices."""
         return len(self._indices)
 
-    def _get_any_array(self):
-        return next(iter(self._blocks.values()))
-
-    @property
-    def dtype(self):
-        return ar.get_dtype_name(self._get_any_array())
-
-    @property
-    def backend(self):
-        return ar.infer_backend(self._get_any_array())
-
-    @property
-    def num_blocks(self):
-        """The number of blocks in the array."""
-        return len(self._blocks)
-
-    @property
-    def sectors(self):
-        return tuple(self._blocks.keys())
 
     def gen_signed_sectors(self):
         flows = self.flows
@@ -676,38 +653,10 @@ class BlockArray:
         # create the block array!
         return cls(blocks=blocks, indices=indices, charge_total=charge_total)
 
-    def get_params(self):
-        """Get the parameters of this block array as a pytree (dict).
-
-        Returns
-        -------
-        dict[tuple, array_like]
-        """
-        return self.blocks.copy()
-
-    def set_params(self, params):
-        """Set the parameters of this block array from a pytree (dict).
-
-        Parameters
-        ----------
-        params : dict[tuple, array_like]
-        """
-        self.blocks.update(params)
-
-    def apply_to_arrays(self, fn):
-        """Apply the ``fn`` inplace to the array of every block."""
-        for sector, array in self._blocks.items():
-            self._blocks[sector] = fn(array)
-
-    def item(self):
-        """Convert the block array to a scalar if it is a scalar block array."""
-        (array,) = self.blocks.values()
-        return array.item()
-
     def to_dense(self):
         """Convert this block array to a dense array."""
         backend = self.backend
-        _ex_array = self._get_any_array()
+        _ex_array = self.get_any_array()
         _concat = ar.get_lib_fn(backend, "concatenate")
 
         def filler(shape):
@@ -732,64 +681,22 @@ class BlockArray:
 
         return _recurse_all_charges()
 
-    def __float__(self):
-        return float(self.item())
-
-    def __complex__(self):
-        return complex(self.item())
-
-    def __int__(self):
-        return int(self.item())
-
-    def __bool__(self):
-        return bool(self.item())
-
     def __mul__(self, other):
-        if isinstance(other, BlockArray):
+        if isinstance(other, DictArray):
             raise NotImplementedError("Multiplication of block arrays.")
+        return super().__mul__(other)
 
-        new = self.copy()
-        new.apply_to_arrays(lambda x: x * other)
-        return new
-
-    def __rmul__(self, other):
-        return self * other
 
     def __truediv__(self, other):
-        if isinstance(other, BlockArray):
+        if isinstance(other, DictArray):
             raise NotImplementedError("Division of block arrays.")
-
-        new = self.copy()
-        new.apply_to_arrays(lambda x: x / other)
-        return new
+        return super().__truediv__(other)
 
     def __rtruediv__(self, other):
-        if isinstance(other, BlockArray):
+        if isinstance(other, DictArray):
             raise NotImplementedError("Division of block arrays.")
+        return super().__rtruediv__(other)
 
-        new = self.copy()
-        new.apply_to_arrays(lambda x: other / x)
-        return new
-
-    def _do_reduction(self, fn):
-        """Perform an (associative) reduction operation on blocks of the array."""
-        if isinstance(fn, str):
-            fn = ar.get_lib_fn(self.backend, fn)
-            _stack = ar.get_lib_fn(self.backend, "stack")
-        block_results = tuple(map(fn, self.blocks.values()))
-        return fn(_stack(block_results))
-
-    def max(self):
-        """Get the maximum element from any block in the array."""
-        return self._do_reduction("max")
-
-    def min(self):
-        """Get the minimum element from any block in the array."""
-        return self._do_reduction("min")
-
-    def sum(self):
-        """Get the sum of all elements in the array."""
-        return self._do_reduction("sum")
 
     def conj(self, inplace=False):
         """Return the complex conjugate of this block array, including the
@@ -1141,18 +1048,24 @@ class BlockArray:
         else:
             raise ValueError("reshape must be pure fuse or unfuse.")
 
-    def norm(self):
-        """Get the frobenius norm of the block array."""
-        backend = self.backend
-        _sum = ar.get_lib_fn(backend, "sum")
-        _abs = ar.get_lib_fn(backend, "abs")
-        return (
-            functools.reduce(
-                operator.add,
-                (_sum(_abs(x) ** 2) for x in self.blocks.values()),
-            )
-            ** 0.5
-        )
+
+    def multiply_diagonal(self, v, axis, inplace=False):
+        """Multiply this block array by a vector as if contracting a diagonal
+        matrix along the given axis.
+        """
+        x = self if inplace else self.copy()
+
+        _reshape = ar.get_lib_fn(v.backend, "reshape")
+        new_shape = tuple(-1 if i == axis else 1 for i in range(x.ndim))
+
+        for sector, array in x.blocks.items():
+            charge = sector[axis]
+            v_sector = v.blocks[charge]
+            # use broadcasting to perform "ab...X...c,X-> ab...X...c"
+            x.blocks[sector] = array * _reshape(v_sector, new_shape)
+
+        return x
+
 
     def __repr__(self):
         return "".join(
@@ -1161,7 +1074,7 @@ class BlockArray:
                 (
                     f"indices={self.indices}, "
                     if self.indices
-                    else f"{self._get_any_array()}, "
+                    else f"{self.get_any_array()}, "
                 ),
                 f"charge_total={self._charge_total}, ",
                 f"num_blocks={self.num_blocks})",

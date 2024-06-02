@@ -1,4 +1,7 @@
 from . import linalg, utils
+from .base_core import (
+    BlockVector,
+)
 from .block_core import (
     BlockArray,
     BlockIndex,
@@ -14,6 +17,7 @@ from .interface import (
     conj,
     max,
     min,
+    multiply_diagonal,
     reshape,
     sum,
     tensordot,
@@ -24,12 +28,14 @@ from .symmetries import U1, Z2, get_symmetry
 __all__ = (
     "BlockArray",
     "BlockIndex",
+    "BlockVector",
     "conj",
     "FermionicArray",
     "get_symmetry",
     "linalg",
     "max",
     "min",
+    "multiply_diagonal",
     "reshape",
     "sum",
     "tensordot",

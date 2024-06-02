@@ -81,3 +81,21 @@ def test_tensordot(shape1, shape2, axes):
 def test_blockarray_reductions():
     x = sr.utils.get_rand_z2array((3, 4, 5, 6), dist="uniform")
     assert ar.do("min", x) < ar.do("max", x) < ar.do("sum", x)
+
+
+def test_block_multiply_diagonal():
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    x = sr.utils.get_rand_u1array((3, 4, 5, 6))
+    axis = 2
+    v = sr.BlockVector(
+        {c: rng.normal(size=d) for c, d in x.indices[axis].chargemap.items()}
+    )
+    y = ar.do("multiply_diagonal", x, v, axis=axis)
+    yd = y.to_dense()
+
+    assert_allclose(
+        yd,
+        np.einsum("abcd,c->abcd", x.to_dense(), v.to_dense()),
+    )

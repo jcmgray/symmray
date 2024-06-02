@@ -2,6 +2,7 @@ import functools
 
 import autoray as ar
 
+from .base_core import BlockVector
 from .block_core import BlockIndex
 
 
@@ -98,9 +99,10 @@ def svd(x):
         u, s, v = _svd(array)
         u_blocks[sector] = u
         # v charge_total is 0, and flows always opposite
-        sv_sector = (sector[1], sector[1])
-        s_store[sv_sector] = s
-        v_blocks[sv_sector] = v
+        s_charge = sector[1]
+        v_sector = (s_charge, s_charge)
+        s_store[s_charge] = s
+        v_blocks[v_sector] = v
         new_chargemap[sector[1]] = ar.shape(u)[1]
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
@@ -131,7 +133,7 @@ def calc_sub_max_bonds(sizes, max_bond):
         return sizes
 
     # number of singular values to keep in each sector
-    sub_max_bonds = [int(frac * s) for s in sizes]
+    sub_max_bonds = [int(frac * sz) for sz in sizes]
 
     # distribute any remaining singular values to the smallest sectors
     rem = max_bond - sum(sub_max_bonds)
@@ -140,26 +142,6 @@ def calc_sub_max_bonds(sizes, max_bond):
         sub_max_bonds[i] += 1
 
     return tuple(sub_max_bonds)
-
-
-class BlockSingularValues:
-    __slots__ = ("s_store", "_size")
-
-    def __init__(self, s_store):
-        self.s_store = s_store
-        self._size = None
-
-    ndim = 1
-
-    @property
-    def size(self):
-        if self._size is None:
-            self._size = sum(ar.size(s) for s in self.s_store.values())
-        return self._size
-
-    @property
-    def shape(self):
-        return (self.size,)
 
 
 def svd_truncated(
@@ -247,7 +229,7 @@ def svd_truncated(
         # distribute max_bond proportionally to sector sizes
         sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
 
-    for sector, n_chi in zip(s, sub_max_bonds):
+    for sector, n_chi in zip(U.sectors, sub_max_bonds):
         # check how many singular values from this sector are valid
 
         if n_chi == 0:
@@ -256,27 +238,34 @@ def svd_truncated(
             n_chi = 1
 
         # slice the values and left and right vectors
-        s[sector] = s[sector][:n_chi]
+        s_charge = sector[1]
+        v_sector = (s_charge, s_charge)
+
+        s[s_charge] = s[s_charge][:n_chi]
         U.blocks[sector] = U.blocks[sector][:, :n_chi]
-        VH.blocks[sector] = VH.blocks[sector][:n_chi, :]
+        VH.blocks[v_sector] = VH.blocks[v_sector][:n_chi, :]
 
         # make sure the index chargemaps are updated too
         U.indices[-1].chargemap[sector[-1]] = n_chi
         VH.indices[0].chargemap[sector[0]] = n_chi
 
     if absorb is None:
-        return U, BlockSingularValues(s), VH
+        return U, BlockVector(s), VH
 
     # absorb the singular values block by block
-    for sector in s:
+    for sector in U.sectors:
+
+        s_charge = sector[1]
+        v_sector = (s_charge, s_charge)
+
         if absorb == -1:
-            U.blocks[sector] *= s[sector].reshape((1, -1))
+            U.blocks[sector] *= s[s_charge].reshape((1, -1))
         elif absorb == 1:
-            VH.blocks[sector] *= s[sector].reshape((-1, 1))
+            VH.blocks[v_sector] *= s[s_charge].reshape((-1, 1))
         elif absorb == 0:
-            s_sqrt = ar.do("sqrt", s[sector], like=backend)
+            s_sqrt = ar.do("sqrt", s[s_charge], like=backend)
             U.blocks[sector] *= s_sqrt.reshape((1, -1))
-            VH.blocks[sector] *= s_sqrt.reshape((-1, 1))
+            VH.blocks[v_sector] *= s_sqrt.reshape((-1, 1))
 
     return U, None, VH
 

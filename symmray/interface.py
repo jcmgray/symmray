@@ -50,3 +50,7 @@ def tensordot(a, b, axes=2, **kwargs):
 def transpose(a, axes=None, **kwargs):
     """Transpose a `symmray` array."""
     return a.transpose(axes, **kwargs)
+
+
+def multiply_diagonal(x, v, axis):
+    return x.multiply_diagonal(v, axis)
