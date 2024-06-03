@@ -90,3 +90,61 @@ def get_rand_u1array(
         seed=seed,
         dist=dist,
     )
+
+
+def get_rand_symmetric(
+    symmetry,
+    shape,
+    flows=None,
+    charge_total=0,
+    seed=None,
+    dist="normal",
+):
+    if symmetry == "Z2":
+        return get_rand_z2array(
+            shape,
+            flows=flows,
+            charge_total=charge_total,
+            seed=seed,
+            dist=dist,
+        )
+    elif symmetry == "U1":
+        return get_rand_u1array(
+            shape,
+            flows=flows,
+            charge_total=charge_total,
+            seed=seed,
+            dist=dist,
+        )
+    else:
+        raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
+
+
+def get_rand_blockvector(
+    size,
+    block_size=0.25,
+    seed=None,
+    dist="normal",
+):
+    import numpy as np
+    import symmray as sr
+
+    rng = np.random.default_rng(seed)
+    blocks = {}
+    d = 0
+    i = 0
+    while d < size:
+        if block_size < 1:
+            # take as typical fraction
+            block_size = rng.poisson(block_size * size)
+        else:
+            # take as absolute size
+            block_size = int(block_size)
+
+        block_size = min(max(block_size, 1), size - d)
+        block = getattr(rng, dist)(size=block_size)
+        blocks[i] = block
+        d += block_size
+        i += 1
+
+    return sr.BlockVector(blocks)

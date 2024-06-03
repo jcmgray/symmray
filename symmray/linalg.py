@@ -2,12 +2,12 @@ import functools
 
 import autoray as ar
 
-from .base_core import BlockVector
-from .block_core import BlockIndex
+from .block_core import BlockVector
+from .symmetric_core import BlockIndex
 
 
 def norm(x):
-    """Compute the frobenius norm of a BlockArray."""
+    """Compute the frobenius norm of a SymmetricArray."""
     return x.norm()
 
 
@@ -43,7 +43,7 @@ def _get_qr_fn(backend, stabilized=False):
 def qr(x, stabilized=False):
     if x.ndim != 2:
         raise NotImplementedError(
-            "qr only implemented for 2D BlockArrays,"
+            "qr only implemented for 2D SymmetricArrays,"
             f" got {x.ndim}D. Consider fusing first."
         )
 
@@ -84,7 +84,7 @@ def qr_stabilized(x):
 def svd(x):
     if x.ndim != 2:
         raise NotImplementedError(
-            "svd only implemented for 2D BlockArrays,"
+            "svd only implemented for 2D SymmetricArrays,"
             f" got {x.ndim}D. Consider fusing first."
         )
 
@@ -111,12 +111,13 @@ def svd(x):
         charge_total=x.charge_total,
         blocks=u_blocks,
     )
+    s = BlockVector(s_store)
     v = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
         charge_total=x.symmetry.combine(),
         blocks=v_blocks,
     )
-    return u, s_store, v
+    return u, s, v
 
 
 def argsort(seq):
@@ -125,9 +126,12 @@ def argsort(seq):
 
 @functools.lru_cache(maxsize=2**14)
 def calc_sub_max_bonds(sizes, max_bond):
+    if max_bond < 0:
+        # no limit
+        return sizes
+
     # overall fraction of the total bond dimension to use
     frac = max_bond / sum(sizes)
-
     if frac >= 1.0:
         # keep all singular values
         return sizes
@@ -181,7 +185,7 @@ def svd_truncated(
 
     if cutoff > 0.0:
         # first combine all singular values into a single, sorted array
-        sall = ar.do("concatenate", tuple(s.values()), like=backend)
+        sall = s.to_dense()
         sall = ar.do("sort", sall, like=backend)
 
         if cutoff_mode == 1:
@@ -221,11 +225,11 @@ def svd_truncated(
         # now find number of values to keep per sector
         sub_max_bonds = [
             int(ar.do("count_nonzero", ss >= abs_cutoff, like=backend))
-            for ss in s.values()
+            for ss in s.blocks.values()
         ]
     else:
         # size of each sector
-        sector_sizes = tuple(map(ar.size, s.values()))
+        sector_sizes = tuple(map(ar.size, s.blocks.values()))
         # distribute max_bond proportionally to sector sizes
         sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
 
@@ -237,12 +241,12 @@ def svd_truncated(
             # raise NotImplementedError
             n_chi = 1
 
-        # slice the values and left and right vectors
         s_charge = sector[1]
         v_sector = (s_charge, s_charge)
 
-        s[s_charge] = s[s_charge][:n_chi]
+        # slice the values and left and right vectors
         U.blocks[sector] = U.blocks[sector][:, :n_chi]
+        s.blocks[s_charge] = s.blocks[s_charge][:n_chi]
         VH.blocks[v_sector] = VH.blocks[v_sector][:n_chi, :]
 
         # make sure the index chargemaps are updated too
@@ -250,7 +254,7 @@ def svd_truncated(
         VH.indices[0].chargemap[sector[0]] = n_chi
 
     if absorb is None:
-        return U, BlockVector(s), VH
+        return U, s, VH
 
     # absorb the singular values block by block
     for sector in U.sectors:

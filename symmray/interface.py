@@ -2,6 +2,8 @@
 
 import functools
 
+import autoray as ar
+
 
 def conj(x, **kwargs):
     """Conjugate a `symmray` array."""
@@ -34,9 +36,9 @@ def tensordot(a, b, axes=2, **kwargs):
 
     Parameters
     ----------
-    a : BlockArray or FermionicArray
+    a : SymmetricArray or FermionicArray
         First array to contract.
-    b : BlockArray or FermionicArray
+    b : SymmetricArray or FermionicArray
         Second array to contract, with same type as `a`.
     axes : int or tuple of int, optional
         If an integer, the number of axes to contract. If a tuple, the axes
@@ -54,3 +56,6 @@ def transpose(a, axes=None, **kwargs):
 
 def multiply_diagonal(x, v, axis):
     return x.multiply_diagonal(v, axis)
+
+
+ar.register_function("symmray", "multiply_diagonal", multiply_diagonal)

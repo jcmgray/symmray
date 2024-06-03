@@ -1,13 +1,18 @@
 import autoray as ar
 
-from .block_core import BlockArray, permuted, tensordot_blocked, without
+from .symmetric_core import (
+    SymmetricArray,
+    permuted,
+    tensordot_blocked,
+    without,
+)
 from .interface import tensordot
 from .symmetries import calc_phase_permutation, get_symmetry
 
-_fermionic_array_slots = BlockArray.__slots__ + ("_phases",)
+_fermionic_array_slots = SymmetricArray.__slots__ + ("_phases",)
 
 
-class FermionicArray(BlockArray):
+class FermionicArray(SymmetricArray):
     """ """
 
     __slots__ = _fermionic_array_slots
@@ -46,11 +51,12 @@ class FermionicArray(BlockArray):
         new._phases = self.phases.copy()
         return new
 
-    def copy_with(self, indices=None, blocks=None, phases=None):
-        new = self.__new__(self.__class__)
-        new._indices = self._indices if indices is None else indices
-        new._charge_total = self._charge_total
-        new._blocks = self._blocks.copy() if blocks is None else blocks
+    def copy_with(
+        self, indices=None, blocks=None, charge_total=None, phases=None
+    ):
+        new = super().copy_with(
+            indices=indices, blocks=blocks, charge_total=charge_total
+        )
         new._phases = self._phases.copy() if phases is None else phases
         return new
 
@@ -91,7 +97,7 @@ class FermionicArray(BlockArray):
             x._phases = permuted_phases
 
         # transpose block arrays
-        BlockArray.transpose(x, axes, inplace=True)
+        SymmetricArray.transpose(x, axes, inplace=True)
 
         return x
 

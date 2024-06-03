@@ -1,14 +1,14 @@
 from . import linalg, utils
-from .base_core import (
+from .block_core import (
     BlockVector,
 )
-from .block_core import (
-    BlockArray,
+from .symmetric_core import (
+    SymmetricArray,
     BlockIndex,
     U1Array,
     Z2Array,
 )
-from .fermi_core import (
+from .fermionic_core import (
     FermionicArray,
     U1FermionicArray,
     Z2FermionicArray,
@@ -26,7 +26,7 @@ from .interface import (
 from .symmetries import U1, Z2, get_symmetry
 
 __all__ = (
-    "BlockArray",
+    "SymmetricArray",
     "BlockIndex",
     "BlockVector",
     "conj",
