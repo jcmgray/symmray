@@ -276,6 +276,36 @@ def svd_truncated(
     return U, None, VH
 
 
+def eigh(x):
+    """Perform a hermitian eigendecomposition on a SymmetricArray.
+    """
+    if x.ndim != 2:
+        raise NotImplementedError(
+            "eigh only implemented for 2D SymmetricArrays,"
+            f" got {x.ndim}D. Consider fusing first."
+        )
+    if x.charge_total != x.symmetry.combine():
+        raise ValueError("Total charge much be the identity (zero) element.")
+
+    _eigh = ar.get_lib_fn(x.backend, "linalg.eigh")
+
+    eval_blocks = {}
+    evec_blocks = {}
+
+    for sector, array in x.blocks.items():
+        evals, evecs = _eigh(array)
+        charge = sector[1]
+        eval_blocks[charge] = evals
+        evec_blocks[sector] = evecs
+
+    eigenvalues = BlockVector(eval_blocks)
+    eigenvectors = x.copy_with(
+        blocks=evec_blocks
+    )
+
+    return eigenvalues, eigenvectors
+
+
 # these are used by quimb for compressed contraction and gauging
 ar.register_function("symmray", "qr_stabilized", qr_stabilized)
 ar.register_function("symmray", "svd_truncated", svd_truncated)

@@ -710,6 +710,19 @@ class SymmetricArray(BlockArray):
         }
         return new
 
+    @property
+    def T(self):
+        """The transpose of the block array."""
+        return self.transpose()
+
+    def dagger(self, inplace=False):
+        """Return the adjoint of this block array."""
+        return self.conj(inplace=inplace).transpose(inplace=True)
+
+    @property
+    def H(self):
+        return self.dagger()
+
     def fuse(self, *axes_groups, inplace=False):
         """Fuse the give group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
@@ -1033,6 +1046,19 @@ class SymmetricArray(BlockArray):
             return self.copy()
         else:
             raise ValueError("reshape must be pure fuse or unfuse.")
+
+    def __matmul__(self, other):
+        if self.ndim != 2 or other.ndim != 2:
+            raise ValueError("Matrix multiplication requires 2D arrays.")
+
+        return tensordot_blockwise(
+            self,
+            other,
+            left_axes=(0,),
+            axes_a=(1,),
+            axes_b=(0,),
+            right_axes=(1,),
+        )
 
     def multiply_diagonal(self, v, axis, inplace=False):
         """Multiply this block array by a vector as if contracting a diagonal

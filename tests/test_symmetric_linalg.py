@@ -44,17 +44,40 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
-def test_expm_with_reshape(symmetry, d):
+def test_eigh(symmetry, d):
     x = sr.utils.get_rand_symmetric(
-        symmetry, (d, d, d, d), flows=[0, 0, 1, 1],
+        symmetry,
+        (d, d),
+        flows=[0, 1],
+    )
+    # need to make sure x is hermitian
+    x.apply_to_arrays(lambda x: (x + x.T) / 2)
+    el, ev = ar.do("linalg.eigh", x)
+    el.check()
+    ev.check()
+    xr = ev @ ar.do("multiply_diagonal", ev.H, el, axis=0)
+    xr.check()
+    assert x.allclose(xr)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
+def test_expm_with_reshape(symmetry, d):
+    pytest.importorskip("scipy")
+
+    x = sr.utils.get_rand_symmetric(
+        symmetry,
+        (d, d, d, d),
+        flows=[0, 0, 1, 1],
     )
     x_matrix = ar.do("reshape", x, (d**2, d**2))
     # == x_matrix = x.fuse((0, 1), (2, 3))
     xe_matrix = ar.do("scipy.linalg.expm", x_matrix)
+    xe_matrix.check()
     xe = ar.do("reshape", xe_matrix, (d, d, d, d))
+    xe.check()
     #  == xe = xe_matrix.unfuse_all()
     xe_dense = ar.do(
-        "scipy.linalg.expm",
-        x.to_dense().reshape((d**2, d**2))
+        "scipy.linalg.expm", x.to_dense().reshape((d**2, d**2))
     ).reshape((d, d, d, d))
     assert_allclose(xe.to_dense(), xe_dense)
