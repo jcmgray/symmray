@@ -1,5 +1,6 @@
 import autoray as ar
 import pytest
+from numpy.testing import assert_allclose
 
 import symmray as sr
 
@@ -39,3 +40,21 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
     us = ar.do("multiply_diagonal", u, s, axis=1)
     usvh = sr.tensordot(us, vh, 1)
     assert usvh.allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
+def test_expm_with_reshape(symmetry, d):
+    x = sr.utils.get_rand_symmetric(
+        symmetry, (d, d, d, d), flows=[0, 0, 1, 1],
+    )
+    x_matrix = ar.do("reshape", x, (d**2, d**2))
+    # == x_matrix = x.fuse((0, 1), (2, 3))
+    xe_matrix = ar.do("scipy.linalg.expm", x_matrix)
+    xe = ar.do("reshape", xe_matrix, (d, d, d, d))
+    #  == xe = xe_matrix.unfuse_all()
+    xe_dense = ar.do(
+        "scipy.linalg.expm",
+        x.to_dense().reshape((d**2, d**2))
+    ).reshape((d, d, d, d))
+    assert_allclose(xe.to_dense(), xe_dense)

@@ -41,6 +41,8 @@ def _get_qr_fn(backend, stabilized=False):
 
 
 def qr(x, stabilized=False):
+    """QR decomposition of a SymmetricArray.
+    """
     if x.ndim != 2:
         raise NotImplementedError(
             "qr only implemented for 2D SymmetricArrays,"

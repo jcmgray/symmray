@@ -81,7 +81,7 @@ def get_rand_u1array(
     return sr.U1Array.random(
         indices=[
             sr.BlockIndex(
-                {c: 1 for c in range(-d // 2, d // 2 + 1)},
+                {c: 1 for c in range(-d // 2 + 1, d // 2 + 1)},
                 flow=f,
             )
             for d, f in zip(shape, flows)
@@ -100,6 +100,9 @@ def get_rand_symmetric(
     seed=None,
     dist="normal",
 ):
+    if flows is not None:
+        assert len(flows) == len(shape)
+
     if symmetry == "Z2":
         return get_rand_z2array(
             shape,
