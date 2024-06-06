@@ -25,6 +25,21 @@ def sum(x):
     return x.sum()
 
 
+def all(x):
+    """Check if all elements of a `symmray` array are true."""
+    return x.all()
+
+
+def any(x):
+    """Check if any elements of a `symmray` array are true."""
+    return x.any()
+
+
+def isfinite(x):
+    """Check if a `symmray` array contains only finite values."""
+    return x.isfinite()
+
+
 def reshape(a, newshape, **kwargs):
     """Reshape a `symmray` array, via fusing or unfusing."""
     return a.reshape(newshape, **kwargs)
@@ -52,6 +67,11 @@ def tensordot(a, b, axes=2, **kwargs):
 def transpose(a, axes=None, **kwargs):
     """Transpose a `symmray` array."""
     return a.transpose(axes, **kwargs)
+
+
+def trace(a):
+    """Return the trace of a `symmray` array."""
+    return a.trace()
 
 
 def multiply_diagonal(x, v, axis):

@@ -36,7 +36,7 @@ def get_rand_z2array(
     return sr.Z2Array.random(
         indices=[
             sr.BlockIndex(
-                {0: d // 2 + d % 2, 1: d // 2},
+                {0: d // 2 + d % 2, 1: d // 2} if d > 1 else {0: 1},
                 flow=f,
             )
             for d, f in zip(shape, flows)

@@ -61,6 +61,26 @@ def test_symmetricarray_fuse(symmetry):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
 @pytest.mark.parametrize(
+    "shape0, shape1",
+    [
+        ((3, 4, 5, 6), (3, 4, 5, 6)),
+        ((3, 4, 5, 6), (12, 30)),
+        ((3, 4, 5, 6), (3, 20, 6)),
+        ((1, 1, 1, 1), (1, 1)),
+    ],
+)
+def test_symmetricarray_reshape(symmetry, shape0, shape1):
+    x = sr.utils.get_rand_symmetric(symmetry, shape0)
+    y = ar.do("reshape", x, shape1)
+    assert all(da <= db for da, db in zip(y.shape, shape1))
+    y.check()
+    z = ar.do("reshape", y, shape0)
+    z.check()
+    assert x.allclose(z)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize(
     "shape1,shape2,axes",
     [
         ((10,), (10,), 1),

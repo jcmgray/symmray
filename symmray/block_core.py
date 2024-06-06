@@ -44,15 +44,13 @@ def binary_blockwise_op(fn, x, y, inplace=False):
 class BlockArray:
     """Mixin class for arrays consisting of dicts of blocks."""
 
-    __slots__ = ("_blocks", "_size")
+    __slots__ = ("_blocks",)
 
     def __init__(self, blocks):
         self._blocks = dict(blocks)
-        self._size = None
 
     def copy(self):
         new = self.__class__(self.blocks)
-        new._size = self._size
         return new
 
     def copy_with(self, blocks=None):
@@ -70,9 +68,8 @@ class BlockArray:
     def size(self):
         """The total size of the arrays blocks."""
         # compute lazily
-        if self._size is None:
-            self._size = sum(ar.size(s) for s in self._blocks.values())
-        return self._size
+        _size = ar.get_lib_fn(self.backend, "size")
+        return sum(_size(x) for x in self.blocks.values())
 
     def get_any_array(self):
         """Get any array from the blocks, to check type and backend for
@@ -140,6 +137,24 @@ class BlockArray:
     def __bool__(self):
         return bool(self.item())
 
+    def __add__(self, other):
+        if isinstance(other, BlockArray):
+            return binary_blockwise_op(operator.add, self, other)
+
+        # addition with non-matching block array breaks sparsity
+        raise NotImplementedError(
+            f"Addition with {type(other)} not implemented."
+        )
+
+    def __iadd__(self, other):
+        if isinstance(other, BlockArray):
+            return binary_blockwise_op(operator.add, self, other, inplace=True)
+
+        # addition with non-matching block array breaks sparsity
+        raise NotImplementedError(
+            f"Addition with {type(other)} not implemented."
+        )
+
     def __mul__(self, other):
         if isinstance(other, BlockArray):
             return binary_blockwise_op(operator.mul, self, other)
@@ -199,6 +214,26 @@ class BlockArray:
     def sum(self):
         """Get the sum of all elements in the array."""
         return self._do_reduction("sum")
+
+    def all(self):
+        """Check if all elements in the array are True."""
+        return self._do_reduction("all")
+
+    def any(self):
+        """Check if any element in the array is True."""
+        return self._do_reduction("any")
+
+    def _do_unary_op(self, fn, inplace=False):
+        """Perform a unary operation on blocks of the array."""
+        new = self if inplace else self.copy()
+        if isinstance(fn, str):
+            fn = ar.get_lib_fn(self.backend, fn)
+        new.apply_to_arrays(fn)
+        return new
+
+    def isfinite(self):
+        """Check if all elements in the array are finite."""
+        return self._do_unary_op("isfinite")
 
     def norm(self):
         """Get the frobenius norm of the block array."""
@@ -353,6 +388,7 @@ class BlockVector(BlockArray):
         return new
 
     def check(self):
+        """Check that the block vector is well formed."""
         ndims = {ar.ndim(x) for x in self.blocks.values()}
         if len(ndims) != 1:
             raise ValueError(f"blocks have different ndims: {ndims}")

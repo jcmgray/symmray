@@ -32,8 +32,12 @@ class BlockIndex:
     __slots__ = ("_chargemap", "_flow", "_subinfo")
 
     def __init__(self, chargemap, flow=False, subinfo=None):
-        self._chargemap = dict(chargemap)
-        self._flow = flow
+        # ensure always sorted
+        if not isinstance(chargemap, dict):
+            self._chargemap = dict(sorted(chargemap))
+        else:
+            self._chargemap = dict(sorted(chargemap.items()))
+        self._flow = bool(flow)
         self._subinfo = subinfo
 
     @property
@@ -106,6 +110,8 @@ class BlockIndex:
                 )
             if not isinstance(d, int):
                 raise ValueError(f"Size of charge {c} is {d}, must be an int.")
+
+        assert sorted(self._chargemap) == list(self._chargemap)
 
     def matches(self, other):
         """Whether this index matches ``other`` index, namely, whether the
@@ -341,6 +347,8 @@ class SymmetricArray(BlockArray):
         else:
             self._charge_total = charge_total
 
+        self.check()
+
     def copy(self):
         """Copy this block array."""
         new = self.__new__(self.__class__)
@@ -356,6 +364,7 @@ class SymmetricArray(BlockArray):
             self._charge_total if charge_total is None else charge_total
         )
         new._blocks = self._blocks.copy() if blocks is None else blocks
+        new.check()
         return new
 
     @property
@@ -446,6 +455,21 @@ class SymmetricArray(BlockArray):
                     ar.shape(array), self.get_block_shape(sector)
                 )
             )
+
+    def check_with(self, other, *args):
+        from .block_core import BlockVector
+
+        if isinstance(other, BlockVector):
+            (ax,) = args
+            for sector, array in self.blocks.items():
+                charge = sector[ax]
+                v_block = other.blocks[charge]
+                assert ar.shape(array)[ax] == ar.size(v_block)
+
+        else:
+            axes_a, axes_b = args
+            for axa, axb in zip(axes_a, axes_b):
+                assert self.indices[axa].matches(other.indices[axb])
 
     def allclose(self, other, **allclose_opts):
         """Test whether this ``SymmetricArray`` is close to another, that is,
@@ -691,6 +715,8 @@ class SymmetricArray(BlockArray):
         _conj = ar.get_lib_fn(new.backend, "conj")
         new.apply_to_arrays(_conj)
         new._indices = tuple(ix.conj() for ix in self._indices)
+        new._charge_total = self.symmetry.negate(self._charge_total)
+        new.check()
         return new
 
     def transpose(self, axes=None, inplace=False):
@@ -934,12 +960,15 @@ class SymmetricArray(BlockArray):
 
             return _concatenate(tuple(arrays), axis=position + g)
 
-        new = self if inplace else self.copy()
-        new._indices = new_indices
-        new._blocks = {
+        new_blocks = {
             new_sector: _recurse_sorted_concat(new_sector)
             for new_sector in new_blocks
         }
+
+        new = self.copy_with(
+            indices=new_indices,
+            blocks=new_blocks,
+        )
 
         return new
 
@@ -986,10 +1015,10 @@ class SymmetricArray(BlockArray):
                 # reshape and store!
                 new_blocks[new_key] = _reshape(new_array, new_shape)
 
-        new = self if inplace else self.copy()
-        new._indices = replace_with_seq(self.indices, axis, subinfo.indices)
-        new._blocks = new_blocks
-        return new
+        new_indices = replace_with_seq(self.indices, axis, subinfo.indices)
+        new_blocks = new_blocks
+
+        return self.copy_with(indices=new_indices, blocks=new_blocks)
 
     def unfuse_all(self):
         """Unfuse all indices that carry subindex information, likely from a
@@ -1069,20 +1098,43 @@ class SymmetricArray(BlockArray):
         _reshape = ar.get_lib_fn(v.backend, "reshape")
         new_shape = tuple(-1 if i == axis else 1 for i in range(x.ndim))
 
-        for sector, array in x.blocks.items():
+        for sector in tuple(x.blocks):
             charge = sector[axis]
-            v_sector = v.blocks[charge]
-            # use broadcasting to perform "ab...X...c,X-> ab...X...c"
-            x.blocks[sector] = array * _reshape(v_sector, new_shape)
+            v_sector = v.blocks.get(charge, None)
+            if v_sector is not None:
+                # use broadcasting to perform "ab...X...c,X-> ab...X...c"
+                x.blocks[sector] = x.blocks[sector] * _reshape(
+                    v_sector, new_shape
+                )
+            else:
+                del x.blocks[sector]
+
+        x.check()
 
         return x
+
+    def trace(self):
+        """Compute the trace of the block array, assuming it is a square
+        matrix.
+        """
+        if self.ndim != 2:
+            raise ValueError("Trace requires a 2D array.")
+
+        _trace = ar.get_lib_fn(self.backend, "trace")
+
+        return sum(
+            _trace(array)
+            for sector, array in self.blocks.items()
+            # only take diagonal blocks
+            if sector[0] == sector[1]
+        )
 
     def __repr__(self):
         return "".join(
             [
                 f"{self.__class__.__name__}(",
                 (
-                    f"indices={self.indices}, "
+                    f"shape~{self.shape}, flows={self.flows}, "
                     if self.indices
                     else f"{self.get_any_array()}, "
                 ),
@@ -1258,6 +1310,9 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 @tensordot.register(SymmetricArray)
 def tensordot_blocked(a, b, axes=2, mode="auto"):
     """ """
+    a.check()
+    b.check()
+
     ndim_a = a.ndim
     ndim_b = b.ndim
 
@@ -1272,9 +1327,7 @@ def tensordot_blocked(a, b, axes=2, mode="auto"):
         if not len(axes_a) == len(axes_b):
             raise ValueError("Axes must have same length.")
 
-    for ax_a, ax_b in zip(axes_a, axes_b):
-        if not a.indices[ax_a].matches(b.indices[ax_b]):
-            raise ValueError("Axes are not matching.")
+    a.check_with(b, axes_a, axes_b)
 
     left_axes = without(range(ndim_a), axes_a)
     right_axes = without(range(ndim_b), axes_b)
@@ -1294,7 +1347,7 @@ def tensordot_blocked(a, b, axes=2, mode="auto"):
 
     c = _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
 
-    # c.check()
+    c.check()
     # cf = tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
     # cb = tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
     # if not cf.allclose(cb):

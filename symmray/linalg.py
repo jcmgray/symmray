@@ -41,8 +41,7 @@ def _get_qr_fn(backend, stabilized=False):
 
 
 def qr(x, stabilized=False):
-    """QR decomposition of a SymmetricArray.
-    """
+    """QR decomposition of a SymmetricArray."""
     if x.ndim != 2:
         raise NotImplementedError(
             "qr only implemented for 2D SymmetricArrays,"
@@ -75,6 +74,11 @@ def qr(x, stabilized=False):
         charge_total=x.symmetry.combine(),
         blocks=r_blocks,
     )
+
+    q.check()
+    r.check()
+    q.check_with(r, (1,), (0,))
+
     return q, r
 
 
@@ -119,6 +123,14 @@ def svd(x):
         charge_total=x.symmetry.combine(),
         blocks=v_blocks,
     )
+
+    u.check()
+    s.check()
+    v.check()
+    u.check_with(s, 1)
+    u.check_with(v, (1,), (0,))
+    v.check_with(s, 0)
+
     return u, s, v
 
 
@@ -239,9 +251,14 @@ def svd_truncated(
         # check how many singular values from this sector are valid
 
         if n_chi == 0:
+
+            U.blocks.pop(sector)
+            s.blocks.pop(sector[1])
+            VH.blocks.pop((sector[1], sector[1]))
+            continue
             # TODO: drop the block? Error?
             # raise NotImplementedError
-            n_chi = 1
+            # n_chi = 1
 
         s_charge = sector[1]
         v_sector = (s_charge, s_charge)
@@ -256,6 +273,14 @@ def svd_truncated(
         VH.indices[0].chargemap[sector[0]] = n_chi
 
     if absorb is None:
+
+        U.check()
+        U.check_with(s, 1)
+        s.check()
+        VH.check()
+        VH.check_with(s, 0)
+        U.check_with(VH, (1,), (0,))
+
         return U, s, VH
 
     # absorb the singular values block by block
@@ -265,20 +290,26 @@ def svd_truncated(
         v_sector = (s_charge, s_charge)
 
         if absorb == -1:
-            U.blocks[sector] *= s[s_charge].reshape((1, -1))
+            U.blocks[sector] *= s.blocks[s_charge].reshape((1, -1))
         elif absorb == 1:
-            VH.blocks[v_sector] *= s[s_charge].reshape((-1, 1))
+            VH.blocks[v_sector] *= s.blocks[s_charge].reshape((-1, 1))
         elif absorb == 0:
-            s_sqrt = ar.do("sqrt", s[s_charge], like=backend)
+            s_sqrt = ar.do("sqrt", s.blocks[s_charge], like=backend)
             U.blocks[sector] *= s_sqrt.reshape((1, -1))
             VH.blocks[v_sector] *= s_sqrt.reshape((-1, 1))
+
+    U.check()
+    U.check_with(s, 1)
+    s.check()
+    VH.check()
+    VH.check_with(s, 0)
+    U.check_with(VH, (1,), (0,))
 
     return U, None, VH
 
 
 def eigh(x):
-    """Perform a hermitian eigendecomposition on a SymmetricArray.
-    """
+    """Perform a hermitian eigendecomposition on a SymmetricArray."""
     if x.ndim != 2:
         raise NotImplementedError(
             "eigh only implemented for 2D SymmetricArrays,"
@@ -299,9 +330,11 @@ def eigh(x):
         evec_blocks[sector] = evecs
 
     eigenvalues = BlockVector(eval_blocks)
-    eigenvectors = x.copy_with(
-        blocks=evec_blocks
-    )
+    eigenvectors = x.copy_with(blocks=evec_blocks)
+
+    eigenvectors.check()
+    eigenvectors.check_with(eigenvalues, 1)
+    eigenvalues.check()
 
     return eigenvalues, eigenvectors
 
