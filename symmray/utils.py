@@ -1,3 +1,7 @@
+# a simple flag for enabling rigorous checks in many places
+DEBUG = False
+
+
 def get_rand_z2array(
     shape,
     flows=None,

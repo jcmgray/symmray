@@ -8,6 +8,7 @@ from .fermionic_core import (
     Z2FermionicArray,
 )
 from .interface import (
+    align_axes,
     all,
     any,
     conj,
@@ -30,6 +31,7 @@ from .symmetric_core import (
 from .symmetries import U1, Z2, get_symmetry
 
 __all__ = (
+    "align_axes",
     "all",
     "any",
     "BlockIndex",

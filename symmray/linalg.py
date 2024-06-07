@@ -4,6 +4,7 @@ import autoray as ar
 
 from .block_core import BlockVector
 from .symmetric_core import BlockIndex
+from .utils import DEBUG
 
 
 def norm(x):
@@ -12,6 +13,8 @@ def norm(x):
 
 
 def _get_qr_fn(backend, stabilized=False):
+    """The lower level qr_stabilized is not necessarily already defined.
+    """
     _qr = ar.get_lib_fn(backend, "linalg.qr")
 
     if not stabilized:
@@ -41,7 +44,23 @@ def _get_qr_fn(backend, stabilized=False):
 
 
 def qr(x, stabilized=False):
-    """QR decomposition of a SymmetricArray."""
+    """QR decomposition of a SymmetricArray.
+
+    Parameters
+    ----------
+    x : SymmetricArray
+        The block symmetric array to decompose.
+    stabilized : bool, optional
+        Whether to use a stabilized QR decomposition, that is, with positive
+        diagonal elements in the R factor. Default is False.
+
+    Returns
+    -------
+    q : SymmetricArray
+        The orthogonal matrix.
+    r : SymmetricArray
+        The upper triangular matrix.
+    """
     if x.ndim != 2:
         raise NotImplementedError(
             "qr only implemented for 2D SymmetricArrays,"
@@ -65,19 +84,20 @@ def qr(x, stabilized=False):
 
     bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
     q = x.__class__(
-        indices=(x.indices[0], bond_index),
+        indices=(x.indices[0].copy(), bond_index),
         charge_total=x.charge_total,
         blocks=q_blocks,
     )
     r = x.__class__(
-        indices=(bond_index.conj(), x.indices[1]),
+        indices=(bond_index.conj(), x.indices[1].copy()),
         charge_total=x.symmetry.combine(),
         blocks=r_blocks,
     )
 
-    q.check()
-    r.check()
-    q.check_with(r, (1,), (0,))
+    if DEBUG:
+        q.check()
+        r.check()
+        q.check_with(r, (1,), (0,))
 
     return q, r
 
@@ -124,12 +144,13 @@ def svd(x):
         blocks=v_blocks,
     )
 
-    u.check()
-    s.check()
-    v.check()
-    u.check_with(s, 1)
-    u.check_with(v, (1,), (0,))
-    v.check_with(s, 0)
+    if DEBUG:
+        u.check()
+        s.check()
+        v.check()
+        u.check_with(s, 1)
+        u.check_with(v, (1,), (0,))
+        v.check_with(s, 0)
 
     return u, s, v
 
@@ -247,63 +268,60 @@ def svd_truncated(
         # distribute max_bond proportionally to sector sizes
         sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
 
-    for sector, n_chi in zip(U.sectors, sub_max_bonds):
+    new_inner_chargemap = {}
+    for (c0, c1), n_chi in zip(U.sectors, sub_max_bonds):
         # check how many singular values from this sector are valid
-
         if n_chi == 0:
-
-            U.blocks.pop(sector)
-            s.blocks.pop(sector[1])
-            VH.blocks.pop((sector[1], sector[1]))
+            # remove this sector entirely
+            U.blocks.pop((c0, c1))
+            s.blocks.pop(c1)
+            VH.blocks.pop((c1, c1))
             continue
-            # TODO: drop the block? Error?
-            # raise NotImplementedError
-            # n_chi = 1
-
-        s_charge = sector[1]
-        v_sector = (s_charge, s_charge)
 
         # slice the values and left and right vectors
-        U.blocks[sector] = U.blocks[sector][:, :n_chi]
-        s.blocks[s_charge] = s.blocks[s_charge][:n_chi]
-        VH.blocks[v_sector] = VH.blocks[v_sector][:n_chi, :]
+        U.blocks[(c0, c1)] = U.blocks[(c0, c1)][:, :n_chi]
+        s.blocks[c1] = s.blocks[c1][:n_chi]
+        VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)][:n_chi, :]
 
         # make sure the index chargemaps are updated too
-        U.indices[-1].chargemap[sector[-1]] = n_chi
-        VH.indices[0].chargemap[sector[0]] = n_chi
+        new_inner_chargemap[c1] = n_chi
+
+    new_inner_chargemap = {
+        k: new_inner_chargemap[k] for k in sorted(new_inner_chargemap)
+    }
+    U.indices[1]._chargemap = new_inner_chargemap
+    VH.indices[0]._chargemap = new_inner_chargemap.copy()
 
     if absorb is None:
 
+        if DEBUG:
+            U.check()
+            U.check_with(s, 1)
+            s.check()
+            VH.check()
+            VH.check_with(s, 0)
+            U.check_with(VH, (1,), (0,))
+
+        return U, s, VH
+
+    # absorb the singular values block by block
+    for c0, c1 in U.sectors:
+        if absorb == -1:
+            U.blocks[(c0, c1)] *= s.blocks[c1].reshape((1, -1))
+        elif absorb == 1:
+            VH.blocks[(c1, c1)] *= s.blocks[c1].reshape((-1, 1))
+        elif absorb == 0:
+            s_sqrt = ar.do("sqrt", s.blocks[c1], like=backend)
+            U.blocks[(c0, c1)] *= s_sqrt.reshape((1, -1))
+            VH.blocks[(c1, c1)] *= s_sqrt.reshape((-1, 1))
+
+    if DEBUG:
         U.check()
         U.check_with(s, 1)
         s.check()
         VH.check()
         VH.check_with(s, 0)
         U.check_with(VH, (1,), (0,))
-
-        return U, s, VH
-
-    # absorb the singular values block by block
-    for sector in U.sectors:
-
-        s_charge = sector[1]
-        v_sector = (s_charge, s_charge)
-
-        if absorb == -1:
-            U.blocks[sector] *= s.blocks[s_charge].reshape((1, -1))
-        elif absorb == 1:
-            VH.blocks[v_sector] *= s.blocks[s_charge].reshape((-1, 1))
-        elif absorb == 0:
-            s_sqrt = ar.do("sqrt", s.blocks[s_charge], like=backend)
-            U.blocks[sector] *= s_sqrt.reshape((1, -1))
-            VH.blocks[v_sector] *= s_sqrt.reshape((-1, 1))
-
-    U.check()
-    U.check_with(s, 1)
-    s.check()
-    VH.check()
-    VH.check_with(s, 0)
-    U.check_with(VH, (1,), (0,))
 
     return U, None, VH
 
@@ -332,9 +350,10 @@ def eigh(x):
     eigenvalues = BlockVector(eval_blocks)
     eigenvectors = x.copy_with(blocks=evec_blocks)
 
-    eigenvectors.check()
-    eigenvectors.check_with(eigenvalues, 1)
-    eigenvalues.check()
+    if DEBUG:
+        eigenvectors.check()
+        eigenvectors.check_with(eigenvalues, 1)
+        eigenvalues.check()
 
     return eigenvalues, eigenvectors
 

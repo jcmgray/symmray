@@ -75,7 +75,19 @@ def trace(a):
 
 
 def multiply_diagonal(x, v, axis):
+    """Multiply a `symmray` array by a vector as if contracting a diagonal
+    matrix into one axis.
+    """
     return x.multiply_diagonal(v, axis)
 
 
 ar.register_function("symmray", "multiply_diagonal", multiply_diagonal)
+
+
+def align_axes(x, y, axes):
+    """
+    """
+    return x.align_axes(y, axes)
+
+
+ar.register_function("symmray", "align_axes", align_axes)

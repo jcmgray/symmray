@@ -173,6 +173,8 @@ class BlockArray:
 
     def __truediv__(self, other):
         if isinstance(other, BlockArray):
+            if self.shape == other.shape and all(d == 1 for d in self.shape):
+                return binary_blockwise_op(operator.truediv, self, other)
             # deviding by implicit zeros not defined
             return NotImplemented
 

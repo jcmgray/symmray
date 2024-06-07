@@ -12,6 +12,7 @@ from autoray.lazy.core import find_full_reshape
 from .block_core import BlockArray
 from .interface import tensordot
 from .symmetries import get_symmetry
+from .utils import DEBUG
 
 
 class BlockIndex:
@@ -124,10 +125,7 @@ class BlockIndex:
             The other index to compare to.
         """
         return (
-            all(
-                self.chargemap[k] == other.chargemap[k]
-                for k in set(self.chargemap).intersection(other.chargemap)
-            )
+            dicts_dont_conflict(self.chargemap, other.chargemap)
             and (self.flow ^ other.flow)
             and (
                 (self.subinfo is other.subinfo is None)
@@ -148,6 +146,16 @@ class BlockIndex:
                 ")",
             ]
         )
+
+
+def dicts_dont_conflict(da, db):
+    """Check that two dictionaries don't conflict, i.e. they have no keys in
+    common with different values."""
+    for k, va in da.items():
+        vb = db.get(k, None)
+        if vb is not None and va != vb:
+            return False
+    return True
 
 
 class SubIndexInfo:
@@ -182,10 +190,9 @@ class SubIndexInfo:
         information, namely, whether the ``indices`` and ``extents`` match.
         For debugging.
         """
-        return (
-            all(i.matches(j) for i, j in zip(self.indices, other.indices))
-            and self.extents == other.extents
-        )
+        return all(
+            i.matches(j) for i, j in zip(self.indices, other.indices)
+        ) and dicts_dont_conflict(self.extents, other.extents)
 
     def __repr__(self):
         return "".join(
@@ -347,7 +354,8 @@ class SymmetricArray(BlockArray):
         else:
             self._charge_total = charge_total
 
-        self.check()
+        if DEBUG:
+            self.check()
 
     def copy(self):
         """Copy this block array."""
@@ -364,7 +372,10 @@ class SymmetricArray(BlockArray):
             self._charge_total if charge_total is None else charge_total
         )
         new._blocks = self._blocks.copy() if blocks is None else blocks
-        new.check()
+
+        if DEBUG:
+            new.check()
+
         return new
 
     @property
@@ -407,6 +418,16 @@ class SymmetricArray(BlockArray):
         """The number of dimensions/indices."""
         return len(self._indices)
 
+    def sync_charges(self):
+        current_charges = [set(index.chargemap) for index in self.indices]
+        for sector in self.blocks:
+            for i, c in enumerate(sector):
+                current_charges[i].discard(c)
+
+        for i, charges in enumerate(current_charges):
+            for c in charges:
+                self._indices[i].chargemap.pop(c)
+
     def gen_signed_sectors(self):
         flows = self.flows
         for sector in self.blocks:
@@ -447,16 +468,54 @@ class SymmetricArray(BlockArray):
         """Check that all the block sizes and charges are consistent."""
         for idx in self.indices:
             idx.check()
+
+        # actual_charges = [set() for _ in range(self.ndim)]
+
         for sector, array in self.blocks.items():
-            assert self.is_valid_sector(sector)
-            assert all(
+            if not self.is_valid_sector(sector):
+                raise ValueError(
+                    f"Invalid sector {sector} for array with "
+                    f"flows {self.flows} and charge total "
+                    f"{self.charge_total}."
+                )
+
+            if not all(
                 di == dj
                 for di, dj in zip(
                     ar.shape(array), self.get_block_shape(sector)
                 )
-            )
+            ):
+                raise ValueError(
+                    f"Block shape {ar.shape(array)} does not match "
+                    f"expected shape {self.get_block_shape(sector)} "
+                    f"for sector {sector}."
+                )
+
+        # XXX: check no empty charges?
+        #     for i, c in enumerate(sector):
+        #         actual_charges[i].add(c)
+
+        # for actual, index in zip(actual_charges, self.indices):
+        #     expected = set(index.chargemap)
+        #     if actual != expected:
+        #         raise ValueError(
+        #             f"Charges for index {index} are inconsistent: "
+        #             f"{actual} != {expected}."
+        #         )
 
     def check_with(self, other, *args):
+        """Check that this block array is compatible with another, that is,
+        that the indices match and the blocks are compatible.
+
+        Parameters
+        ----------
+        other : SymmetricArray or BlockVector
+            The other array or vector to compare to.
+        *args
+            The axes to compare, if ``other`` is a vector, the axis to compare
+            with. If ``other`` is an array, then `axes_a` and `axes_b` should
+            be given as if for a tensordot.
+        """
         from .block_core import BlockVector
 
         if isinstance(other, BlockVector):
@@ -531,6 +590,9 @@ class SymmetricArray(BlockArray):
             sector: fill_fn(self.get_block_shape(sector))
             for sector in self.gen_valid_sectors()
         }
+
+        # self.sync_charges()
+
         return self
 
     @classmethod
@@ -716,7 +778,10 @@ class SymmetricArray(BlockArray):
         new.apply_to_arrays(_conj)
         new._indices = tuple(ix.conj() for ix in self._indices)
         new._charge_total = self.symmetry.negate(self._charge_total)
-        new.check()
+
+        if DEBUG:
+            new.check()
+
         return new
 
     def transpose(self, axes=None, inplace=False):
@@ -749,7 +814,7 @@ class SymmetricArray(BlockArray):
     def H(self):
         return self.dagger()
 
-    def fuse(self, *axes_groups, inplace=False):
+    def fuse(self, *axes_groups):
         """Fuse the give group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
         the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
@@ -972,7 +1037,7 @@ class SymmetricArray(BlockArray):
 
         return new
 
-    def unfuse(self, axis, inplace=False):
+    def unfuse(self, axis):
         """Unfuse the ``axis`` index, which must carry subindex information,
         likely generated automatically from a fusing operation.
         """
@@ -1030,24 +1095,6 @@ class SymmetricArray(BlockArray):
                 new = new.unfuse(ax)
         return new
 
-    def __str__(self):
-        s = (
-            f"{self.__class__.__name__}(ndim={self.ndim}, "
-            f"charge_total={self.charge_total}, dims=[\n"
-        )
-        for i in range(self.ndim):
-            s += (
-                f"    ({self.shape[i]} = "
-                f"{'+'.join(map(str, self.sizes[i]))} : "
-                f"{'+' if self.flows[i] else '-'}"
-                f"[{','.join(map(str, self.charges[i]))}]),\n"
-            )
-        s += (
-            f"], num_blocks={self.num_blocks}, backend={self.backend}, "
-            f"dtype={self.dtype})"
-        )
-        return s
-
     def _reshape_via_fuse(self, newshape):
         axes_groups = reshape_to_fuse_axes(self.shape, newshape)
         return self.fuse(*axes_groups)
@@ -1089,6 +1136,22 @@ class SymmetricArray(BlockArray):
             right_axes=(1,),
         )
 
+    def trace(self):
+        """Compute the trace of the block array, assuming it is a square
+        matrix.
+        """
+        if self.ndim != 2:
+            raise ValueError("Trace requires a 2D array.")
+
+        _trace = ar.get_lib_fn(self.backend, "trace")
+
+        return sum(
+            _trace(array)
+            for sector, array in self.blocks.items()
+            # only take diagonal blocks
+            if sector[0] == sector[1]
+        )
+
     def multiply_diagonal(self, v, axis, inplace=False):
         """Multiply this block array by a vector as if contracting a diagonal
         matrix along the given axis.
@@ -1109,25 +1172,43 @@ class SymmetricArray(BlockArray):
             else:
                 del x.blocks[sector]
 
-        x.check()
+        if DEBUG:
+            x.check()
 
         return x
 
-    def trace(self):
-        """Compute the trace of the block array, assuming it is a square
-        matrix.
+    def align_axes(self, other, axes):
+        """Align the axes of this block array with another, by dropping any
+        sectors that are not aligned along the given axes, these can then be
+        fused into a single axis that matches on both arrays.
+
+        Parameters
+        ----------
+        other : SymmetricArray
+            The other array to align with.
+        axes : tuple[tuple[int]]
+            The pairs of axes to align, given as tuples of the corresponding
+            axes in this and the other array, a la tensordot.
         """
-        if self.ndim != 2:
-            raise ValueError("Trace requires a 2D array.")
+        return drop_misaligned_sectors(self, other, *axes)
 
-        _trace = ar.get_lib_fn(self.backend, "trace")
-
-        return sum(
-            _trace(array)
-            for sector, array in self.blocks.items()
-            # only take diagonal blocks
-            if sector[0] == sector[1]
+    def __str__(self):
+        s = (
+            f"{self.__class__.__name__}(ndim={self.ndim}, "
+            f"charge_total={self.charge_total}, dims=[\n"
         )
+        for i in range(self.ndim):
+            s += (
+                f"    ({self.shape[i]} = "
+                f"{'+'.join(map(str, self.sizes[i]))} : "
+                f"{'-' if self.flows[i] else '+'}"
+                f"[{','.join(map(str, self.charges[i]))}]),\n"
+            )
+        s += (
+            f"], num_blocks={self.num_blocks}, backend={self.backend}, "
+            f"dtype={self.dtype})"
+        )
+        return s
 
     def __repr__(self):
         return "".join(
@@ -1310,8 +1391,9 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 @tensordot.register(SymmetricArray)
 def tensordot_blocked(a, b, axes=2, mode="auto"):
     """ """
-    a.check()
-    b.check()
+    if DEBUG:
+        a.check()
+        b.check()
 
     ndim_a = a.ndim
     ndim_b = b.ndim
@@ -1327,7 +1409,8 @@ def tensordot_blocked(a, b, axes=2, mode="auto"):
         if not len(axes_a) == len(axes_b):
             raise ValueError("Axes must have same length.")
 
-    a.check_with(b, axes_a, axes_b)
+    if DEBUG:
+        a.check_with(b, axes_a, axes_b)
 
     left_axes = without(range(ndim_a), axes_a)
     right_axes = without(range(ndim_b), axes_b)
@@ -1347,7 +1430,8 @@ def tensordot_blocked(a, b, axes=2, mode="auto"):
 
     c = _tdot(a, b, left_axes, axes_a, axes_b, right_axes)
 
-    c.check()
+    if DEBUG:
+        c.check()
     # cf = tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
     # cb = tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
     # if not cf.allclose(cb):
