@@ -3,7 +3,7 @@ import autoray as ar
 from .symmetric_core import (
     SymmetricArray,
     permuted,
-    tensordot_blocked,
+    tensordot_symmetric,
     without,
 )
 from .interface import tensordot
@@ -290,7 +290,7 @@ def tensordot_fermionic(a, b, axes=2):
     a = a.transpose(perm_a)
     b = b.transpose(perm_b)
 
-    # new axes for tensordot_blocked having permuted inputs
+    # new axes for tensordot_symmetric having permuted inputs
     new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
     new_axes_b = tuple(range(ncon - 1, -1, -1))
 
@@ -307,7 +307,7 @@ def tensordot_fermionic(a, b, axes=2):
     b.phase_resolve(inplace=True)
 
     # perform blocked contraction!
-    c = tensordot_blocked(a, b, axes=(new_axes_a, new_axes_b))
+    c = tensordot_symmetric(a, b, axes=(new_axes_a, new_axes_b))
 
     return c
 

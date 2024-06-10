@@ -133,6 +133,15 @@ class BlockIndex:
             )
         )
 
+    def __hash__(self):
+        return hash(
+            (
+                tuple(self._chargemap.items()),
+                self._flow,
+                self._subinfo,
+            )
+        )
+
     def __repr__(self):
         return "".join(
             [
@@ -193,6 +202,9 @@ class SubIndexInfo:
         return all(
             i.matches(j) for i, j in zip(self.indices, other.indices)
         ) and dicts_dont_conflict(self.extents, other.extents)
+
+    def __hash__(self):
+        raise NotImplementedError
 
     def __repr__(self):
         return "".join(
@@ -308,6 +320,59 @@ def reshape_to_unfuse_axes(indices, newshape):
             d = 1
 
     return tuple(sorted(unfused, reverse=True))
+
+
+@functools.lru_cache(2**14)
+def calc_fuse_info(axes_groups, flows):
+    ndim = len(flows)
+
+    # which group does each axis appear in, if any
+    ax2group = {}
+    # what flow each group has
+    group_flows = []
+    for g, gaxes in enumerate(axes_groups):
+        # take the flow of the group to match the first axis
+        group_flows.append(flows[gaxes[0]])
+        for ax in gaxes:
+            ax2group[ax] = g
+    # assign `None` to ungrouped axes
+    for i in range(ndim):
+        ax2group.setdefault(i, None)
+
+    # the permutation will be the same for every block: precalculate
+    # n.b. all new groups will be inserted at the *first fused axis*:
+    position = min((min(gaxes) for gaxes in axes_groups))
+    axes_before = tuple(ax for ax in range(position) if ax2group[ax] is None)
+    axes_after = tuple(
+        ax for ax in range(position, ndim) if ax2group[ax] is None
+    )
+    perm = (
+        *axes_before,
+        *(ax for g in axes_groups for ax in g),
+        *axes_after,
+    )
+
+    # track where each axis will be in the new array
+    num_groups = len(axes_groups)
+    new_axes = {ax: ax for ax in axes_before}
+    for g, gaxes in enumerate(axes_groups):
+        for ax in gaxes:
+            new_axes[ax] = position + g
+    for g, ax in enumerate(axes_after):
+        new_axes[ax] = position + num_groups + g
+    new_ndim = len(axes_before) + num_groups + len(axes_after)
+
+    return (
+        num_groups,
+        new_ndim,
+        perm,
+        position,
+        axes_before,
+        axes_after,
+        ax2group,
+        group_flows,
+        new_axes,
+    )
 
 
 _symmetricarray_slots = (
@@ -849,48 +914,22 @@ class SymmetricArray(BlockArray):
         _reshape = ar.get_lib_fn(backend, "reshape")
         _concatenate = ar.get_lib_fn(backend, "concatenate")
 
-        # which group does each axis appear in, if any
-        ax2group = {}
-        # what flow each group has
-        group_flows = []
-        old_indices = self._indices
-        for g, gaxes in enumerate(axes_groups):
-            # take the flow of the group to match the first axis
-            group_flows.append(old_indices[gaxes[0]].flow)
-            for ax in gaxes:
-                ax2group[ax] = g
-        # assign `None` to ungrouped axes
-        for i in range(self.ndim):
-            ax2group.setdefault(i, None)
-
-        # the permutation will be the same for every block: precalculate
-        # n.b. all new groups will be inserted at the *first fused axis*:
-        position = min((min(gaxes) for gaxes in axes_groups))
-        axes_before = tuple(
-            ax for ax in range(position) if ax2group[ax] is None
-        )
-        axes_after = tuple(
-            ax for ax in range(position, self.ndim) if ax2group[ax] is None
-        )
-        perm = (
-            *axes_before,
-            *(ax for g in axes_groups for ax in g),
-            *axes_after,
-        )
-
-        # track where each axis will be in the new array
-        num_groups = len(axes_groups)
-        new_axes = {ax: ax for ax in axes_before}
-        for g, gaxes in enumerate(axes_groups):
-            for ax in gaxes:
-                new_axes[ax] = position + g
-        for g, ax in enumerate(axes_after):
-            new_axes[ax] = position + num_groups + g
-        new_ndim = len(axes_before) + num_groups + len(axes_after)
+        (
+            num_groups,
+            new_ndim,
+            perm,
+            position,
+            axes_before,
+            axes_after,
+            ax2group,
+            group_flows,
+            new_axes,
+        ) = calc_fuse_info(axes_groups, self.flows)
 
         # then we process the blocks one by one into new fused sectors
         new_blocks = {}
         subinfos = [{} for _ in range(num_groups)]
+        old_indices = self._indices
 
         for sector, array in self.blocks.items():
             # keep track of a perm+shape in order to fuse the actual array
@@ -898,7 +937,7 @@ class SymmetricArray(BlockArray):
             # the key of the new fused block to add this block to
             new_sector = [self.symmetry.combine()] * new_ndim
             # only the parts of the sector that will be fused
-            subsectors = [[] for g in range(num_groups)]
+            subsectors = [[] for _ in range(num_groups)]
 
             # n.b. we have to use `perm` here, not `enumerate(sector)`, so
             # that subsectors are built in matching order for tensordot e.g.
@@ -907,11 +946,6 @@ class SymmetricArray(BlockArray):
                 c = sector[ax]
                 ix = old_indices[ax]
                 d = ix.size_of(c)
-
-                if not isinstance(d, int):
-                    raise ValueError(
-                        f"Expected integer size, got {d} of type {type(d)}."
-                    )
 
                 # which group is this axis in, if any, and where is it going
                 g = ax2group[ax]
@@ -1389,7 +1423,7 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
 
 @tensordot.register(SymmetricArray)
-def tensordot_blocked(a, b, axes=2, mode="auto"):
+def tensordot_symmetric(a, b, axes=2, mode="auto"):
     """ """
     if DEBUG:
         a.check()
