@@ -85,8 +85,7 @@ ar.register_function("symmray", "multiply_diagonal", multiply_diagonal)
 
 
 def align_axes(x, y, axes):
-    """
-    """
+    """ """
     return x.align_axes(y, axes)
 
 

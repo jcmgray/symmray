@@ -142,6 +142,25 @@ class BlockIndex:
             )
         )
 
+    def __str__(self):
+        lines = [
+            f"({self.size_total} = "
+            f"{'+'.join(map(str, self.chargemap.values()))} "
+            f": {'-' if self.flow else '+'}"
+            f"[{','.join(map(str, self.chargemap.keys()))}])"
+        ]
+
+        if self.subinfo:
+            for charge, extent in self.subinfo.extents.items():
+                subcharges, subsizes = zip(*extent)
+                lines.append(
+                    f"    {charge} ; "
+                    f"({'+'.join(map(str, subsizes))}) : "
+                    f"[{','.join(map(str, subcharges))}]"
+                )
+
+        return "\n".join(lines)
+
     def __repr__(self):
         return "".join(
             [
@@ -1076,7 +1095,7 @@ class SymmetricArray(BlockArray):
         likely generated automatically from a fusing operation.
         """
         backend = self.backend
-        _split = ar.get_lib_fn(backend, "split")
+        # _split = ar.get_lib_fn(backend, "split")
         _reshape = ar.get_lib_fn(backend, "reshape")
 
         # get required information from the fused index
@@ -1227,22 +1246,23 @@ class SymmetricArray(BlockArray):
         return drop_misaligned_sectors(self, other, *axes)
 
     def __str__(self):
-        s = (
-            f"{self.__class__.__name__}(ndim={self.ndim}, "
-            f"charge_total={self.charge_total}, dims=[\n"
-        )
-        for i in range(self.ndim):
-            s += (
-                f"    ({self.shape[i]} = "
-                f"{'+'.join(map(str, self.sizes[i]))} : "
-                f"{'-' if self.flows[i] else '+'}"
-                f"[{','.join(map(str, self.charges[i]))}]),\n"
+        lines = [
+            (
+                f"{self.__class__.__name__}(ndim={self.ndim}, "
+                f"charge_total={self.charge_total}, dims=["
             )
-        s += (
-            f"], num_blocks={self.num_blocks}, backend={self.backend}, "
-            f"dtype={self.dtype})"
+        ]
+        for i in range(self.ndim):
+            lines.extend(
+                f"    {line}" for line in str(self.indices[i]).split("\n")
+            )
+        lines.append(
+            (
+                f"], num_blocks={self.num_blocks}, backend={self.backend}, "
+                f"dtype={self.dtype})"
+            )
         )
-        return s
+        return "\n".join(lines)
 
     def __repr__(self):
         return "".join(
@@ -1270,7 +1290,7 @@ def tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
 
     # iterate over all valid sectors of the new SymmetricArray
     _tensordot = ar.get_lib_fn(a.backend, "tensordot")
-    _stack = ar.get_lib_fn(a.backend, "stack")
+    # _stack = ar.get_lib_fn(a.backend, "stack")
 
     # group blocks of `b` by which contracted charges they are aligned to
     for sector, array_b in b.blocks.items():
@@ -1397,8 +1417,8 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
         )
 
     # fuse into matrices or maybe vectors
-    af = a.fuse(left_axes, axes_a)
-    bf = b.fuse(axes_b, right_axes)
+    af = SymmetricArray.fuse(a, left_axes, axes_a)
+    bf = SymmetricArray.fuse(b, axes_b, right_axes)
 
     # handle potential vector and scalar cases
     left_axes, axes_a = {

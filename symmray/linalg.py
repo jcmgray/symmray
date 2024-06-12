@@ -13,8 +13,7 @@ def norm(x):
 
 
 def _get_qr_fn(backend, stabilized=False):
-    """The lower level qr_stabilized is not necessarily already defined.
-    """
+    """The lower level qr_stabilized is not necessarily already defined."""
     _qr = ar.get_lib_fn(backend, "linalg.qr")
 
     if not stabilized:

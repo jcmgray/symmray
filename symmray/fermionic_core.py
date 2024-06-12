@@ -159,6 +159,41 @@ class FermionicArray(SymmetricArray):
                 new._blocks[sector] = -new._blocks[sector]
         return new
 
+    def phase_virtual_transpose(self, axes=None, inplace=False):
+        """Phase this fermionic array as if it were transposed virtually, i.e.
+        the actual arrays are not transposed.
+
+        Parameters
+        ----------
+        axes : tuple of int, optional
+            The permutation of axes, by default None.
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        new = self if inplace else self.copy()
+
+        for sector in new.sectors:
+            parities = tuple(new.symmetry.parity(q) for q in sector)
+
+            phase_new = (
+                # start with old phase
+                new._phases.get(sector, 1)
+                *
+                # get the phase from permutation
+                calc_phase_permutation(parities, axes)
+            )
+
+            if phase_new == 1:
+                new._phases.pop(sector, None)
+            else:
+                new._phases[sector] = phase_new
+
+        return new
+
     def conj(self, phase=True, inplace=False):
         """Conjugate this fermionic array. By default this include phases from
         both the virtual flipping of all axes, and the conjugation of 'bra'
@@ -186,15 +221,18 @@ class FermionicArray(SymmetricArray):
             new.blocks[sector] = _conj(array)
 
             if phase:
-                # start with old phase
-                phase_new = new._phases.get(sector, 1)
                 parities = tuple(map(new.symmetry.parity, sector))
-                # get the phase from flipping all axes (perm=[ndim-1, ..., 0])
-                phase_new *= calc_phase_permutation(parities, None)
-                # get the phase from conjugating 'bra' indices
-                phase_new *= (
-                    -1 if (sum(parities[ax] for ax in axs_conj) % 2) else 1
+
+                phase_new = (
+                    # start with old phase
+                    new._phases.get(sector, 1)
+                    # get the phase from reversing all axes:
+                    #     (perm=[ndim-1, ..., 0])
+                    * calc_phase_permutation(parities, None)
+                    # get the phase from conjugating 'bra' indices
+                    * (-1 if (sum(parities[ax] for ax in axs_conj) % 2) else 1)
                 )
+
                 if phase_new == 1:
                     new._phases.pop(sector, None)
                 else:
@@ -245,15 +283,76 @@ class FermionicArray(SymmetricArray):
         """Fermionic conjugate transpose."""
         return self.dagger()
 
+    def fuse(self, *axes_groups):
+        from symmray.symmetric_core import calc_fuse_info
+
+        new = self.copy()
+
+        # first make groups into contiguous blocks using fermionic transpose
+        perm = calc_fuse_info(axes_groups, new.flows)[2]
+        new.transpose(perm, inplace=True)
+        axes_groups = tuple(tuple(map(perm.index, g)) for g in axes_groups)
+
+        # make sure all axes in each group are phase matched
+        axes_flip = []
+        virtual_perm = None
+        for group in axes_groups:
+            if group:
+                if new.indices[group[0]].flow:
+                    # overall dual index, flip
+                    for ax in group:
+                        if not new.indices[ax].flow:
+                            axes_flip.append(ax)
+
+                    if virtual_perm is None:
+                        virtual_perm = list(range(new.ndim))
+
+                    for axi, axj in zip(group, reversed(group)):
+                        virtual_perm[axi] = axj
+
+        if axes_flip:
+            # print("fuse flips:", axes_flip)
+            new.phase_flip(*axes_flip, inplace=True)
+
+        # if the fused axes is overall bra, need phases from effective flip
+        #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
+        if virtual_perm is not None:
+            print("fuse virtual_perm:", virtual_perm)
+            new = new.phase_virtual_transpose(
+                tuple(virtual_perm), inplace=True
+            )
+
+        new.phase_resolve(inplace=True)
+
+        return SymmetricArray.fuse(new, *axes_groups)
+
+    def unfuse(self, axis):
+        raise NotImplementedError
+        # sub_indices = self.indices[axis].subinfo.indices
+        # flow0 = sub_indices[0].flow
+        # axes_flip = [
+        #     axis + i for i, ix in enumerate(sub_indices) if (ix.flow != flow0)
+        # ]
+
+        # new = super().unfuse(axis)
+
+        # if axes_flip:
+        #     print("unfuse flips:", axes_flip)
+        #     new.phase_flip(*axes_flip, inplace=True)
+
+        # new.phase_resolve(inplace=True)
+
+        # return new
+
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases
         multiplied in.
         """
-        return super().to_dense(self.phase_resolve())
+        return SymmetricArray.to_dense(self.phase_resolve())
 
 
 @tensordot.register(FermionicArray)
-def tensordot_fermionic(a, b, axes=2):
+def tensordot_fermionic(a, b, axes=2, **kwargs):
     """Contract two fermionic arrays along the specified axes, accounting for
     phases from both transpositions and contractions.
 
@@ -286,13 +385,23 @@ def tensordot_fermionic(a, b, axes=2):
 
     # permute a & b so we have axes like [..., x, y, z], [z, y, x, ...]
     perm_a = (*left_axes, *axes_a)
-    perm_b = (*reversed(axes_b), *right_axes)
+    # perm_b = (*reversed(axes_b), *right_axes)
+    # perm_b = (*axes_b, *right_axes)
+    # perm_a = (*left_axes, *reversed(axes_a))
+    perm_b = (*axes_b, *right_axes)
     a = a.transpose(perm_a)
     b = b.transpose(perm_b)
 
     # new axes for tensordot_symmetric having permuted inputs
     new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
-    new_axes_b = tuple(range(ncon - 1, -1, -1))
+    # new_axes_b = tuple(range(ncon - 1, -1, -1))
+    # new_axes_b = tuple(range(ncon))
+    # new_axes_a = tuple(reversed(range(ndim_a - ncon, ndim_a)))
+    new_axes_b = tuple(range(ncon))
+
+    b.phase_virtual_transpose(
+        (*reversed(range(ncon)), *range(ncon, b.ndim)), inplace=True
+    )
 
     # use reverse flows to calculate phase_flips
     if a.size <= b.size:
@@ -307,14 +416,38 @@ def tensordot_fermionic(a, b, axes=2):
     b.phase_resolve(inplace=True)
 
     # perform blocked contraction!
-    c = tensordot_symmetric(a, b, axes=(new_axes_a, new_axes_b))
+    c = tensordot_symmetric(a, b, axes=(new_axes_a, new_axes_b), **kwargs)
 
     return c
+
+
+# --------------- specific fermionic symmetric array classes ---------------- #
 
 
 class Z2FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
     symmetry = get_symmetry("Z2")
+
+    def to_pyblock3(self):
+        from pyblock3.algebra.fermion_symmetry import Z2
+        from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
+
+        blocks = [
+            SubTensor(
+                -array if self.phases.get(sector, 1) == -1 else array,
+                q_labels=tuple(map(Z2, sector)),
+            )
+            for sector, array in self.blocks.items()
+        ]
+
+        data = SparseFermionTensor(
+            blocks,
+            pattern=["-" if f else "+" for f in self.flows],
+        )
+
+        data.shape = self.shape
+
+        return data
 
 
 class U1FermionicArray(FermionicArray):
