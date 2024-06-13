@@ -2,6 +2,126 @@
 DEBUG = False
 
 
+def get_rng(seed=None):
+    import numpy as np
+
+    return np.random.default_rng(seed)
+
+
+def rand_z2_index(
+    d,
+    flow=None,
+    subsizes=None,
+    seed=None,
+):
+    """Generate a random Z2 index with the given dimension.
+
+    Parameters
+    ----------
+    d : int
+        The total size of the index.
+    flow : bool, optional
+        The flow of the index. If None, it is randomly chosen.
+    subsizes : None, "equal", "maximal", or tuple of int, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders). For
+        Z2 indices, "maximal" is equivalent to "equal".
+    seed : None, int, or numpy.random.Generator, optional
+        The seed for the random number generator.
+
+    Returns
+    -------
+    BlockIndex
+    """
+    import symmray as sr
+
+    rng = get_rng(seed)
+
+    if flow is None:
+        flow = rng.choice([False, True])
+
+    if d == 1:
+        charge = int(rng.choice([0, 1]))
+        return sr.BlockIndex(chargemap={charge: 1}, flow=flow)
+
+    if subsizes is None:
+        d0 = int(rng.integers(1, d))
+        d1 = d - d0
+    elif subsizes in ("equal", "maximal"):
+        d0 = d // 2
+        d1 = d - d0
+    else:
+        d0, d1 = subsizes
+
+    return sr.BlockIndex(chargemap={0: d0, 1: d1}, flow=flow)
+
+
+def rand_partition(d, n, seed=None):
+    """Randomly partition `d` into `n` sizes each of size at least 1."""
+    if d == n:
+        return [1] * n
+
+    rng = get_rng(seed)
+    splits = (
+        0,
+        *sorted(rng.choice(range(1, d - 1), size=n - 1, replace=False)),
+        d,
+    )
+    return [int(splits[i + 1] - splits[i]) for i in range(n)]
+
+
+def rand_u1_index(
+    d,
+    flow=None,
+    subsizes=None,
+    seed=None,
+):
+    """Generate a random U1 index with the given dimension.
+
+    Parameters
+    ----------
+    d : int
+        The total size of the index.
+    flow : bool, optional
+        The flow of the index. If None, it is randomly chosen.
+    subsizes : None, "equal", or tuple of int, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders). If
+        "maximal", there will be `d` charges of size 1.
+    seed : None, int, or numpy.random.Generator, optional
+        The seed for the random number generator.
+
+    Returns
+    -------
+    BlockIndex
+    """
+    import symmray as sr
+
+    rng = get_rng(seed)
+
+    if flow is None:
+        flow = rng.choice([False, True])
+
+    if subsizes is None:
+        ncharge = rng.integers(1, d + 1)
+        subsizes = rand_partition(d, ncharge)
+    elif subsizes == "equal":
+        ncharge = d // 2
+        subsizes = [2 for _ in range(ncharge)]
+        if d % 2:
+            ncharge += 1
+            subsizes.append(1)
+    elif subsizes == "maximal":
+        ncharge = d
+        subsizes = [1 for _ in range(ncharge)]
+    else:
+        ncharge = len(subsizes)
+
+    charges = range(-ncharge // 2 + 1, ncharge // 2 + 1)
+
+    return sr.BlockIndex(chargemap=dict(zip(charges, subsizes)), flow=flow)
+
+
 def get_rand_z2array(
     shape,
     flows=None,
@@ -9,6 +129,7 @@ def get_rand_z2array(
     seed=None,
     dist="normal",
     fermionic=False,
+    subsizes=None,
 ):
     """Generate a random Z2Array with the given shape, with charge sectors and
     flows automatically determined.
@@ -18,8 +139,8 @@ def get_rand_z2array(
     shape : tuple of int
         The overall shape of the array.
     flows : list of bool, optional
-        The flow of each dimension. If None, the flow is set to True for the
-        first half of the dimensions and False for the second half.
+        The flow of each dimension. If None, the flow is set to False for the
+        first half of the dimensions and True for the second half.
     charge_total : int, optional
         The total charge of the array.
     seed : int, optional
@@ -33,10 +154,12 @@ def get_rand_z2array(
     """
     import symmray as sr
 
+    rng = get_rng(seed)
+
     ndim = len(shape)
 
     if flows is None:
-        flows = [i < ndim // 2 for i in range(ndim)]
+        flows = [i >= ndim // 2 for i in range(ndim)]
 
     if fermionic:
         cls = sr.Z2FermionicArray
@@ -45,10 +168,7 @@ def get_rand_z2array(
 
     return cls.random(
         indices=[
-            sr.BlockIndex(
-                {0: d // 2 + d % 2, 1: d // 2} if d > 1 else {0: 1},
-                flow=f,
-            )
+            rand_z2_index(d, flow=f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, flows)
         ],
         charge_total=charge_total,
@@ -64,6 +184,7 @@ def get_rand_u1array(
     seed=None,
     dist="normal",
     fermionic=False,
+    subsizes=None,
 ):
     """Generate a random U1Array with the given shape, with charge sectors and
     flows automatically determined.
@@ -81,6 +202,9 @@ def get_rand_u1array(
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
+    subsizes : None, "equals", or tuple of int, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal.
 
     Returns
     -------
@@ -91,7 +215,7 @@ def get_rand_u1array(
     ndim = len(shape)
 
     if flows is None:
-        flows = [i < ndim // 2 for i in range(ndim)]
+        flows = [i >= ndim // 2 for i in range(ndim)]
 
     if fermionic:
         cls = sr.U1FermionicArray
@@ -100,10 +224,7 @@ def get_rand_u1array(
 
     return cls.random(
         indices=[
-            sr.BlockIndex(
-                {c: 1 for c in range(-d // 2 + 1, d // 2 + 1)},
-                flow=f,
-            )
+            rand_u1_index(d, f, subsizes=subsizes)
             for d, f in zip(shape, flows)
         ],
         charge_total=charge_total,
@@ -120,6 +241,7 @@ def get_rand_symmetric(
     seed=None,
     dist="normal",
     fermionic=False,
+    subsizes=None,
 ):
     if flows is not None:
         assert len(flows) == len(shape)
@@ -132,6 +254,7 @@ def get_rand_symmetric(
             seed=seed,
             dist=dist,
             fermionic=fermionic,
+            subsizes=subsizes,
         )
     elif symmetry == "U1":
         return get_rand_u1array(
@@ -141,6 +264,7 @@ def get_rand_symmetric(
             seed=seed,
             dist=dist,
             fermionic=fermionic,
+            subsizes=subsizes,
         )
     else:
         raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
@@ -152,10 +276,9 @@ def get_rand_blockvector(
     seed=None,
     dist="normal",
 ):
-    import numpy as np
     import symmray as sr
 
-    rng = np.random.default_rng(seed)
+    rng = get_rng(seed)
     blocks = {}
     d = 0
     i = 0

@@ -205,7 +205,7 @@ class FermionicArray(SymmetricArray):
 
     def conj(self, phase=True, inplace=False):
         """Conjugate this fermionic array. By default this include phases from
-        both the virtual flipping of all axes, and the conjugation of 'bra'
+        both the virtual flipping of all axes, and the conjugation of dual
         (flow=True) indices, such that::
 
             (
@@ -300,6 +300,24 @@ class FermionicArray(SymmetricArray):
         return self.dagger()
 
     def fuse(self, *axes_groups):
+        """Fermionic fusion of axes groups. This includes three sources of
+        phase changes:
+
+        1. Initial fermionic transpose to make groups contiguous.
+        2. Flipping of dual indices, if merged group is overall dual.
+        3. Virtual transpose within a group, if merged group is overall dual.
+
+        A grouped axis is overall dual if the first axis in the group is dual.
+
+        Parameters
+        ----------
+        axes_groups : tuple of tuple of int
+            The axes groups to fuse.
+
+        Returns
+        -------
+        FermionicArray
+        """
         from symmray.symmetric_core import calc_fuse_info
 
         new = self.copy()
@@ -312,25 +330,27 @@ class FermionicArray(SymmetricArray):
 
         # first make groups into contiguous blocks using fermionic transpose
         perm = calc_fuse_info(axes_groups, new.flows)[2]
+        # this is the first step which introduces phases
         new.transpose(perm, inplace=True)
+        # update groups to reflect new axes
         axes_groups = tuple(tuple(map(perm.index, g)) for g in axes_groups)
 
-        # make sure all axes in each group are phase matched
+        # process each group with another two sources of phase changes:
         axes_flip = []
         virtual_perm = None
         for group in axes_groups:
-            if group:
-                if new.indices[group[0]].flow:
-                    # overall dual index, flip
-                    for ax in group:
-                        if not new.indices[ax].flow:
-                            axes_flip.append(ax)
+            if new.indices[group[0]].flow:
+                # overall dual index:
+                # 1. flip dual sub indices
+                for ax in group:
+                    if not new.indices[ax].flow:
+                        axes_flip.append(ax)
 
-                    if virtual_perm is None:
-                        virtual_perm = list(range(new.ndim))
-
-                    for axi, axj in zip(group, reversed(group)):
-                        virtual_perm[axi] = axj
+                # 2. virtual transpose within group
+                if virtual_perm is None:
+                    virtual_perm = list(range(new.ndim))
+                for axi, axj in zip(group, reversed(group)):
+                    virtual_perm[axi] = axj
 
         if axes_flip:
             # print("fuse flips:", axes_flip)
@@ -338,13 +358,16 @@ class FermionicArray(SymmetricArray):
 
         # if the fused axes is overall bra, need phases from effective flip
         #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
+        #   but actual array layout should not be flipped, so do virtually
         if virtual_perm is not None:
             new = new.phase_virtual_transpose(
                 tuple(virtual_perm), inplace=True
             )
 
+        # insert phases
         new.phase_resolve(inplace=True)
 
+        # so we can do the actual block concatenations
         return SymmetricArray.fuse(new, *axes_groups)
 
     # def unfuse(self, axis):

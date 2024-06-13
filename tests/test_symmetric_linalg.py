@@ -30,7 +30,11 @@ def test_qr_basics(symmetry, d0, d1, f0, f1, c):
 @pytest.mark.parametrize("c", [0, 1])
 def test_svd_basics(symmetry, d0, d1, f0, f1, c):
     x = sr.utils.get_rand_symmetric(
-        symmetry, (d0, d1), flows=[f0, f1], charge_total=c
+        symmetry,
+        (d0, d1),
+        flows=[f0, f1],
+        charge_total=c,
+        subsizes="maximal",
     )
     x.check()
     u, s, vh = sr.linalg.svd(x)
@@ -49,6 +53,7 @@ def test_eigh(symmetry, d):
         symmetry,
         (d, d),
         flows=[0, 1],
+        subsizes="equal",
     )
     # need to make sure x is hermitian
     x.apply_to_arrays(lambda x: (x + x.T) / 2)
@@ -69,6 +74,7 @@ def test_expm_with_reshape(symmetry, d):
         symmetry,
         (d, d, d, d),
         flows=[0, 0, 1, 1],
+        subsizes="equal",
     )
     x_matrix = ar.do("reshape", x, (d**2, d**2))
     # == x_matrix = x.fuse((0, 1), (2, 3))

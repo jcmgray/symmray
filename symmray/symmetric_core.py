@@ -9,7 +9,7 @@ from collections import defaultdict
 import autoray as ar
 from autoray.lazy.core import find_full_reshape
 
-from .block_core import BlockArray
+from .block_core import BlockBase
 from .interface import tensordot
 from .symmetries import get_symmetry
 from .utils import DEBUG
@@ -151,7 +151,7 @@ class BlockIndex:
         ]
 
         if self.subinfo:
-            for charge, extent in self.subinfo.extents.items():
+            for charge, extent in sorted(self.subinfo.extents.items()):
                 subcharges, subsizes = zip(*extent)
                 lines.append(
                     f"    {charge} ; "
@@ -401,7 +401,7 @@ _symmetricarray_slots = (
 )
 
 
-class SymmetricArray(BlockArray):
+class SymmetricArray(BlockBase):
     """A block sparse array with symmetry constraints.
 
     Parameters
@@ -690,8 +690,8 @@ class SymmetricArray(BlockArray):
         charge_total : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
-        seed : int
-            The random seed.
+        seed : None, int or numpy.random.Generator
+            The random seed or generator to use.
         dist : str
             The distribution to use. Can be one of ``"normal"``, ``"uniform"``,
             etc., see :func:`numpy.random.default_rng` for details.
@@ -1248,7 +1248,7 @@ class SymmetricArray(BlockArray):
         lines = [
             (
                 f"{self.__class__.__name__}(ndim={self.ndim}, "
-                f"charge_total={self.charge_total}, dims=["
+                f"charge_total={self.charge_total}, indices=["
             )
         ]
         for i in range(self.ndim):
@@ -1264,16 +1264,17 @@ class SymmetricArray(BlockArray):
         return "\n".join(lines)
 
     def __repr__(self):
+        pattern = "".join("-" if f else "+" for f in self.flows)
         return "".join(
             [
                 f"{self.__class__.__name__}(",
                 (
-                    f"shape~{self.shape}, flows={self.flows}, "
+                    f"shape~{self.shape}:" f"[{pattern}]"
                     if self.indices
                     else f"{self.get_any_array()}, "
                 ),
-                f"charge_total={self._charge_total}, ",
-                f"num_blocks={self.num_blocks})",
+                f", charge_total={self._charge_total}",
+                f", num_blocks={self.num_blocks})",
             ]
         )
 

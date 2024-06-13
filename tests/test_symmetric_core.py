@@ -80,6 +80,7 @@ def test_symmetricarray_reshape(symmetry, shape0, shape1):
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("subsizes", ("maximal", "equal"))
 @pytest.mark.parametrize(
     "shape1,shape2,axes",
     [
@@ -88,12 +89,20 @@ def test_symmetricarray_reshape(symmetry, shape0, shape1):
         ((4,), (5,), 0),
     ],
 )
-def test_tensordot(symmetry, shape1, shape2, axes):
+def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
     a = sr.utils.get_rand_symmetric(
-        symmetry, shape1, flows=[False] * len(shape1), charge_total=1
+        symmetry,
+        shape1,
+        flows=[False] * len(shape1),
+        charge_total=1,
+        subsizes=subsizes,
     )
     b = sr.utils.get_rand_symmetric(
-        symmetry, shape2, flows=[True] * len(shape2), charge_total=1
+        symmetry,
+        shape2,
+        flows=[True] * len(shape2),
+        charge_total=1,
+        subsizes=subsizes,
     )
     c = ar.do("tensordot", a, b, axes=axes)
     if symmetry == "U1":
