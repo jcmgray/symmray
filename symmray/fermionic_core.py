@@ -81,27 +81,29 @@ class FermionicArray(SymmetricArray):
         """
         new = self if inplace else self.copy()
 
+        old_phases = new.phases
+
         if axes is None:
             axes = tuple(range(new.ndim - 1, -1, -1))
 
         if phase:
             # compute new sector phases
-            permuted_phases = {}
+            new_phases = {}
             for sector in new.sectors:
                 parities = tuple(new.symmetry.parity(q) for q in sector)
                 perm_phase = calc_phase_permutation(parities, axes)
-                new_phase = new._phases.get(sector, 1) * perm_phase
+                new_phase = old_phases.get(sector, 1) * perm_phase
                 if new_phase == -1:
                     # only populate non-trivial phases
-                    permuted_phases[permuted(sector, axes)] = -1
-            new._phases = permuted_phases
-
+                    new_phases[permuted(sector, axes)] = -1
         else:
             # just permute the phase keys
-            new._phases = {
+            new_phases = {
                 permuted(sector, axes): phase
-                for sector, phase in new._phases.items()
+                for sector, phase in old_phases.items()
             }
+
+        new._phases = new_phases
 
         # transpose block arrays
         SymmetricArray.transpose(new, axes, inplace=True)
@@ -273,7 +275,6 @@ class FermionicArray(SymmetricArray):
         new_blocks = {}
         new_phases = {}
         for sector, array in new.blocks.items():
-
             new_sector = sector[::-1]
 
             if new._phases.pop(sector, 1) == -1:
@@ -302,6 +303,12 @@ class FermionicArray(SymmetricArray):
         from symmray.symmetric_core import calc_fuse_info
 
         new = self.copy()
+
+        # handle empty groups
+        axes_groups = tuple(filter(None, axes_groups))
+        if not axes_groups:
+            # ... and no groups -> nothing to do
+            return new
 
         # first make groups into contiguous blocks using fermionic transpose
         perm = calc_fuse_info(axes_groups, new.flows)[2]
@@ -332,7 +339,6 @@ class FermionicArray(SymmetricArray):
         # if the fused axes is overall bra, need phases from effective flip
         #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
         if virtual_perm is not None:
-            print("fuse virtual_perm:", virtual_perm)
             new = new.phase_virtual_transpose(
                 tuple(virtual_perm), inplace=True
             )
@@ -341,29 +347,42 @@ class FermionicArray(SymmetricArray):
 
         return SymmetricArray.fuse(new, *axes_groups)
 
-    def unfuse(self, axis):
-        raise NotImplementedError
-        # sub_indices = self.indices[axis].subinfo.indices
-        # flow0 = sub_indices[0].flow
-        # axes_flip = [
-        #     axis + i for i, ix in enumerate(sub_indices) if (ix.flow != flow0)
-        # ]
+    # def unfuse(self, axis):
+    #     raise NotImplementedError
+    # sub_indices = self.indices[axis].subinfo.indices
+    # flow0 = sub_indices[0].flow
+    # axes_flip = [
+    #     axis + i for i, ix in enumerate(sub_indices) if (ix.flow != flow0)
+    # ]
 
-        # new = super().unfuse(axis)
+    # new = super().unfuse(axis)
 
-        # if axes_flip:
-        #     print("unfuse flips:", axes_flip)
-        #     new.phase_flip(*axes_flip, inplace=True)
+    # if axes_flip:
+    #     print("unfuse flips:", axes_flip)
+    #     new.phase_flip(*axes_flip, inplace=True)
 
-        # new.phase_resolve(inplace=True)
+    # new.phase_resolve(inplace=True)
 
-        # return new
+    # return new
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases
         multiplied in.
         """
         return SymmetricArray.to_dense(self.phase_resolve())
+
+    def allclose(self, other, **kwargs):
+        """Check if two fermionic arrays are element-wise equal within a
+        tolerance, accounting for phases.
+
+        Parameters
+        ----------
+        other : FermionicArray
+            The other fermionic array to compare.
+        """
+        return SymmetricArray.allclose(
+            self.phase_resolve(), other.phase_resolve()
+        )
 
 
 @tensordot.register(FermionicArray)

@@ -920,9 +920,8 @@ class SymmetricArray(BlockArray):
             The axes to fuse. Each group of axes will be fused into a single
             axis.
         """
-        # XXX: error or warn about empty groups?
-
         # handle empty groups
+        # XXX: error or warn about empty groups?
         axes_groups = tuple(filter(None, axes_groups))
         if not axes_groups:
             # ... and no groups -> nothing to do
