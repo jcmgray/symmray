@@ -5,14 +5,17 @@ import numpy as np
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "U1"])
-def test_fermi_norm(symmetry):
+@pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
+@pytest.mark.parametrize("seed", range(3))
+def test_fermi_norm(symmetry, subsizes, seed):
     x = sr.utils.get_rand_symmetric(
         symmetry,
         (3, 4, 5, 6),
         fermionic=True,
+        subsizes=subsizes,
+        seed=seed,
     )
     x.phase_flip(1, 3, inplace=True)
-    assert x.phases
     ne = x.norm()
     xc = x.conj()
     assert xc.phases != x.phases
@@ -33,10 +36,31 @@ def test_fermi_norm(symmetry):
     assert ne == pytest.approx(n4)
 
 
-# def test_transpose():
-#     rng = np.random.default_rng(seed)
-#     x = get_rand_u1_fermionic_array((3, 4, 5, 6), seed=rng)
-#     perm = tuple(rng.permutation(x.ndim))
+@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+@pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
+@pytest.mark.parametrize("seed", range(3))
+def test_transpose(symmetry, subsizes, seed):
+    rng = sr.utils.get_rng(seed)
+    x = sr.utils.get_rand_symmetric(
+        symmetry,
+        (2, 3, 2, 3, 2),
+        seed=rng,
+        fermionic=True,
+        subsizes=subsizes,
+    )
+    perm = tuple(rng.permutation(x.ndim))
+    y = x.transpose(perm)
+    y.phase_resolve(inplace=True)
+    x = x.transpose(perm)
+    perm = tuple(rng.permutation(x.ndim))
+    y = x.transpose(perm)
+    y.phase_resolve(inplace=True)
+    x = x.transpose(perm)
+    perm = tuple(rng.permutation(x.ndim))
+    y = x.transpose(perm)
+    y.phase_resolve(inplace=True)
+    x = x.transpose(perm)
+    assert x.allclose(y)
 
 
 @pytest.mark.parametrize("seed", range(100))
