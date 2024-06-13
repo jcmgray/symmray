@@ -292,7 +292,6 @@ def svd_truncated(
     VH.indices[0]._chargemap = new_inner_chargemap.copy()
 
     if absorb is None:
-
         if DEBUG:
             U.check()
             U.check_with(s, 1)

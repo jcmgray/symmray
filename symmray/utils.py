@@ -8,6 +8,7 @@ def get_rand_z2array(
     charge_total=0,
     seed=None,
     dist="normal",
+    fermionic=False,
 ):
     """Generate a random Z2Array with the given shape, with charge sectors and
     flows automatically determined.
@@ -37,7 +38,12 @@ def get_rand_z2array(
     if flows is None:
         flows = [i < ndim // 2 for i in range(ndim)]
 
-    return sr.Z2Array.random(
+    if fermionic:
+        cls = sr.Z2FermionicArray
+    else:
+        cls = sr.Z2Array
+
+    return cls.random(
         indices=[
             sr.BlockIndex(
                 {0: d // 2 + d % 2, 1: d // 2} if d > 1 else {0: 1},
@@ -52,7 +58,12 @@ def get_rand_z2array(
 
 
 def get_rand_u1array(
-    shape, flows=None, charge_total=0, seed=None, dist="normal"
+    shape,
+    flows=None,
+    charge_total=0,
+    seed=None,
+    dist="normal",
+    fermionic=False,
 ):
     """Generate a random U1Array with the given shape, with charge sectors and
     flows automatically determined.
@@ -82,7 +93,12 @@ def get_rand_u1array(
     if flows is None:
         flows = [i < ndim // 2 for i in range(ndim)]
 
-    return sr.U1Array.random(
+    if fermionic:
+        cls = sr.U1FermionicArray
+    else:
+        cls = sr.U1Array
+
+    return cls.random(
         indices=[
             sr.BlockIndex(
                 {c: 1 for c in range(-d // 2 + 1, d // 2 + 1)},
@@ -103,6 +119,7 @@ def get_rand_symmetric(
     charge_total=0,
     seed=None,
     dist="normal",
+    fermionic=False,
 ):
     if flows is not None:
         assert len(flows) == len(shape)
@@ -114,6 +131,7 @@ def get_rand_symmetric(
             charge_total=charge_total,
             seed=seed,
             dist=dist,
+            fermionic=fermionic,
         )
     elif symmetry == "U1":
         return get_rand_u1array(
@@ -122,6 +140,7 @@ def get_rand_symmetric(
             charge_total=charge_total,
             seed=seed,
             dist=dist,
+            fermionic=fermionic,
         )
     else:
         raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")

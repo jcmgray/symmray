@@ -12,3 +12,7 @@ def expm(x):
     new = x.copy()
     new.apply_to_arrays(_expm)
     return new
+
+
+# register non-scipy version
+ar.register_function("symmray", "linalg.expm", expm)

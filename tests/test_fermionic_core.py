@@ -4,28 +4,13 @@ import symmray as sr
 import numpy as np
 
 
-def get_rand_z2fermionicarray(shape, flows=None, charge_total=0):
-    ndim = len(shape)
-
-    if flows is None:
-        flows = [i < ndim // 2 for i in range(ndim)]
-
-    x = sr.Z2FermionicArray.random(
-        indices=[
-            sr.BlockIndex(
-                {0: d // 2 + d % 2, 1: d // 2},
-                flow=f,
-            )
-            for d, f in zip(shape, flows)
-        ],
-        charge_total=charge_total,
+@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+def test_fermi_norm(symmetry):
+    x = sr.utils.get_rand_symmetric(
+        symmetry, (3, 4, 5, 6),
+        fermionic=True,
     )
     x.phase_flip(1, 3, inplace=True)
-    return x
-
-
-def test_fermi_norm():
-    x = get_rand_z2fermionicarray((3, 4, 5, 6))
     assert x.phases
     ne = x.norm()
     xc = x.conj()
@@ -45,6 +30,12 @@ def test_fermi_norm():
     xx = sr.tensordot(x, xd, axes=[(0, 1, 2, 3), (3, 2, 1, 0)])
     n4 = float(xx) ** 0.5
     assert ne == pytest.approx(n4)
+
+
+# def test_transpose():
+#     rng = np.random.default_rng(seed)
+#     x = get_rand_u1_fermionic_array((3, 4, 5, 6), seed=rng)
+#     perm = tuple(rng.permutation(x.ndim))
 
 
 @pytest.mark.parametrize("seed", range(10))

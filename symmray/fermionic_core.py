@@ -79,27 +79,34 @@ class FermionicArray(SymmetricArray):
         FermionicArray
             The transposed array.
         """
-        x = self if inplace else self.copy()
+        new = self if inplace else self.copy()
 
         if axes is None:
-            axes = tuple(range(x.ndim - 1, -1, -1))
+            axes = tuple(range(new.ndim - 1, -1, -1))
 
         if phase:
             # compute new sector phases
             permuted_phases = {}
-            for sector in x.sectors:
-                parities = tuple(x.symmetry.parity(q) for q in sector)
+            for sector in new.sectors:
+                parities = tuple(new.symmetry.parity(q) for q in sector)
                 perm_phase = calc_phase_permutation(parities, axes)
-                new_phase = x._phases.get(sector, 1) * perm_phase
+                new_phase = new._phases.get(sector, 1) * perm_phase
                 if new_phase == -1:
                     # only populate non-trivial phases
                     permuted_phases[permuted(sector, axes)] = -1
-            x._phases = permuted_phases
+            new._phases = permuted_phases
+
+        else:
+            # just permute the phase keys
+            new._phases = {
+                permuted(sector, axes): phase
+                for sector, phase in new._phases.items()
+            }
 
         # transpose block arrays
-        SymmetricArray.transpose(x, axes, inplace=True)
+        SymmetricArray.transpose(new, axes, inplace=True)
 
-        return x
+        return new
 
     def phase_flip(self, *axs, inplace=False):
         """Flip the phase of all sectors with odd parity at the given axis.
@@ -226,7 +233,7 @@ class FermionicArray(SymmetricArray):
                 phase_new = (
                     # start with old phase
                     new._phases.get(sector, 1)
-                    # get the phase from reversing all axes:
+                    # get the phase from 'virtually' reversing all axes:
                     #     (perm=[ndim-1, ..., 0])
                     * calc_phase_permutation(parities, None)
                     # get the phase from conjugating 'bra' indices
@@ -241,7 +248,7 @@ class FermionicArray(SymmetricArray):
         return new
 
     def dagger(self, phase=True, inplace=False):
-        """Fermionic conjugate transpose.
+        """Fermionic adjoint.
 
         Parameters
         ----------
@@ -260,15 +267,23 @@ class FermionicArray(SymmetricArray):
         _conj = ar.get_lib_fn(new.backend, "conj")
         _transpose = ar.get_lib_fn(new.backend, "transpose")
 
-        new_indices = tuple(ax.conj() for ax in reversed(new.indices))
+        new_indices = tuple(ix.conj() for ix in reversed(new.indices))
 
         # conjugate transpose all arrays
         new_blocks = {}
+        new_phases = {}
         for sector, array in new.blocks.items():
-            new_blocks[sector[::-1]] = _transpose(_conj(array))
+
+            new_sector = sector[::-1]
+
+            if new._phases.pop(sector, 1) == -1:
+                new_phases[new_sector] = -1
+
+            new_blocks[new_sector] = _transpose(_conj(array))
 
         new._indices = new_indices
         new._blocks = new_blocks
+        new._phases = new_phases
 
         if phase:
             axs_conj = tuple(
