@@ -180,7 +180,7 @@ class FermionicArray(SymmetricArray):
 
         return new
 
-    def phase_resolve(self, inplace=False):
+    def phase_sync(self, inplace=False):
         """Multiply all lazy phases into the block arrays.
 
         Parameters
@@ -397,7 +397,7 @@ class FermionicArray(SymmetricArray):
             )
 
         # insert phases
-        new.phase_resolve(inplace=True)
+        new.phase_sync(inplace=True)
 
         # so we can do the actual block concatenations
         return SymmetricArray.fuse(new, *axes_groups)
@@ -432,7 +432,7 @@ class FermionicArray(SymmetricArray):
                 virtual_perm[axis + i] = axis + nnew - i - 1
 
         # need to insert actual phases prior to block operations
-        new = self.phase_resolve(inplace=inplace)
+        new = self.phase_sync(inplace=inplace)
         # do the non-fermionic actual block unfusing
         new = SymmetricArray.unfuse(new, axis, inplace=True)
 
@@ -442,7 +442,7 @@ class FermionicArray(SymmetricArray):
                 new.phase_flip(*axes_flip, inplace=True)
             new.phase_virtual_transpose(tuple(virtual_perm), inplace=True)
 
-        # new.phase_resolve(inplace=True)
+        # new.phase_sync(inplace=True)
 
         return new
 
@@ -459,7 +459,7 @@ class FermionicArray(SymmetricArray):
         """Return dense representation of the fermionic array, with lazy phases
         multiplied in.
         """
-        return SymmetricArray.to_dense(self.phase_resolve())
+        return SymmetricArray.to_dense(self.phase_sync())
 
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a
@@ -470,9 +470,7 @@ class FermionicArray(SymmetricArray):
         other : FermionicArray
             The other fermionic array to compare.
         """
-        return SymmetricArray.allclose(
-            self.phase_resolve(), other.phase_resolve()
-        )
+        return SymmetricArray.allclose(self.phase_sync(), other.phase_sync())
 
 
 @tensordot.register(FermionicArray)
@@ -536,8 +534,8 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
         b.phase_flip(*axs_flip, inplace=True)
 
     # actually multiply block arrays with phases
-    a.phase_resolve(inplace=True)
-    b.phase_resolve(inplace=True)
+    a.phase_sync(inplace=True)
+    b.phase_sync(inplace=True)
 
     # perform blocked contraction!
     c = tensordot_symmetric(a, b, axes=(new_axes_a, new_axes_b), **kwargs)
