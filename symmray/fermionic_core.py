@@ -442,8 +442,6 @@ class FermionicArray(SymmetricArray):
                 new.phase_flip(*axes_flip, inplace=True)
             new.phase_virtual_transpose(tuple(virtual_perm), inplace=True)
 
-        # new.phase_sync(inplace=True)
-
         return new
 
     def __matmul__(self, other):

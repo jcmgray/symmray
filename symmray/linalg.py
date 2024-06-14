@@ -263,10 +263,10 @@ def svd_truncated(
 
             if cutoff_mode in (4, 6):
                 # rsum1 or rsum2: relative cumulative cutoff
-                cond = cum_spow > cutoff * cum_spow[-1]
+                cond = cum_spow >= cutoff * cum_spow[-1]
             else:
                 # sum1 or sum2: absolute cumulative cutoff
-                cond = cum_spow > cutoff
+                cond = cum_spow >= cutoff
 
             # translate to total number of singular values to keep
             n_chi_all = ar.do("count_nonzero", cond, like=backend)
@@ -275,7 +275,7 @@ def svd_truncated(
 
         if 0 < max_bond < ar.size(sall):
             # also take into account a total maximum bond
-            max_bond_cutoff = sall[-max_bond - 1]
+            max_bond_cutoff = sall[-max_bond]
             if max_bond_cutoff > abs_cutoff:
                 abs_cutoff = max_bond_cutoff
 
