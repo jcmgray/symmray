@@ -22,23 +22,25 @@ class BlockIndex:
     ----------
     chargemap : dict[int, int]
         A mapping from charge to size.
-    flow : bool, optional
-        Whether the index flows 'inwards' / (+ve) = ``False`` or 'outwards' /
-        (-ve) = ``True``. I.e. the sign is given by ``(-1) ** flow``.
+    dual : bool, optional
+        Whether the index is 'dual' or not, i.e. whether the flow is
+        'outwards' / (+ve) / ket-like = ``False`` or 'inwards' / (-ve) /
+        bra-like = ``True``. The sign of charge contributions is then
+        ``(-1) ** dual``.
     subinfo : SubIndexInfo, optional
         Information about the subindices of this index and their extents if
         this index was formed from fusing.
     """
 
-    __slots__ = ("_chargemap", "_flow", "_subinfo")
+    __slots__ = ("_chargemap", "_dual", "_subinfo")
 
-    def __init__(self, chargemap, flow=False, subinfo=None):
+    def __init__(self, chargemap, dual=False, subinfo=None):
         # ensure always sorted
         if not isinstance(chargemap, dict):
             self._chargemap = dict(sorted(chargemap))
         else:
             self._chargemap = dict(sorted(chargemap.items()))
-        self._flow = bool(flow)
+        self._dual = bool(dual)
         self._subinfo = subinfo
 
     @property
@@ -47,11 +49,12 @@ class BlockIndex:
         return self._chargemap
 
     @property
-    def flow(self):
-        """Whether the index flows 'inwards' / (+ve) = ``False`` or 'outwards'
-        / (-ve) = ``True``. I.e. the sign is given by ``(-1) ** flow``.
+    def dual(self):
+        """Whether the index flows 'inwards' / (+ve) / ket-like = ``False`` or
+        'outwards' / (-ve) / bra-like= ``True``. The charge sign is given by
+        ``(-1) ** dual``.
         """
-        return self._flow
+        return self._dual
 
     @property
     def subinfo(self):
@@ -86,15 +89,15 @@ class BlockIndex:
         """A copy of this index."""
         new = self.__new__(self.__class__)
         new._chargemap = self._chargemap.copy()
-        new._flow = self._flow
+        new._dual = self._dual
         new._subinfo = self._subinfo
         return new
 
     def conj(self):
-        """A copy of this index with the flow reversed."""
+        """A copy of this index with the dualness reversed."""
         new = self.__new__(self.__class__)
         new._chargemap = self._chargemap.copy()
-        new._flow = not self._flow
+        new._dual = not self._dual
         new._subinfo = None if self._subinfo is None else self._subinfo.conj()
         return new
 
@@ -116,7 +119,7 @@ class BlockIndex:
 
     def matches(self, other):
         """Whether this index matches ``other`` index, namely, whether the
-        ``chargemap`` of each matches, their flows are opposite, and also
+        ``chargemap`` of each matches, their dualnesses are opposite, and also
         whether their subindices match, if they have any. For debugging.
 
         Parameters
@@ -126,7 +129,7 @@ class BlockIndex:
         """
         return (
             dicts_dont_conflict(self.chargemap, other.chargemap)
-            and (self.flow ^ other.flow)
+            and (self.dual ^ other.dual)
             and (
                 (self.subinfo is other.subinfo is None)
                 or (self.subinfo.matches(other.subinfo))
@@ -137,7 +140,7 @@ class BlockIndex:
         return hash(
             (
                 tuple(self._chargemap.items()),
-                self._flow,
+                self._dual,
                 self._subinfo,
             )
         )
@@ -146,7 +149,7 @@ class BlockIndex:
         lines = [
             f"({self.size_total} = "
             f"{'+'.join(map(str, self.chargemap.values()))} "
-            f": {'-' if self.flow else '+'}"
+            f": {'-' if self.dual else '+'}"
             f"[{','.join(map(str, self.chargemap.keys()))}])"
         ]
 
@@ -165,7 +168,7 @@ class BlockIndex:
         return "".join(
             [
                 f"{self.__class__.__name__}(",
-                f"chargemap={self.chargemap}, flow={self.flow}",
+                f"chargemap={self.chargemap}, dual={self.dual}",
                 (
                     f", subinfo={self.subinfo}"
                     if self.subinfo is not None
@@ -205,7 +208,7 @@ class SubIndexInfo:
         self.extents = extents
 
     def conj(self):
-        """A copy of this subindex information with the relevant flows
+        """A copy of this subindex information with the relevant dualnesses
         reversed.
         """
         new = self.__new__(self.__class__)
@@ -342,16 +345,16 @@ def reshape_to_unfuse_axes(indices, newshape):
 
 
 @functools.lru_cache(2**14)
-def calc_fuse_info(axes_groups, flows):
-    ndim = len(flows)
+def calc_fuse_info(axes_groups, duals):
+    ndim = len(duals)
 
     # which group does each axis appear in, if any
     ax2group = {}
-    # what flow each group has
-    group_flows = []
+    # whether each group is overall dual
+    group_duals = []
     for g, gaxes in enumerate(axes_groups):
-        # take the flow of the group to match the first axis
-        group_flows.append(flows[gaxes[0]])
+        # take the dual-ness of the group to match the first axis
+        group_duals.append(duals[gaxes[0]])
         for ax in gaxes:
             ax2group[ax] = g
     # assign `None` to ungrouped axes
@@ -389,7 +392,7 @@ def calc_fuse_info(axes_groups, flows):
         axes_before,
         axes_after,
         ax2group,
-        group_flows,
+        group_duals,
         new_axes,
     )
 
@@ -478,9 +481,9 @@ class SymmetricArray(BlockBase):
         return tuple(ix.charges for ix in self._indices)
 
     @property
-    def flows(self):
-        """The flows of each index."""
-        return tuple(ix.flow for ix in self._indices)
+    def duals(self):
+        """The dual-ness of each index."""
+        return tuple(ix.dual for ix in self._indices)
 
     @property
     def charge_total(self):
@@ -513,10 +516,10 @@ class SymmetricArray(BlockBase):
                 self._indices[i].chargemap.pop(c)
 
     def gen_signed_sectors(self):
-        flows = self.flows
+        duals = self.duals
         for sector in self.blocks:
             yield tuple(
-                self.symmetry.negate(c, f) for c, f in zip(sector, flows)
+                self.symmetry.negate(c, f) for c, f in zip(sector, duals)
             )
 
     def get_sparsity(self):
@@ -534,8 +537,8 @@ class SymmetricArray(BlockBase):
         total symmetry charge is satisfied.
         """
         signed_sector = (
-            self.symmetry.negate(c, i.flow)
-            for c, i in zip(sector, self._indices)
+            self.symmetry.negate(c, ix.dual)
+            for c, ix in zip(sector, self._indices)
         )
         block_charge = self.symmetry.combine(*signed_sector)
         return block_charge == self.charge_total
@@ -558,9 +561,8 @@ class SymmetricArray(BlockBase):
         for sector, array in self.blocks.items():
             if not self.is_valid_sector(sector):
                 raise ValueError(
-                    f"Invalid sector {sector} for array with "
-                    f"flows {self.flows} and charge total "
-                    f"{self.charge_total}."
+                    f"Invalid sector {sector} for array with {self.duals}"
+                    f" and charge total {self.charge_total}."
                 )
 
             if not all(
@@ -707,16 +709,16 @@ class SymmetricArray(BlockBase):
         return cls.from_fill_fn(fill_fn, indices, charge_total)
 
     @classmethod
-    def from_blocks(cls, blocks, flows, charge_total=None):
+    def from_blocks(cls, blocks, duals, charge_total=None):
         """Create a block array from a dictionary of blocks and sequence of
-        flows.
+        duals.
 
         Parameters
         ----------
         blocks : dict[tuple[hashable], array_like]
             A mapping of each 'sector' (tuple of charges) to the data array.
-        flows : tuple[bool]
-            The flow of each index.
+        duals : tuple[bool]
+            The dual-ness of each index.
         charge_total : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
@@ -747,18 +749,18 @@ class SymmetricArray(BlockBase):
                         f" with charge {c}: {d_existing} != {d}."
                     )
 
-        flows = tuple(flows)
-        if len(flows) != ndim:
-            raise ValueError(f"Expected {ndim} flows, got {len(flows)}.")
+        duals = tuple(duals)
+        if len(duals) != ndim:
+            raise ValueError(f"Expected {ndim} duals, got {len(duals)}.")
 
         self._indices = tuple(
-            BlockIndex(x, f) for x, f in zip(charge_size_maps, flows)
+            BlockIndex(x, f) for x, f in zip(charge_size_maps, duals)
         )
 
         return self
 
     @classmethod
-    def from_dense(cls, array, index_maps, flows, charge_total=None):
+    def from_dense(cls, array, index_maps, duals, charge_total=None):
         """Create a block array from a dense array by supplying a mapping for
         each axis that labels each linear index with a particular charge.
 
@@ -770,8 +772,8 @@ class SymmetricArray(BlockBase):
             A mapping for each axis that labels each linear index with a
             particular charge. There should be ``ndim`` such mappings, each of
             size ``shape[i]``.
-        flows : tuple[bool]
-            The flow of each index.
+        duals : tuple[bool]
+            The dualness of each index.
         charge_total : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
@@ -807,8 +809,8 @@ class SymmetricArray(BlockBase):
             else:
                 # we have reached a fully specified block
                 signed_sector = tuple(
-                    cls.symmetry.negate(charge, flow)
-                    for charge, flow in zip(sector, flows)
+                    cls.symmetry.negate(charge, dual)
+                    for charge, dual in zip(sector, duals)
                 )
                 if cls.symmetry.combine(*signed_sector) == charge_total:
                     # ... but only add valid ones:
@@ -819,8 +821,8 @@ class SymmetricArray(BlockBase):
 
         # generate the indices -> the charge_map is simply the group size
         indices = [
-            BlockIndex({c: len(g) for c, g in charge_group.items()}, flow=flow)
-            for charge_group, flow in zip(charge_groups, flows)
+            BlockIndex({c: len(g) for c, g in charge_group.items()}, dual=dual)
+            for charge_group, dual in zip(charge_groups, duals)
         ]
 
         # create the block array!
@@ -940,9 +942,9 @@ class SymmetricArray(BlockBase):
             axes_before,
             axes_after,
             ax2group,
-            group_flows,
+            group_duals,
             new_axes,
-        ) = calc_fuse_info(axes_groups, self.flows)
+        ) = calc_fuse_info(axes_groups, self.duals)
 
         # then we process the blocks one by one into new fused sectors
         new_blocks = {}
@@ -976,12 +978,12 @@ class SymmetricArray(BlockBase):
                     # fusing: need to accumulate
                     new_shape[new_ax] *= d
                     subsectors[g].append(c)
-                    # need to match current flow to group flow
-                    flowed_c = self.symmetry.negate(
-                        c, group_flows[g] ^ ix.flow
+                    # need to match current dualness to group dualness
+                    signed_c = self.symmetry.negate(
+                        c, group_duals[g] ^ ix.dual
                     )
                     new_sector[new_ax] = self.symmetry.combine(
-                        new_sector[new_ax], flowed_c
+                        new_sector[new_ax], signed_c
                     )
 
             # make hashable
@@ -1027,7 +1029,7 @@ class SymmetricArray(BlockBase):
             *(
                 BlockIndex(
                     chargemap=chargemaps[g],
-                    flow=group_flows[g],
+                    dual=group_duals[g],
                     # for unfusing
                     subinfo=SubIndexInfo(
                         indices=tuple(old_indices[i] for i in axes_groups[g]),
@@ -1293,7 +1295,7 @@ class SymmetricArray(BlockBase):
         return "\n".join(lines)
 
     def __repr__(self):
-        pattern = "".join("-" if f else "+" for f in self.flows)
+        pattern = "".join("-" if f else "+" for f in self.duals)
         return "".join(
             [
                 f"{self.__class__.__name__}(",

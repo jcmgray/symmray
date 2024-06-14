@@ -200,9 +200,10 @@ class FermionicArray(SymmetricArray):
                 new._blocks[sector] = -new._blocks[sector]
         return new
 
-    def phase_virtual_transpose(self, axes=None, inplace=False):
+    def phase_transpose(self, axes=None, inplace=False):
         """Phase this fermionic array as if it were transposed virtually, i.e.
-        the actual arrays are not transposed.
+        the actual arrays are not transposed. Useful when one wants the actual
+        data layout to differ from the required fermionic mode layout.
 
         Parameters
         ----------
@@ -238,7 +239,7 @@ class FermionicArray(SymmetricArray):
     def conj(self, phase=True, inplace=False):
         """Conjugate this fermionic array. By default this include phases from
         both the virtual flipping of all axes, and the conjugation of dual
-        (flow=True) indices, such that::
+        indices, such that::
 
             (
                 tensordot_fermionic(x.conj(), x, ndim) ==
@@ -255,7 +256,7 @@ class FermionicArray(SymmetricArray):
         _conj = ar.get_lib_fn(new.backend, "conj")
 
         new._indices = tuple(ix.conj() for ix in new.indices)
-        axs_conj = tuple(ax for ax, ix in enumerate(new._indices) if ix.flow)
+        axs_conj = tuple(ax for ax, ix in enumerate(new._indices) if ix.dual)
 
         for sector, array in new.blocks.items():
             # conjugate the actual array
@@ -320,7 +321,7 @@ class FermionicArray(SymmetricArray):
 
         if phase:
             axs_conj = tuple(
-                ax for ax, ix in enumerate(new_indices) if ix.flow
+                ax for ax, ix in enumerate(new_indices) if ix.dual
             )
             new.phase_flip(*axs_conj, inplace=True)
 
@@ -361,7 +362,7 @@ class FermionicArray(SymmetricArray):
             return new
 
         # first make groups into contiguous blocks using fermionic transpose
-        perm = calc_fuse_info(axes_groups, new.flows)[2]
+        perm = calc_fuse_info(axes_groups, new.duals)[2]
         # this is the first step which introduces phases
         new.transpose(perm, inplace=True)
         # update groups to reflect new axes
@@ -371,11 +372,11 @@ class FermionicArray(SymmetricArray):
         axes_flip = []
         virtual_perm = None
         for group in axes_groups:
-            if new.indices[group[0]].flow:
+            if new.indices[group[0]].dual:
                 # overall dual index:
                 # 1. flip non dual sub indices
                 for ax in group:
-                    if not new.indices[ax].flow:
+                    if not new.indices[ax].dual:
                         axes_flip.append(ax)
 
                 # 2. virtual transpose within group
@@ -392,7 +393,7 @@ class FermionicArray(SymmetricArray):
         #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
         #   but actual array layout should not be flipped, so do virtually
         if virtual_perm is not None:
-            new = new.phase_virtual_transpose(
+            new = new.phase_transpose(
                 tuple(virtual_perm), inplace=True
             )
 
@@ -415,7 +416,7 @@ class FermionicArray(SymmetricArray):
         """
         index = self.indices[axis]
 
-        if index.flow:
+        if index.dual:
             sub_indices = self.indices[axis].subinfo.indices
             # if overall index is dual, need to (see fermionic fuse):
             #     1. flip not dual sub indices back
@@ -426,7 +427,7 @@ class FermionicArray(SymmetricArray):
             virtual_perm = list(range(self.ndim + nnew - 1))
 
             for i, ix in enumerate(sub_indices):
-                if not ix.flow:
+                if not ix.dual:
                     axes_flip.append(axis + i)
                 # reverse the order of the groups subindices
                 virtual_perm[axis + i] = axis + nnew - i - 1
@@ -436,11 +437,11 @@ class FermionicArray(SymmetricArray):
         # do the non-fermionic actual block unfusing
         new = SymmetricArray.unfuse(new, axis, inplace=True)
 
-        if index.flow:
+        if index.dual:
             # apply the phase changes
             if axes_flip:
                 new.phase_flip(*axes_flip, inplace=True)
-            new.phase_virtual_transpose(tuple(virtual_perm), inplace=True)
+            new.phase_transpose(tuple(virtual_perm), inplace=True)
 
         return new
 
@@ -448,7 +449,7 @@ class FermionicArray(SymmetricArray):
         if self.ndim != 2 or other.ndim != 2:
             raise ValueError("Matrix multiplication requires 2D arrays.")
 
-        if not other.indices[0].flow:
+        if not other.indices[0].dual:
             other = other.phase_flip(0)
 
         return super().__matmul__(other)
@@ -503,32 +504,27 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
     right_axes = without(range(ndim_b), axes_b)
     ncon = len(axes_a)
 
-    # permute a & b so we have axes like [..., x, y, z], [z, y, x, ...]
+    # permute a & b so we have axes like
+    #     in terms of data layout => [..., x, y, z], [x, y, z, ...]
     perm_a = (*left_axes, *axes_a)
-    # perm_b = (*reversed(axes_b), *right_axes)
-    # perm_b = (*axes_b, *right_axes)
-    # perm_a = (*left_axes, *reversed(axes_a))
     perm_b = (*axes_b, *right_axes)
     a = a.transpose(perm_a)
     b = b.transpose(perm_b)
+    #     but in terms of 'phase layout' =>  [..., x, y, z], [z, y, x, ...]
+    b.phase_transpose(
+        (*range(ncon - 1, -1, -1), *range(ncon, b.ndim)), inplace=True
+    )
 
     # new axes for tensordot_symmetric having permuted inputs
     new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
-    # new_axes_b = tuple(range(ncon - 1, -1, -1))
-    # new_axes_b = tuple(range(ncon))
-    # new_axes_a = tuple(reversed(range(ndim_a - ncon, ndim_a)))
     new_axes_b = tuple(range(ncon))
 
-    b.phase_virtual_transpose(
-        (*reversed(range(ncon)), *range(ncon, b.ndim)), inplace=True
-    )
-
-    # use reverse flows to calculate phase_flips
+    # if contracted index is like |x><x| phase flip to get <x|x>
     if a.size <= b.size:
-        axs_flip = tuple(ax for ax in new_axes_a if a.indices[ax].flow)
+        axs_flip = tuple(ax for ax in new_axes_a if a.indices[ax].dual)
         a.phase_flip(*axs_flip, inplace=True)
     else:
-        axs_flip = tuple(ax for ax in new_axes_b if not b.indices[ax].flow)
+        axs_flip = tuple(ax for ax in new_axes_b if not b.indices[ax].dual)
         b.phase_flip(*axs_flip, inplace=True)
 
     # actually multiply block arrays with phases
@@ -562,7 +558,7 @@ class Z2FermionicArray(FermionicArray):
 
         data = SparseFermionTensor(
             blocks,
-            pattern=["-" if f else "+" for f in self.flows],
+            pattern=["-" if f else "+" for f in self.duals],
         )
 
         data.shape = self.shape

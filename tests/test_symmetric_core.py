@@ -5,15 +5,15 @@ from numpy.testing import assert_allclose
 import symmray as sr
 
 
-@pytest.mark.parametrize("flow", (False, True))
-def test_block_index_basics(flow):
+@pytest.mark.parametrize("dual", (False, True))
+def test_block_index_basics(dual):
     ix = sr.BlockIndex(
         chargemap={
             -2: 3,
             0: 1,
             1: 2,
         },
-        flow=flow,
+        dual=dual,
     )
     ix.check()
     assert ix.size_total == 6
@@ -93,14 +93,14 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
     a = sr.utils.get_rand(
         symmetry,
         shape1,
-        flows=[False] * len(shape1),
+        duals=[False] * len(shape1),
         charge_total=1,
         subsizes=subsizes,
     )
     b = sr.utils.get_rand(
         symmetry,
         shape2,
-        flows=[True] * len(shape2),
+        duals=[True] * len(shape2),
         charge_total=1,
         subsizes=subsizes,
     )

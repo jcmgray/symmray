@@ -10,7 +10,7 @@ def get_rng(seed=None):
 
 def rand_z2_index(
     d,
-    flow=None,
+    dual=None,
     subsizes=None,
     seed=None,
 ):
@@ -20,8 +20,8 @@ def rand_z2_index(
     ----------
     d : int
         The total size of the index.
-    flow : bool, optional
-        The flow of the index. If None, it is randomly chosen.
+    dual : bool, optional
+        The dualness of the index. If None, it is randomly chosen.
     subsizes : None, "equal", "maximal", or tuple of int, optional
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). For
@@ -37,12 +37,12 @@ def rand_z2_index(
 
     rng = get_rng(seed)
 
-    if flow is None:
-        flow = rng.choice([False, True])
+    if dual is None:
+        dual = rng.choice([False, True])
 
     if d == 1:
         charge = int(rng.choice([0, 1]))
-        return sr.BlockIndex(chargemap={charge: 1}, flow=flow)
+        return sr.BlockIndex(chargemap={charge: 1}, dual=dual)
 
     if subsizes is None:
         d0 = int(rng.integers(1, d))
@@ -53,7 +53,7 @@ def rand_z2_index(
     else:
         d0, d1 = subsizes
 
-    return sr.BlockIndex(chargemap={0: d0, 1: d1}, flow=flow)
+    return sr.BlockIndex(chargemap={0: d0, 1: d1}, dual=dual)
 
 
 def rand_partition(d, n, seed=None):
@@ -72,7 +72,7 @@ def rand_partition(d, n, seed=None):
 
 def rand_u1_index(
     d,
-    flow=None,
+    dual=None,
     subsizes=None,
     seed=None,
 ):
@@ -82,8 +82,8 @@ def rand_u1_index(
     ----------
     d : int
         The total size of the index.
-    flow : bool, optional
-        The flow of the index. If None, it is randomly chosen.
+    dual : bool, optional
+        The dualness of the index. If None, it is randomly chosen.
     subsizes : None, "equal", or tuple of int, optional
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
@@ -99,8 +99,8 @@ def rand_u1_index(
 
     rng = get_rng(seed)
 
-    if flow is None:
-        flow = rng.choice([False, True])
+    if dual is None:
+        dual = rng.choice([False, True])
 
     if subsizes is None:
         ncharge = rng.integers(1, d + 1)
@@ -119,25 +119,25 @@ def rand_u1_index(
 
     charges = range(-ncharge // 2 + 1, ncharge // 2 + 1)
 
-    return sr.BlockIndex(chargemap=dict(zip(charges, subsizes)), flow=flow)
+    return sr.BlockIndex(chargemap=dict(zip(charges, subsizes)), dual=dual)
 
 
-def choose_flows(flows, ndim):
-    if flows == "equal":
+def choose_duals(duals, ndim):
+    if duals == "equal":
         return [i >= ndim // 2 for i in range(ndim)]
-    elif flows is None:
+    elif duals is None:
         return [None] * ndim
     else:
-        if len(flows) != ndim:
+        if len(duals) != ndim:
             raise ValueError(
-                f"Length of flows ({len(flows)}) does not match ndim ({ndim})."
+                f"Length of duals ({len(duals)}) does not match ndim ({ndim})."
             )
-        return flows
+        return duals
 
 
 def get_rand_z2array(
     shape,
-    flows=None,
+    duals=None,
     charge_total=0,
     seed=None,
     dist="normal",
@@ -145,15 +145,15 @@ def get_rand_z2array(
     subsizes=None,
 ):
     """Generate a random Z2Array with the given shape, with charge sectors and
-    flows automatically determined.
+    duals automatically determined.
 
     Parameters
     ----------
     shape : tuple of int
         The overall shape of the array.
-    flows : list of bool, optional
-        The flow of each dimension. If None, the flow is set to False for the
-        first half of the dimensions and True for the second half.
+    duals : list of bool, optional
+        The dualness of each dimension. If None, the dual is set to False for
+        the first half of the dimensions and True for the second half.
     charge_total : int, optional
         The total charge of the array.
     seed : int, optional
@@ -169,7 +169,7 @@ def get_rand_z2array(
 
     rng = get_rng(seed)
 
-    flows = choose_flows(flows, len(shape))
+    duals = choose_duals(duals, len(shape))
 
     if fermionic:
         cls = sr.Z2FermionicArray
@@ -178,8 +178,8 @@ def get_rand_z2array(
 
     return cls.random(
         indices=[
-            rand_z2_index(d, flow=f, subsizes=subsizes, seed=rng)
-            for d, f in zip(shape, flows)
+            rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+            for d, f in zip(shape, duals)
         ],
         charge_total=charge_total,
         seed=seed,
@@ -189,7 +189,7 @@ def get_rand_z2array(
 
 def get_rand_u1array(
     shape,
-    flows=None,
+    duals=None,
     charge_total=0,
     seed=None,
     dist="normal",
@@ -197,15 +197,15 @@ def get_rand_u1array(
     subsizes=None,
 ):
     """Generate a random U1Array with the given shape, with charge sectors and
-    flows automatically determined.
+    duals automatically determined.
 
     Parameters
     ----------
     shape : tuple of int
         The overall shape of the array.
-    flows : list of bool, optional
-        The flow of each dimension. If None, the flow is set to True for the
-        first half of the dimensions and False for the second half.
+    duals : list of bool, optional
+        The dualness of each dimension. If None, then dual is set to False for
+        the first half of the dimensions and True for the second half.
     charge_total : int, optional
         The total charge of the array.
     seed : int, optional
@@ -224,7 +224,7 @@ def get_rand_u1array(
 
     rng = get_rng(seed)
 
-    flows = choose_flows(flows, len(shape))
+    duals = choose_duals(duals, len(shape))
 
     if fermionic:
         cls = sr.U1FermionicArray
@@ -234,7 +234,7 @@ def get_rand_u1array(
     return cls.random(
         indices=[
             rand_u1_index(d, f, subsizes=subsizes, seed=rng)
-            for d, f in zip(shape, flows)
+            for d, f in zip(shape, duals)
         ],
         charge_total=charge_total,
         seed=seed,
@@ -245,7 +245,7 @@ def get_rand_u1array(
 def get_rand(
     symmetry,
     shape,
-    flows=None,
+    duals=None,
     charge_total=0,
     seed=None,
     dist="normal",
@@ -261,10 +261,10 @@ def get_rand(
         The symmetry of the array.
     shape : tuple of int
         The desired overall effective shape of the array.
-    flows : None, "equals", or Sequence[bool], optional
-        The flow of each index. If None, the flows are chosen randomly. If
-        "equal", the flows are chosen so the first half of the indices have
-        flow False and the second half have flow True.
+    duals : None, "equals", or Sequence[bool], optional
+        The dualness of each index. If None, the dualnesses are chosen
+        randomly. If "equal", they are chosen so the first half of the
+        indices have `dual=False` and the second half have `dual=True`.
     charge_total : int, optional
         The total charge of the array.
     seed : None, int, or numpy.random.Generator, optional
@@ -290,7 +290,7 @@ def get_rand(
 
     return fn(
         shape,
-        flows=flows,
+        duals=duals,
         charge_total=charge_total,
         seed=seed,
         dist=dist,

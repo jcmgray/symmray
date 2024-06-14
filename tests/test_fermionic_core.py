@@ -13,7 +13,7 @@ def test_fermi_norm(symmetry, subsizes, seed):
         (3, 4, 5, 6),
         fermionic=True,
         subsizes=subsizes,
-        flows="equal",
+        duals="equal",
         seed=seed,
     )
     x.phase_flip(1, 3, inplace=True)
@@ -69,11 +69,11 @@ def test_fuse_with_tensordot(seed):
     rng = np.random.default_rng(seed)
 
     ixs = {
-        "a": sr.BlockIndex({0: 2, 1: 3}, flow=rng.choice([0, 1])),
-        "b": sr.BlockIndex({0: 3, 1: 4}, flow=rng.choice([0, 1])),
-        "c": sr.BlockIndex({0: 4, 1: 5}, flow=rng.choice([0, 1])),
-        "d": sr.BlockIndex({0: 2, 1: 1}, flow=rng.choice([0, 1])),
-        "e": sr.BlockIndex({0: 1, 1: 2}, flow=rng.choice([0, 1])),
+        "a": sr.BlockIndex({0: 2, 1: 3}, dual=rng.choice([0, 1])),
+        "b": sr.BlockIndex({0: 3, 1: 4}, dual=rng.choice([0, 1])),
+        "c": sr.BlockIndex({0: 4, 1: 5}, dual=rng.choice([0, 1])),
+        "d": sr.BlockIndex({0: 2, 1: 1}, dual=rng.choice([0, 1])),
+        "e": sr.BlockIndex({0: 1, 1: 2}, dual=rng.choice([0, 1])),
     }
 
     ndim_left = rng.integers(1, 6)
@@ -226,11 +226,11 @@ def test_transpose_vs_pyblock3(seed):
     rng = np.random.default_rng(seed)
 
     ixs = [
-        sr.BlockIndex({0: 2, 1: 3}, flow=rng.choice([0, 1])),
-        sr.BlockIndex({0: 3, 1: 2}, flow=rng.choice([0, 1])),
-        sr.BlockIndex({0: 3, 1: 3}, flow=rng.choice([0, 1])),
-        sr.BlockIndex({0: 2, 1: 2}, flow=rng.choice([0, 1])),
-        sr.BlockIndex({0: 2, 1: 2}, flow=rng.choice([0, 1])),
+        sr.BlockIndex({0: 2, 1: 3}, dual=rng.choice([0, 1])),
+        sr.BlockIndex({0: 3, 1: 2}, dual=rng.choice([0, 1])),
+        sr.BlockIndex({0: 3, 1: 3}, dual=rng.choice([0, 1])),
+        sr.BlockIndex({0: 2, 1: 2}, dual=rng.choice([0, 1])),
+        sr.BlockIndex({0: 2, 1: 2}, dual=rng.choice([0, 1])),
     ]
     x = sr.Z2FermionicArray.random(
         indices=ixs,
@@ -264,10 +264,10 @@ def test_tensordot_vs_pyblock3(seed, method):
     rng = np.random.default_rng(seed)
 
     ixs = {
-        "a": sr.BlockIndex({0: 2, 1: 3}, flow=rng.choice([1])),
-        "b": sr.BlockIndex({0: 3, 1: 4}, flow=rng.choice([1])),
-        "c": sr.BlockIndex({0: 4, 1: 5}, flow=rng.choice([1])),
-        "d": sr.BlockIndex({0: 2, 1: 1}, flow=rng.choice([1])),
+        "a": sr.BlockIndex({0: 2, 1: 3}, dual=rng.choice([1])),
+        "b": sr.BlockIndex({0: 3, 1: 4}, dual=rng.choice([1])),
+        "c": sr.BlockIndex({0: 4, 1: 5}, dual=rng.choice([1])),
+        "d": sr.BlockIndex({0: 2, 1: 1}, dual=rng.choice([1])),
     }
     sx = "".join(rng.permutation(list(ixs)))
     sy = "".join(rng.permutation(list(ixs)))

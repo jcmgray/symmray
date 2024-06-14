@@ -79,11 +79,11 @@ def qr(x, stabilized=False):
         q, r = _qr(array)
         q_blocks[sector] = q
         new_chargemap[sector[1]] = ar.shape(q)[1]
-        # on r charge_total is 0, and flows always opposite
+        # on r charge_total is 0, and dualnesses always opposite
         r_sector = (sector[1], sector[1])
         r_blocks[r_sector] = r
 
-    bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
+    bond_index = BlockIndex(chargemap=new_chargemap, dual=x.indices[1].dual)
     q = x.__class__(
         indices=(x.indices[0].copy(), bond_index),
         charge_total=x.charge_total,
@@ -107,7 +107,7 @@ def qr(x, stabilized=False):
 def qr_fermionic(x, stabilized=False):
     q, r = qr.dispatch(SymmetricArray)(x, stabilized=stabilized)
 
-    if not r.indices[0].flow:
+    if not r.indices[0].dual:
         r.phase_flip(0, inplace=True)
 
     return q, r
@@ -136,14 +136,14 @@ def svd(x):
     for sector, array in x.blocks.items():
         u, s, v = _svd(array)
         u_blocks[sector] = u
-        # v charge_total is 0, and flows always opposite
+        # v charge_total is 0, and dualnesses always opposite
         s_charge = sector[1]
         v_sector = (s_charge, s_charge)
         s_store[s_charge] = s
         v_blocks[v_sector] = v
         new_chargemap[sector[1]] = ar.shape(u)[1]
 
-    bond_index = BlockIndex(chargemap=new_chargemap, flow=x.indices[1].flow)
+    bond_index = BlockIndex(chargemap=new_chargemap, dual=x.indices[1].dual)
     u = x.__class__(
         indices=(x.indices[0], bond_index),
         charge_total=x.charge_total,
@@ -171,7 +171,7 @@ def svd(x):
 def svd_fermionic(x):
     u, s, vh = svd.dispatch(SymmetricArray)(x)
 
-    if not vh.indices[0].flow:
+    if not vh.indices[0].dual:
         vh.phase_flip(0, inplace=True)
 
     return u, s, vh
