@@ -94,21 +94,21 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
         symmetry,
         shape1,
         duals=[False] * len(shape1),
-        charge_total=1,
+        charge=1,
         subsizes=subsizes,
     )
     b = sr.utils.get_rand(
         symmetry,
         shape2,
         duals=[True] * len(shape2),
-        charge_total=1,
+        charge=1,
         subsizes=subsizes,
     )
     c = ar.do("tensordot", a, b, axes=axes)
     if symmetry == "U1":
-        assert c.charge_total == 2
+        assert c.charge == 2
     else:
-        assert c.charge_total == 0
+        assert c.charge == 0
     d = ar.do("tensordot", a.to_dense(), b.to_dense(), axes=axes)
     assert_allclose(c.to_dense(), d)
 

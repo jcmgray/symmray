@@ -79,19 +79,19 @@ def qr(x, stabilized=False):
         q, r = _qr(array)
         q_blocks[sector] = q
         new_chargemap[sector[1]] = ar.shape(q)[1]
-        # on r charge_total is 0, and dualnesses always opposite
+        # on r charge is 0, and dualnesses always opposite
         r_sector = (sector[1], sector[1])
         r_blocks[r_sector] = r
 
     bond_index = BlockIndex(chargemap=new_chargemap, dual=x.indices[1].dual)
     q = x.__class__(
         indices=(x.indices[0].copy(), bond_index),
-        charge_total=x.charge_total,
+        charge=x.charge,
         blocks=q_blocks,
     )
     r = x.__class__(
         indices=(bond_index.conj(), x.indices[1].copy()),
-        charge_total=x.symmetry.combine(),
+        charge=x.symmetry.combine(),
         blocks=r_blocks,
     )
 
@@ -136,7 +136,7 @@ def svd(x):
     for sector, array in x.blocks.items():
         u, s, v = _svd(array)
         u_blocks[sector] = u
-        # v charge_total is 0, and dualnesses always opposite
+        # v charge is 0, and dualnesses always opposite
         s_charge = sector[1]
         v_sector = (s_charge, s_charge)
         s_store[s_charge] = s
@@ -146,13 +146,13 @@ def svd(x):
     bond_index = BlockIndex(chargemap=new_chargemap, dual=x.indices[1].dual)
     u = x.__class__(
         indices=(x.indices[0], bond_index),
-        charge_total=x.charge_total,
+        charge=x.charge,
         blocks=u_blocks,
     )
     s = BlockVector(s_store)
     v = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
-        charge_total=x.symmetry.combine(),
+        charge=x.symmetry.combine(),
         blocks=v_blocks,
     )
 
@@ -354,7 +354,7 @@ def eigh(x):
             "eigh only implemented for 2D SymmetricArrays,"
             f" got {x.ndim}D. Consider fusing first."
         )
-    if x.charge_total != x.symmetry.combine():
+    if x.charge != x.symmetry.combine():
         raise ValueError("Total charge much be the identity (zero) element.")
 
     _eigh = ar.get_lib_fn(x.backend, "linalg.eigh")

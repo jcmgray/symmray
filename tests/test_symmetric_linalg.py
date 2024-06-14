@@ -12,7 +12,7 @@ import symmray as sr
 @pytest.mark.parametrize("f1", [False, True])
 @pytest.mark.parametrize("c", [0, 1])
 def test_qr_basics(symmetry, d0, d1, f0, f1, c):
-    x = sr.utils.get_rand(symmetry, (d0, d1), duals=[f0, f1], charge_total=c)
+    x = sr.utils.get_rand(symmetry, (d0, d1), duals=[f0, f1], charge=c)
     x.check()
     q, r = sr.linalg.qr(x)
     q.check()
@@ -31,7 +31,7 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
         symmetry,
         (d0, d1),
         duals=[f0, f1],
-        charge_total=c,
+        charge=c,
         subsizes="maximal",
     )
     x.check()

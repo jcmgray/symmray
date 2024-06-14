@@ -16,7 +16,7 @@ from .utils import DEBUG
 
 
 class BlockIndex:
-    """An index of a blocked tensor.
+    """An index of a block symmetric tensor.
 
     Parameters
     ----------
@@ -400,7 +400,7 @@ def calc_fuse_info(axes_groups, duals):
 _symmetricarray_slots = (
     "_indices",
     "_blocks",
-    "_charge_total",
+    "_charge",
 )
 
 
@@ -411,7 +411,7 @@ class SymmetricArray(BlockBase):
     ----------
     indices : tuple[BlockIndex]
         The indices of the array.
-    charge_total : hashable, optionals
+    charge : hashable, optionals
         The total charge of the array, if not given it will be inferred from
         either the first sector or set to the identity charge, if no sectors
         are given.
@@ -424,22 +424,22 @@ class SymmetricArray(BlockBase):
     def __init__(
         self,
         indices,
-        charge_total=None,
+        charge=None,
         blocks=(),
     ):
         self._indices = tuple(indices)
         self._blocks = dict(blocks)
 
-        if charge_total is None:
+        if charge is None:
             if self._blocks:
                 # infer the charge total from any sector
                 sector = next(iter(self._blocks))
-                self._charge_total = self.symmetry.combine(*sector)
+                self._charge = self.symmetry.combine(*sector)
             else:
                 # default to the identity charge
-                self._charge_total = self.symmetry.combine()
+                self._charge = self.symmetry.combine()
         else:
-            self._charge_total = charge_total
+            self._charge = charge
 
         if DEBUG:
             self.check()
@@ -448,16 +448,14 @@ class SymmetricArray(BlockBase):
         """Copy this block array."""
         new = self.__new__(self.__class__)
         new._indices = self._indices
-        new._charge_total = self._charge_total
+        new._charge = self._charge
         new._blocks = self._blocks.copy()
         return new
 
-    def copy_with(self, indices=None, charge_total=None, blocks=None):
+    def copy_with(self, indices=None, charge=None, blocks=None):
         new = self.__new__(self.__class__)
         new._indices = self._indices if indices is None else indices
-        new._charge_total = (
-            self._charge_total if charge_total is None else charge_total
-        )
+        new._charge = self._charge if charge is None else charge
         new._blocks = self._blocks.copy() if blocks is None else blocks
 
         if DEBUG:
@@ -486,9 +484,9 @@ class SymmetricArray(BlockBase):
         return tuple(ix.dual for ix in self._indices)
 
     @property
-    def charge_total(self):
+    def charge(self):
         """The total charge of the array."""
-        return self._charge_total
+        return self._charge
 
     @property
     def shape(self):
@@ -527,7 +525,7 @@ class SymmetricArray(BlockBase):
         divided by the number of possible blocks.
         """
         num_possible_blocks = sum(
-            self.symmetry.combine(*sector) == self.charge_total
+            self.symmetry.combine(*sector) == self.charge
             for sector in self.gen_signed_sectors()
         )
         return self.num_blocks / num_possible_blocks
@@ -541,7 +539,7 @@ class SymmetricArray(BlockBase):
             for c, ix in zip(sector, self._indices)
         )
         block_charge = self.symmetry.combine(*signed_sector)
-        return block_charge == self.charge_total
+        return block_charge == self.charge
 
     def gen_valid_sectors(self):
         """Generate all valid sectors for the block array."""
@@ -562,7 +560,7 @@ class SymmetricArray(BlockBase):
             if not self.is_valid_sector(sector):
                 raise ValueError(
                     f"Invalid sector {sector} for array with {self.duals}"
-                    f" and charge total {self.charge_total}."
+                    f" and charge total {self.charge}."
                 )
 
             if not all(
@@ -648,7 +646,7 @@ class SymmetricArray(BlockBase):
         cls,
         fill_fn,
         indices,
-        charge_total=None,
+        charge=None,
     ):
         """Generate a block array from a filling function. Every valid sector
         will be filled with the result of the filling function.
@@ -659,7 +657,7 @@ class SymmetricArray(BlockBase):
             The filling function, with signature ``fill_fn(shape)``.
         indices : tuple[BlockIndex]
             The indices of the array.
-        charge_total : hashable
+        charge : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
         """
@@ -667,10 +665,10 @@ class SymmetricArray(BlockBase):
 
         self._indices = tuple(indices)
 
-        if charge_total is None:
-            self._charge_total = cls.symmetry.combine()
+        if charge is None:
+            self._charge = cls.symmetry.combine()
         else:
-            self._charge_total = charge_total
+            self._charge = charge
 
         self._blocks = {
             sector: fill_fn(self.get_block_shape(sector))
@@ -682,14 +680,14 @@ class SymmetricArray(BlockBase):
         return self
 
     @classmethod
-    def random(cls, indices, charge_total=None, seed=None, dist="normal"):
+    def random(cls, indices, charge=None, seed=None, dist="normal"):
         """Create a block array with random values.
 
         Parameters
         ----------
         indices : tuple[BlockIndex]
             The indices of the array.
-        charge_total : hashable
+        charge : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
         seed : None, int or numpy.random.Generator
@@ -706,10 +704,10 @@ class SymmetricArray(BlockBase):
         def fill_fn(shape):
             return rand_fn(size=shape)
 
-        return cls.from_fill_fn(fill_fn, indices, charge_total)
+        return cls.from_fill_fn(fill_fn, indices, charge)
 
     @classmethod
-    def from_blocks(cls, blocks, duals, charge_total=None):
+    def from_blocks(cls, blocks, duals, charge=None):
         """Create a block array from a dictionary of blocks and sequence of
         duals.
 
@@ -719,7 +717,7 @@ class SymmetricArray(BlockBase):
             A mapping of each 'sector' (tuple of charges) to the data array.
         duals : tuple[bool]
             The dual-ness of each index.
-        charge_total : hashable
+        charge : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
 
@@ -728,10 +726,10 @@ class SymmetricArray(BlockBase):
         SymmetricArray
         """
         self = cls.__new__(cls)
-        if charge_total is None:
-            self._charge_total = cls.symmetry.combine()
+        if charge is None:
+            self._charge = cls.symmetry.combine()
         else:
-            self._charge_total = charge_total
+            self._charge = charge
         self._blocks = dict(blocks)
 
         ndim = len(next(iter(blocks.keys())))
@@ -760,7 +758,7 @@ class SymmetricArray(BlockBase):
         return self
 
     @classmethod
-    def from_dense(cls, array, index_maps, duals, charge_total=None):
+    def from_dense(cls, array, index_maps, duals, charge=None):
         """Create a block array from a dense array by supplying a mapping for
         each axis that labels each linear index with a particular charge.
 
@@ -774,14 +772,14 @@ class SymmetricArray(BlockBase):
             size ``shape[i]``.
         duals : tuple[bool]
             The dualness of each index.
-        charge_total : hashable
+        charge : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
         """
         # XXX: warn if invalid blocks are non-zero?
 
-        if charge_total is None:
-            charge_total = cls.symmetry.combine()
+        if charge is None:
+            charge = cls.symmetry.combine()
 
         # first we work out which indices of which axes belong to which charges
         charge_groups = []
@@ -812,7 +810,7 @@ class SymmetricArray(BlockBase):
                     cls.symmetry.negate(charge, dual)
                     for charge, dual in zip(sector, duals)
                 )
-                if cls.symmetry.combine(*signed_sector) == charge_total:
+                if cls.symmetry.combine(*signed_sector) == charge:
                     # ... but only add valid ones:
                     blocks[sector] = ary
 
@@ -826,7 +824,7 @@ class SymmetricArray(BlockBase):
         ]
 
         # create the block array!
-        return cls(blocks=blocks, indices=indices, charge_total=charge_total)
+        return cls(blocks=blocks, indices=indices, charge=charge)
 
     def to_dense(self):
         """Convert this block array to a dense array."""
@@ -863,7 +861,7 @@ class SymmetricArray(BlockBase):
         _conj = ar.get_lib_fn(new.backend, "conj")
         new.apply_to_arrays(_conj)
         new._indices = tuple(ix.conj() for ix in self._indices)
-        new._charge_total = self.symmetry.negate(self._charge_total)
+        new._charge = self.symmetry.negate(self._charge)
 
         if DEBUG:
             new.check()
@@ -1279,7 +1277,7 @@ class SymmetricArray(BlockBase):
         lines = [
             (
                 f"{self.__class__.__name__}(ndim={self.ndim}, "
-                f"charge_total={self.charge_total}, indices=["
+                f"charge={self.charge}, indices=["
             )
         ]
         for i in range(self.ndim):
@@ -1304,7 +1302,7 @@ class SymmetricArray(BlockBase):
                     if self.indices
                     else f"{self.get_any_array()}, "
                 ),
-                f", charge_total={self._charge_total}",
+                f", charge={self._charge}",
                 f", num_blocks={self.num_blocks})",
             ]
         )
@@ -1375,7 +1373,7 @@ def tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
 
     new = a.__new__(a.__class__)
     new._indices = without(a.indices, axes_a) + without(b.indices, axes_b)
-    new._charge_total = new.symmetry.combine(a.charge_total, b.charge_total)
+    new._charge = new.symmetry.combine(a.charge, b.charge)
     new._blocks = new_blocks
     return new
 
@@ -1443,7 +1441,7 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
         # no aligned sectors, return empty array
         return a.copy_with(
             indices=without(a.indices, axes_a) + without(b.indices, axes_b),
-            charge_total=a.symmetry.combine(a.charge_total, b.charge_total),
+            charge=a.symmetry.combine(a.charge, b.charge),
             blocks={},
         )
 

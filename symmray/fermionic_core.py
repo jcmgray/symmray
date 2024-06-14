@@ -19,8 +19,10 @@ class FermionicArray(SymmetricArray):
     ----------
     indices : tuple of Index
         The indices of the array.
-    charge_total : int
-        The total charge of the array, should have even parity.
+    charge : hashable, optionals
+        The total charge of the array, if not given it will be inferred from
+        either the first sector or set to the identity charge, if no sectors
+        are given.
     blocks : dict, optional
         The blocks of the array, by default empty.
     phases : dict, optional
@@ -32,15 +34,13 @@ class FermionicArray(SymmetricArray):
     def __init__(
         self,
         indices,
-        charge_total,
+        charge=None,
         blocks=(),
         phases=(),
     ):
-        super().__init__(
-            indices=indices, charge_total=charge_total, blocks=blocks
-        )
+        super().__init__(indices=indices, charge=charge, blocks=blocks)
         self._phases = dict(phases)
-        if self.symmetry.parity(self.charge_total):
+        if self.symmetry.parity(self.charge):
             raise ValueError("Total charge must be even parity.")
 
     @property
@@ -66,9 +66,7 @@ class FermionicArray(SymmetricArray):
         new._phases = self.phases.copy()
         return new
 
-    def copy_with(
-        self, indices=None, blocks=None, charge_total=None, phases=None
-    ):
+    def copy_with(self, indices=None, blocks=None, charge=None, phases=None):
         """Create a copy of this fermionic array with some attributes replaced.
 
         Parameters
@@ -77,17 +75,15 @@ class FermionicArray(SymmetricArray):
             The new indices, if None, the original indices are used.
         blocks : dict, optional
             The new blocks, if None, the original blocks are used.
-        charge_total : int, optional
+        charge : int, optional
             The new total charge, if None, the original charge is used.
         phases : dict, optional
             The new phases, if None, the original phases are used.
         """
-        new = super().copy_with(
-            indices=indices, blocks=blocks, charge_total=charge_total
-        )
+        new = super().copy_with(indices=indices, blocks=blocks, charge=charge)
         new._phases = self.phases.copy() if phases is None else phases
 
-        if new.symmetry.parity(new.charge_total):
+        if new.symmetry.parity(new.charge):
             raise ValueError("Total charge must be even parity.")
 
         return new

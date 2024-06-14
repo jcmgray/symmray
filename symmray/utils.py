@@ -138,7 +138,7 @@ def choose_duals(duals, ndim):
 def get_rand_z2array(
     shape,
     duals=None,
-    charge_total=0,
+    charge=0,
     seed=None,
     dist="normal",
     fermionic=False,
@@ -154,7 +154,7 @@ def get_rand_z2array(
     duals : list of bool, optional
         The dualness of each dimension. If None, the dual is set to False for
         the first half of the dimensions and True for the second half.
-    charge_total : int, optional
+    charge : int, optional
         The total charge of the array.
     seed : int, optional
         The seed for the random number generator.
@@ -181,7 +181,7 @@ def get_rand_z2array(
             rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, duals)
         ],
-        charge_total=charge_total,
+        charge=charge,
         seed=seed,
         dist=dist,
     )
@@ -190,7 +190,7 @@ def get_rand_z2array(
 def get_rand_u1array(
     shape,
     duals=None,
-    charge_total=0,
+    charge=0,
     seed=None,
     dist="normal",
     fermionic=False,
@@ -206,7 +206,7 @@ def get_rand_u1array(
     duals : list of bool, optional
         The dualness of each dimension. If None, then dual is set to False for
         the first half of the dimensions and True for the second half.
-    charge_total : int, optional
+    charge : int, optional
         The total charge of the array.
     seed : int, optional
         The seed for the random number generator.
@@ -236,7 +236,7 @@ def get_rand_u1array(
             rand_u1_index(d, f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, duals)
         ],
-        charge_total=charge_total,
+        charge=charge,
         seed=seed,
         dist=dist,
     )
@@ -246,7 +246,7 @@ def get_rand(
     symmetry,
     shape,
     duals=None,
-    charge_total=0,
+    charge=0,
     seed=None,
     dist="normal",
     fermionic=False,
@@ -265,7 +265,7 @@ def get_rand(
         The dualness of each index. If None, the dualnesses are chosen
         randomly. If "equal", they are chosen so the first half of the
         indices have `dual=False` and the second half have `dual=True`.
-    charge_total : int, optional
+    charge : int, optional
         The total charge of the array.
     seed : None, int, or numpy.random.Generator, optional
         The seed for the random number generator.
@@ -291,7 +291,7 @@ def get_rand(
     return fn(
         shape,
         duals=duals,
-        charge_total=charge_total,
+        charge=charge,
         seed=seed,
         dist=dist,
         fermionic=fermionic,

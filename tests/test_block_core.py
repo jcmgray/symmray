@@ -9,7 +9,7 @@ import symmray as sr
 @pytest.mark.parametrize("op", ["mul", "truediv"])
 def test_block_scalar_operations(op):
     fn = getattr(operator, op)
-    x = sr.utils.get_rand("Z2", (7, 5, 6), duals=(1, 0, 1), charge_total=0)
+    x = sr.utils.get_rand("Z2", (7, 5, 6), duals=(1, 0, 1), charge=0)
     y = 3.14
     z = fn(x, y)
     assert_allclose(
