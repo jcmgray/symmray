@@ -171,7 +171,11 @@ def test_fuse_with_tensordot(seed):
 def test_fuse_unfuse(symmetry, seed, subsizes):
     rng = sr.utils.get_rng(seed)
     x = sr.utils.get_rand(
-        symmetry, (2, 3, 4, 3, 4), fermionic=True, seed=rng, subsizes=subsizes
+        symmetry,
+        (2, 3, 4, 3, 4),
+        fermionic=True,
+        seed=rng,
+        subsizes=subsizes,
     )
     nfuse = rng.integers(1, x.ndim)
     axes = tuple(rng.choice(x.ndim, size=nfuse, replace=False))
@@ -186,6 +190,33 @@ def test_fuse_unfuse(symmetry, seed, subsizes):
     y = xf.unfuse(position)
     yt = y.transpose(perm_back)
     assert x.allclose(yt)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+@pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
+@pytest.mark.parametrize("seed", range(10))
+def test_fuse_unfuse_matrix(symmetry, seed, subsizes):
+    rng = np.random.default_rng(seed)
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=(2, 3, 4, 5, 6),
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        subsizes=subsizes,
+    )
+
+    axes = tuple(rng.permutation(x.ndim))
+    nleft = rng.integers(1, x.ndim - 1)
+
+    axes_left = axes[:nleft]
+    axes_right = axes[nleft:]
+    order = (*axes_left, *axes_right)
+    perm_back = tuple(order.index(i) for i in range(x.ndim))
+
+    xf = x.fuse(axes_left, axes_right)
+
+    assert xf.unfuse_all().transpose(perm_back).allclose(x)
 
 
 @pytest.mark.parametrize("seed", range(10))

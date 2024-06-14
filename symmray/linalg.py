@@ -3,7 +3,8 @@ import functools
 import autoray as ar
 
 from .block_core import BlockVector
-from .symmetric_core import BlockIndex
+from .fermionic_core import FermionicArray
+from .symmetric_core import BlockIndex, SymmetricArray
 from .utils import DEBUG
 
 
@@ -42,6 +43,7 @@ def _get_qr_fn(backend, stabilized=False):
     return _qr
 
 
+@functools.singledispatch
 def qr(x, stabilized=False):
     """QR decomposition of a SymmetricArray.
 
@@ -101,11 +103,22 @@ def qr(x, stabilized=False):
     return q, r
 
 
+@qr.register(FermionicArray)
+def qr_fermionic(x, stabilized=False):
+    q, r = qr.dispatch(SymmetricArray)(x, stabilized=stabilized)
+
+    if not r.indices[0].flow:
+        r.phase_flip(0, inplace=True)
+
+    return q, r
+
+
 def qr_stabilized(x):
     q, r = qr(x, stabilized=True)
     return q, None, r
 
 
+@functools.singledispatch
 def svd(x):
     if x.ndim != 2:
         raise NotImplementedError(
@@ -152,6 +165,16 @@ def svd(x):
         v.check_with(s, 0)
 
     return u, s, v
+
+
+@svd.register(FermionicArray)
+def svd_fermionic(x):
+    u, s, vh = svd.dispatch(SymmetricArray)(x)
+
+    if not vh.indices[0].flow:
+        vh.phase_flip(0, inplace=True)
+
+    return u, s, vh
 
 
 def argsort(seq):

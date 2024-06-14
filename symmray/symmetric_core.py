@@ -1207,6 +1207,7 @@ class SymmetricArray(BlockBase):
         if self.ndim != 2 or other.ndim != 2:
             raise ValueError("Matrix multiplication requires 2D arrays.")
 
+        # block diagonal -> shortcut to tensordot
         return tensordot_blockwise(
             self,
             other,

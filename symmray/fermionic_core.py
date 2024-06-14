@@ -418,7 +418,7 @@ class FermionicArray(SymmetricArray):
         if index.flow:
             sub_indices = self.indices[axis].subinfo.indices
             # if overall index is dual, need to (see fermionic fuse):
-            #     1. flip dual sub indices back
+            #     1. flip not dual sub indices back
             #     2. perform virtual transpose within group
 
             nnew = len(sub_indices)
@@ -431,8 +431,10 @@ class FermionicArray(SymmetricArray):
                 # reverse the order of the groups subindices
                 virtual_perm[axis + i] = axis + nnew - i - 1
 
+        # need to insert actual phases prior to block operations
+        new = self.phase_resolve(inplace=inplace)
         # do the non-fermionic actual block unfusing
-        new = super().unfuse(axis, inplace=inplace)
+        new = SymmetricArray.unfuse(new, axis, inplace=True)
 
         if index.flow:
             # apply the phase changes
@@ -443,6 +445,15 @@ class FermionicArray(SymmetricArray):
         # new.phase_resolve(inplace=True)
 
         return new
+
+    def __matmul__(self, other):
+        if self.ndim != 2 or other.ndim != 2:
+            raise ValueError("Matrix multiplication requires 2D arrays.")
+
+        if not other.indices[0].flow:
+            other = other.phase_flip(0)
+
+        return super().__matmul__(other)
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases
