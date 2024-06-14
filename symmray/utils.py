@@ -122,6 +122,19 @@ def rand_u1_index(
     return sr.BlockIndex(chargemap=dict(zip(charges, subsizes)), flow=flow)
 
 
+def choose_flows(flows, ndim):
+    if flows == "equal":
+        return [i >= ndim // 2 for i in range(ndim)]
+    elif flows is None:
+        return [None] * ndim
+    else:
+        if len(flows) != ndim:
+            raise ValueError(
+                f"Length of flows ({len(flows)}) does not match ndim ({ndim})."
+            )
+        return flows
+
+
 def get_rand_z2array(
     shape,
     flows=None,
@@ -156,10 +169,7 @@ def get_rand_z2array(
 
     rng = get_rng(seed)
 
-    ndim = len(shape)
-
-    if flows is None:
-        flows = [i >= ndim // 2 for i in range(ndim)]
+    flows = choose_flows(flows, len(shape))
 
     if fermionic:
         cls = sr.Z2FermionicArray
@@ -212,10 +222,9 @@ def get_rand_u1array(
     """
     import symmray as sr
 
-    ndim = len(shape)
+    rng = get_rng(seed)
 
-    if flows is None:
-        flows = [i >= ndim // 2 for i in range(ndim)]
+    flows = choose_flows(flows, len(shape))
 
     if fermionic:
         cls = sr.U1FermionicArray
@@ -224,7 +233,7 @@ def get_rand_u1array(
 
     return cls.random(
         indices=[
-            rand_u1_index(d, f, subsizes=subsizes)
+            rand_u1_index(d, f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, flows)
         ],
         charge_total=charge_total,
@@ -233,7 +242,7 @@ def get_rand_u1array(
     )
 
 
-def get_rand_symmetric(
+def get_rand(
     symmetry,
     shape,
     flows=None,
@@ -242,32 +251,53 @@ def get_rand_symmetric(
     dist="normal",
     fermionic=False,
     subsizes=None,
+    **kwargs,
 ):
-    if flows is not None:
-        assert len(flows) == len(shape)
+    """Get a random symmray array.
 
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the array.
+    shape : tuple of int
+        The desired overall effective shape of the array.
+    flows : None, "equals", or Sequence[bool], optional
+        The flow of each index. If None, the flows are chosen randomly. If
+        "equal", the flows are chosen so the first half of the indices have
+        flow False and the second half have flow True.
+    charge_total : int, optional
+        The total charge of the array.
+    seed : None, int, or numpy.random.Generator, optional
+        The seed for the random number generator.
+    dist : str, optional
+        The distribution of the random numbers. Can be "normal" or "uniform".
+    fermionic : bool, optional
+        Whether to generate a fermionic array.
+    subsizes : None, "equal", or tuple of int, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders).
+
+    Returns
+    -------
+    SymmetricArray or FermionicArray
+    """
     if symmetry == "Z2":
-        return get_rand_z2array(
-            shape,
-            flows=flows,
-            charge_total=charge_total,
-            seed=seed,
-            dist=dist,
-            fermionic=fermionic,
-            subsizes=subsizes,
-        )
+        fn = get_rand_z2array
     elif symmetry == "U1":
-        return get_rand_u1array(
-            shape,
-            flows=flows,
-            charge_total=charge_total,
-            seed=seed,
-            dist=dist,
-            fermionic=fermionic,
-            subsizes=subsizes,
-        )
+        fn = get_rand_u1array
     else:
         raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
+
+    return fn(
+        shape,
+        flows=flows,
+        charge_total=charge_total,
+        seed=seed,
+        dist=dist,
+        fermionic=fermionic,
+        subsizes=subsizes,
+        **kwargs,
+    )
 
 
 def get_rand_blockvector(

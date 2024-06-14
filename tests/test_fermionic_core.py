@@ -8,11 +8,12 @@ import numpy as np
 @pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
 @pytest.mark.parametrize("seed", range(3))
 def test_fermi_norm(symmetry, subsizes, seed):
-    x = sr.utils.get_rand_symmetric(
+    x = sr.utils.get_rand(
         symmetry,
         (3, 4, 5, 6),
         fermionic=True,
         subsizes=subsizes,
+        flows="equal",
         seed=seed,
     )
     x.phase_flip(1, 3, inplace=True)
@@ -41,7 +42,7 @@ def test_fermi_norm(symmetry, subsizes, seed):
 @pytest.mark.parametrize("seed", range(3))
 def test_transpose(symmetry, subsizes, seed):
     rng = sr.utils.get_rng(seed)
-    x = sr.utils.get_rand_symmetric(
+    x = sr.utils.get_rand(
         symmetry,
         (2, 3, 2, 3, 2),
         seed=rng,
@@ -162,6 +163,29 @@ def test_fuse_with_tensordot(seed):
         mode="fused",
     ).transpose(perm_reverse)
     assert z_b.allclose(z_reff)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+@pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
+@pytest.mark.parametrize("seed", range(10))
+def test_fuse_unfuse(symmetry, seed, subsizes):
+    rng = sr.utils.get_rng(seed)
+    x = sr.utils.get_rand(
+        symmetry, (2, 3, 4, 3, 4), fermionic=True, seed=rng, subsizes=subsizes
+    )
+    nfuse = rng.integers(1, x.ndim)
+    axes = tuple(rng.choice(x.ndim, size=nfuse, replace=False))
+    position = min(axes)
+    new_order = (
+        *range(position),
+        *axes,
+        *(ax for ax in range(position, x.ndim) if ax not in axes),
+    )
+    perm_back = tuple(new_order.index(ax) for ax in range(x.ndim))
+    xf = x.fuse(axes)
+    y = xf.unfuse(position)
+    yt = y.transpose(perm_back)
+    assert x.allclose(yt)
 
 
 @pytest.mark.parametrize("seed", range(10))

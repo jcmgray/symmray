@@ -13,7 +13,19 @@ _fermionic_array_slots = SymmetricArray.__slots__ + ("_phases",)
 
 
 class FermionicArray(SymmetricArray):
-    """ """
+    """A fermionic block symmetry array.
+
+    Parameters
+    ----------
+    indices : tuple of Index
+        The indices of the array.
+    charge_total : int
+        The total charge of the array, should have even parity.
+    blocks : dict, optional
+        The blocks of the array, by default empty.
+    phases : dict, optional
+        The lazy phases of each block, by default empty.
+    """
 
     __slots__ = _fermionic_array_slots
 
@@ -22,11 +34,14 @@ class FermionicArray(SymmetricArray):
         indices,
         charge_total,
         blocks=(),
+        phases=(),
     ):
         super().__init__(
             indices=indices, charge_total=charge_total, blocks=blocks
         )
-        self._phases = {}
+        self._phases = dict(phases)
+        if self.symmetry.parity(self.charge_total):
+            raise ValueError("Total charge must be even parity.")
 
     @property
     def phases(self):
@@ -40,7 +55,7 @@ class FermionicArray(SymmetricArray):
             return self._phases
 
     def copy(self):
-        """Create a copy of the fermionic array.
+        """Create a copy of this fermionic array.
 
         Returns
         -------
@@ -54,10 +69,27 @@ class FermionicArray(SymmetricArray):
     def copy_with(
         self, indices=None, blocks=None, charge_total=None, phases=None
     ):
+        """Create a copy of this fermionic array with some attributes replaced.
+
+        Parameters
+        ----------
+        indices : tuple of Index, optional
+            The new indices, if None, the original indices are used.
+        blocks : dict, optional
+            The new blocks, if None, the original blocks are used.
+        charge_total : int, optional
+            The new total charge, if None, the original charge is used.
+        phases : dict, optional
+            The new phases, if None, the original phases are used.
+        """
         new = super().copy_with(
             indices=indices, blocks=blocks, charge_total=charge_total
         )
-        new._phases = self._phases.copy() if phases is None else phases
+        new._phases = self.phases.copy() if phases is None else phases
+
+        if new.symmetry.parity(new.charge_total):
+            raise ValueError("Total charge must be even parity.")
+
         return new
 
     def transpose(self, axes=None, phase=True, inplace=False):
@@ -303,8 +335,8 @@ class FermionicArray(SymmetricArray):
         """Fermionic fusion of axes groups. This includes three sources of
         phase changes:
 
-        1. Initial fermionic transpose to make groups contiguous.
-        2. Flipping of dual indices, if merged group is overall dual.
+        1. Initial fermionic transpose to make each group contiguous.
+        2. Flipping of non dual indices, if merged group is overall dual.
         3. Virtual transpose within a group, if merged group is overall dual.
 
         A grouped axis is overall dual if the first axis in the group is dual.
@@ -341,7 +373,7 @@ class FermionicArray(SymmetricArray):
         for group in axes_groups:
             if new.indices[group[0]].flow:
                 # overall dual index:
-                # 1. flip dual sub indices
+                # 1. flip non dual sub indices
                 for ax in group:
                     if not new.indices[ax].flow:
                         axes_flip.append(ax)
@@ -370,23 +402,47 @@ class FermionicArray(SymmetricArray):
         # so we can do the actual block concatenations
         return SymmetricArray.fuse(new, *axes_groups)
 
-    # def unfuse(self, axis):
-    #     raise NotImplementedError
-    # sub_indices = self.indices[axis].subinfo.indices
-    # flow0 = sub_indices[0].flow
-    # axes_flip = [
-    #     axis + i for i, ix in enumerate(sub_indices) if (ix.flow != flow0)
-    # ]
+    def unfuse(self, axis, inplace=False):
+        """Fermionic unfuse, which includes two sources of phase changes:
 
-    # new = super().unfuse(axis)
+        1. Flipping of non dual sub indices, if overall index is dual.
+        2. Virtual transpose within group, if overall index is dual.
 
-    # if axes_flip:
-    #     print("unfuse flips:", axes_flip)
-    #     new.phase_flip(*axes_flip, inplace=True)
+        Parameters
+        ----------
+        axis : int
+            The axis to unfuse.
+        """
+        index = self.indices[axis]
 
-    # new.phase_resolve(inplace=True)
+        if index.flow:
+            sub_indices = self.indices[axis].subinfo.indices
+            # if overall index is dual, need to (see fermionic fuse):
+            #     1. flip dual sub indices back
+            #     2. perform virtual transpose within group
 
-    # return new
+            nnew = len(sub_indices)
+            axes_flip = []
+            virtual_perm = list(range(self.ndim + nnew - 1))
+
+            for i, ix in enumerate(sub_indices):
+                if not ix.flow:
+                    axes_flip.append(axis + i)
+                # reverse the order of the groups subindices
+                virtual_perm[axis + i] = axis + nnew - i - 1
+
+        # do the non-fermionic actual block unfusing
+        new = super().unfuse(axis, inplace=inplace)
+
+        if index.flow:
+            # apply the phase changes
+            if axes_flip:
+                new.phase_flip(*axes_flip, inplace=True)
+            new.phase_virtual_transpose(tuple(virtual_perm), inplace=True)
+
+        # new.phase_resolve(inplace=True)
+
+        return new
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases

@@ -898,7 +898,7 @@ class SymmetricArray(BlockBase):
     def H(self):
         return self.dagger()
 
-    def fuse(self, *axes_groups):
+    def fuse(self, *axes_groups, inplace=False):
         """Fuse the give group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
         the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
@@ -1082,16 +1082,30 @@ class SymmetricArray(BlockBase):
             for new_sector in new_blocks
         }
 
-        new = self.copy_with(
-            indices=new_indices,
-            blocks=new_blocks,
-        )
+        if inplace:
+            self._indices = new_indices
+            self._blocks = new_blocks
+            return self
+        else:
+            return self.copy_with(
+                indices=new_indices,
+                blocks=new_blocks,
+            )
 
-        return new
-
-    def unfuse(self, axis):
+    def unfuse(self, axis, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
         likely generated automatically from a fusing operation.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to unfuse. It must have subindex information (`.subinfo`).
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        SymmetricArray
         """
         backend = self.backend
         # _split = ar.get_lib_fn(backend, "split")
@@ -1135,16 +1149,30 @@ class SymmetricArray(BlockBase):
         new_indices = replace_with_seq(self.indices, axis, subinfo.indices)
         new_blocks = new_blocks
 
-        return self.copy_with(indices=new_indices, blocks=new_blocks)
+        if inplace:
+            self._indices = new_indices
+            self._blocks = new_blocks
+            return self
+        else:
+            return self.copy_with(indices=new_indices, blocks=new_blocks)
 
-    def unfuse_all(self):
+    def unfuse_all(self, inplace=False):
         """Unfuse all indices that carry subindex information, likely from a
         fusing operation.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        SymmetricArray
         """
-        new = self.copy()
-        for ax in range(self.ndim - 1, -1, -1):
-            if self.indices[ax].subinfo is not None:
-                new = new.unfuse(ax)
+        new = self if inplace else self.copy()
+        for ax in reversed(range(self.ndim)):
+            if new.indices[ax].subinfo is not None:
+                new.unfuse(ax, inplace=True)
         return new
 
     def _reshape_via_fuse(self, newshape):
@@ -1439,7 +1467,11 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     cf = tensordot_blockwise(af, bf, left_axes, axes_a, axes_b, right_axes)
 
     # unfuse result into (*left_axes, *right_axes)
-    return cf.unfuse_all()
+    for ax in reversed(range(cf.ndim)):
+        if cf.indices[ax].subinfo is not None:
+            SymmetricArray.unfuse(cf, ax, inplace=True)
+
+    return cf
 
 
 @tensordot.register(SymmetricArray)

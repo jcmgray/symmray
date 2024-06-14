@@ -12,9 +12,7 @@ import symmray as sr
 @pytest.mark.parametrize("f1", [False, True])
 @pytest.mark.parametrize("c", [0, 1])
 def test_qr_basics(symmetry, d0, d1, f0, f1, c):
-    x = sr.utils.get_rand_symmetric(
-        symmetry, (d0, d1), flows=[f0, f1], charge_total=c
-    )
+    x = sr.utils.get_rand(symmetry, (d0, d1), flows=[f0, f1], charge_total=c)
     x.check()
     q, r = sr.linalg.qr(x)
     q.check()
@@ -29,7 +27,7 @@ def test_qr_basics(symmetry, d0, d1, f0, f1, c):
 @pytest.mark.parametrize("f1", [False, True])
 @pytest.mark.parametrize("c", [0, 1])
 def test_svd_basics(symmetry, d0, d1, f0, f1, c):
-    x = sr.utils.get_rand_symmetric(
+    x = sr.utils.get_rand(
         symmetry,
         (d0, d1),
         flows=[f0, f1],
@@ -49,7 +47,7 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 def test_eigh(symmetry, d):
-    x = sr.utils.get_rand_symmetric(
+    x = sr.utils.get_rand(
         symmetry,
         (d, d),
         flows=[0, 1],
@@ -70,7 +68,7 @@ def test_eigh(symmetry, d):
 def test_expm_with_reshape(symmetry, d):
     pytest.importorskip("scipy")
 
-    x = sr.utils.get_rand_symmetric(
+    x = sr.utils.get_rand(
         symmetry,
         (d, d, d, d),
         flows=[0, 0, 1, 1],

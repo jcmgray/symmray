@@ -36,7 +36,7 @@ def test_z2symmetric_array_basics():
 
 @pytest.mark.parametrize("symmetry", ("Z2",))
 def test_symmetricarray_to_dense(symmetry):
-    x = sr.utils.get_rand_symmetric(symmetry, (3, 4, 5, 6))
+    x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
     assert ar.do("linalg.norm", x) == pytest.approx(
         ar.do("linalg.norm", x.to_dense())
     )
@@ -51,7 +51,7 @@ def test_symmetricarray_to_dense(symmetry):
 
 @pytest.mark.parametrize("symmetry", ("Z2",))
 def test_symmetricarray_fuse(symmetry):
-    x = sr.utils.get_rand_symmetric(symmetry, (3, 4, 5, 6))
+    x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
     xf = x.fuse((0, 2), (1, 3))
     assert xf.shape == (15, 24)
     assert xf.num_blocks == 2
@@ -70,7 +70,7 @@ def test_symmetricarray_fuse(symmetry):
     ],
 )
 def test_symmetricarray_reshape(symmetry, shape0, shape1):
-    x = sr.utils.get_rand_symmetric(symmetry, shape0)
+    x = sr.utils.get_rand(symmetry, shape0)
     y = ar.do("reshape", x, shape1)
     assert all(da <= db for da, db in zip(y.shape, shape1))
     y.check()
@@ -90,14 +90,14 @@ def test_symmetricarray_reshape(symmetry, shape0, shape1):
     ],
 )
 def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
-    a = sr.utils.get_rand_symmetric(
+    a = sr.utils.get_rand(
         symmetry,
         shape1,
         flows=[False] * len(shape1),
         charge_total=1,
         subsizes=subsizes,
     )
-    b = sr.utils.get_rand_symmetric(
+    b = sr.utils.get_rand(
         symmetry,
         shape2,
         flows=[True] * len(shape2),
@@ -115,7 +115,7 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
 def test_symmetricarray_reductions(symmetry):
-    x = sr.utils.get_rand_symmetric(symmetry, (3, 4, 5, 6), dist="uniform")
+    x = sr.utils.get_rand(symmetry, (3, 4, 5, 6), dist="uniform")
     assert ar.do("min", x) < ar.do("max", x) < ar.do("sum", x)
 
 
@@ -124,7 +124,7 @@ def test_block_multiply_diagonal(symmetry):
     import numpy as np
 
     rng = np.random.default_rng(42)
-    x = sr.utils.get_rand_symmetric(symmetry, (3, 4, 5, 6))
+    x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
     axis = 2
     v = sr.BlockVector(
         {c: rng.normal(size=d) for c, d in x.indices[axis].chargemap.items()}
