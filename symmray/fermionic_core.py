@@ -393,9 +393,7 @@ class FermionicArray(SymmetricArray):
         #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
         #   but actual array layout should not be flipped, so do virtually
         if virtual_perm is not None:
-            new = new.phase_transpose(
-                tuple(virtual_perm), inplace=True
-            )
+            new = new.phase_transpose(tuple(virtual_perm), inplace=True)
 
         # insert phases
         new.phase_sync(inplace=True)
