@@ -443,7 +443,8 @@ class FermionicArray(SymmetricArray):
         if self.ndim != 2 or other.ndim != 2:
             raise ValueError("Matrix multiplication requires 2D arrays.")
 
-        if not other.indices[0].dual:
+        if other.indices[0].dual:
+            # have |x><x| -> want <x|x>
             other = other.phase_flip(0)
 
         return super().__matmul__(other)
@@ -500,10 +501,8 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
 
     # permute a & b so we have axes like
     #     in terms of data layout => [..., x, y, z], [x, y, z, ...]
-    perm_a = (*left_axes, *axes_a)
-    perm_b = (*axes_b, *right_axes)
-    a = a.transpose(perm_a)
-    b = b.transpose(perm_b)
+    a = a.transpose((*left_axes, *axes_a))
+    b = b.transpose((*axes_b, *right_axes))
     #     but in terms of 'phase layout' =>  [..., x, y, z], [z, y, x, ...]
     b.phase_transpose(
         (*range(ncon - 1, -1, -1), *range(ncon, b.ndim)), inplace=True
@@ -515,10 +514,10 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
 
     # if contracted index is like |x><x| phase flip to get <x|x>
     if a.size <= b.size:
-        axs_flip = tuple(ax for ax in new_axes_a if a.indices[ax].dual)
+        axs_flip = tuple(ax for ax in new_axes_a if not a.indices[ax].dual)
         a.phase_flip(*axs_flip, inplace=True)
     else:
-        axs_flip = tuple(ax for ax in new_axes_b if not b.indices[ax].dual)
+        axs_flip = tuple(ax for ax in new_axes_b if b.indices[ax].dual)
         b.phase_flip(*axs_flip, inplace=True)
 
     # actually multiply block arrays with phases
@@ -552,7 +551,7 @@ class Z2FermionicArray(FermionicArray):
 
         data = SparseFermionTensor(
             blocks,
-            pattern=["-" if f else "+" for f in self.duals],
+            pattern=["-" if dual else "+" for dual in self.duals],
         )
 
         data.shape = self.shape

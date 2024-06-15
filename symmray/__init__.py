@@ -29,7 +29,7 @@ from .symmetric_core import (
     U1Array,
     Z2Array,
 )
-from .symmetries import U1, Z2, get_symmetry
+from .symmetries import U1, U1U1, Z2, Z2Z2, get_symmetry
 
 __all__ = (
     "align_axes",
@@ -55,8 +55,10 @@ __all__ = (
     "U1",
     "U1Array",
     "U1FermionicArray",
+    "U1U1",
     "utils",
     "Z2",
     "Z2Array",
     "Z2FermionicArray",
+    "Z2Z2",
 )

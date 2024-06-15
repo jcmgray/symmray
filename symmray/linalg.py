@@ -4,7 +4,7 @@ import autoray as ar
 
 from .block_core import BlockVector
 from .fermionic_core import FermionicArray
-from .symmetric_core import BlockIndex, SymmetricArray
+from .symmetric_core import SymmetricArray
 from .utils import DEBUG
 
 
@@ -83,7 +83,8 @@ def qr(x, stabilized=False):
         r_sector = (sector[1], sector[1])
         r_blocks[r_sector] = r
 
-    bond_index = BlockIndex(chargemap=new_chargemap, dual=x.indices[1].dual)
+    bond_index = x.indices[1].copy_with(chargemap=new_chargemap)
+
     q = x.__class__(
         indices=(x.indices[0].copy(), bond_index),
         charge=x.charge,
@@ -107,7 +108,8 @@ def qr(x, stabilized=False):
 def qr_fermionic(x, stabilized=False):
     q, r = qr.dispatch(SymmetricArray)(x, stabilized=stabilized)
 
-    if not r.indices[0].dual:
+    if r.indices[0].dual:
+        # inner index is like |x><x| so introduce a phase flip
         r.phase_flip(0, inplace=True)
 
     return q, r
@@ -143,7 +145,7 @@ def svd(x):
         v_blocks[v_sector] = v
         new_chargemap[sector[1]] = ar.shape(u)[1]
 
-    bond_index = BlockIndex(chargemap=new_chargemap, dual=x.indices[1].dual)
+    bond_index = x.indices[1].copy_with(chargemap=new_chargemap)
     u = x.__class__(
         indices=(x.indices[0], bond_index),
         charge=x.charge,
@@ -171,7 +173,8 @@ def svd(x):
 def svd_fermionic(x):
     u, s, vh = svd.dispatch(SymmetricArray)(x)
 
-    if not vh.indices[0].dual:
+    if vh.indices[0].dual:
+        # inner index is like |x><x| so introduce a phase flip
         vh.phase_flip(0, inplace=True)
 
     return u, s, vh
@@ -347,6 +350,7 @@ def svd_truncated(
     return U, None, VH
 
 
+@functools.singledispatch
 def eigh(x):
     """Perform a hermitian eigendecomposition on a SymmetricArray."""
     if x.ndim != 2:
@@ -377,6 +381,11 @@ def eigh(x):
         eigenvalues.check()
 
     return eigenvalues, eigenvectors
+
+
+@eigh.register(FermionicArray)
+def eigh_fermionic(x):
+    raise NotImplementedError("eigh not implemented for FermionicArray yet.")
 
 
 # these are used by quimb for compressed contraction and gauging

@@ -93,6 +93,22 @@ class BlockIndex:
         new._subinfo = self._subinfo
         return new
 
+    def copy_with(self, chargemap=None, dual=None, subinfo=None):
+        """A copy of this index with some attributes replaced."""
+        new = self.__new__(self.__class__)
+        new._chargemap = (
+            self._chargemap.copy()
+            if chargemap is None
+            else (
+                dict(sorted(chargemap.items()))
+                if isinstance(chargemap, dict)
+                else dict(sorted(chargemap))
+            )
+        )
+        new._dual = self._dual if dual is None else dual
+        new._subinfo = self._subinfo if subinfo is None else subinfo
+        return new
+
     def conj(self):
         """A copy of this index with the dualness reversed."""
         new = self.__new__(self.__class__)

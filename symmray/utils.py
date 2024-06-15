@@ -2,6 +2,11 @@
 DEBUG = False
 
 
+def set_debug(debug):
+    global DEBUG
+    DEBUG = debug
+
+
 def get_rng(seed=None):
     import numpy as np
 
