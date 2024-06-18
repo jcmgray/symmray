@@ -812,19 +812,20 @@ class SymmetricArray(BlockBase):
         all_sliced = [slice(None)] * ndim
 
         def _recurse(ary, j=0, sector=()):
+
             if j < ndim:
-                for charge, indices in charge_groups[j].items():
+                for c, indices in charge_groups[j].items():
                     # for each charge, select all the indices along axis j
                     # that belong to it, then recurse further
                     selector = all_sliced.copy()
                     selector[j] = indices
                     subarray = ary[tuple(selector)]
-                    _recurse(subarray, j + 1, sector + (charge,))
+                    _recurse(subarray, j + 1, sector + (c,))
             else:
                 # we have reached a fully specified block
                 signed_sector = tuple(
-                    cls.symmetry.negate(charge, dual)
-                    for charge, dual in zip(sector, duals)
+                    cls.symmetry.negate(c, dual)
+                    for c, dual in zip(sector, duals)
                 )
                 if cls.symmetry.combine(*signed_sector) == charge:
                     # ... but only add valid ones:

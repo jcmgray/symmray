@@ -130,8 +130,8 @@ def rand_u1_index(
 def choose_duals(duals, ndim):
     if duals == "equal":
         return [i >= ndim // 2 for i in range(ndim)]
-    elif duals is None:
-        return [None] * ndim
+    elif (duals is None) or (duals is False) or (duals is True):
+        return [duals] * ndim
     else:
         if len(duals) != ndim:
             raise ValueError(
@@ -332,3 +332,65 @@ def get_rand_blockvector(
         i += 1
 
     return sr.BlockVector(blocks)
+
+
+def parse_edges_to_site_info(
+    edges,
+    bond_dim,
+    phys_dim=2,
+    site_ind_id="k{}",
+    bond_ind_id="b{}-{}",
+    site_tag_id="I{}",
+):
+    """Given a list of edges, return a dictionary of site information, each
+    specifying the local shape, index identifiers, index dualnesses, and tags.
+    The dualnesses of the bonds are set in a canonical order corresponding to
+    sorting all the sites and the edges.
+
+    Parameters
+    ----------
+    edges : Sequence[Tuple[hashable, hashable]]
+        The edges of the graph.
+    bond_dim : int
+        The internal bond dimension.
+    phys_dim : int, optional
+        The physical dimension of the sites.
+    site_ind_id : str, optional
+        The identifier for the site indices.
+    bond_ind_id : str, optional
+        The identifier for the bond indices.
+    site_tag_id : str, optional
+        The identifier for the site tags.
+
+    Returns
+    -------
+    Dict[hashable, Dict[str, Any]]
+    """
+    sites = {}
+
+    # create bonds
+    for sitea, siteb in sorted(edges):
+        if sitea > siteb:
+            sitea, siteb = siteb, sitea
+
+        ind = bond_ind_id.format(sitea, siteb)
+        infoa = sites.setdefault(sitea, {})
+        infob = sites.setdefault(siteb, {})
+
+        infoa.setdefault("inds", []).append(ind)
+        infob.setdefault("inds", []).append(ind)
+
+        infoa.setdefault("duals", []).append(0)
+        infob.setdefault("duals", []).append(1)
+
+        infoa.setdefault("shape", []).append(bond_dim)
+        infob.setdefault("shape", []).append(bond_dim)
+
+    # create physical inds
+    for site in sites:
+        sites[site]["inds"].append(site_ind_id.format(site))
+        sites[site]["duals"].append(0)
+        sites[site]["shape"].append(phys_dim)
+        sites[site]["tags"] = (site_tag_id.format(site),)
+
+    return sites

@@ -13,7 +13,7 @@ def test_fermi_norm(symmetry, subsizes, seed):
         (3, 4, 5, 6),
         fermionic=True,
         subsizes=subsizes,
-        duals="equal",
+        duals=False,
         seed=seed,
     )
     x.phase_flip(1, 3, inplace=True)
@@ -27,8 +27,6 @@ def test_fermi_norm(symmetry, subsizes, seed):
     n2 = float(xx) ** 0.5
     assert ne == pytest.approx(n2)
     xd = x.H
-    assert xd.phases != x.phases
-    assert xd.phases != xc.phases
     xx = sr.tensordot(xd, x, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
     n3 = float(xx) ** 0.5
     assert ne == pytest.approx(n3)

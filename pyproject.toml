@@ -15,4 +15,4 @@ filterwarnings = "once"
 [tool.ruff]
 line-length = 79
 target-version = "py38"
-ignore = ["E741"]
+lint.ignore = ["E741"]

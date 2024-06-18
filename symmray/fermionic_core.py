@@ -232,7 +232,7 @@ class FermionicArray(SymmetricArray):
 
         return new
 
-    def conj(self, phase=True, inplace=False):
+    def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
         """Conjugate this fermionic array. By default this include phases from
         both the virtual flipping of all axes, and the conjugation of dual
         indices, such that::
@@ -242,10 +242,21 @@ class FermionicArray(SymmetricArray):
                 tensordot_fermionic(x, x.conj(), ndim)
             )
 
+        If all indices have matching dualness (i.e. all bra or all ket), then
+        the above contractions will also be equal to ``x.norm() ** 2``.
+
         Parameters
         ----------
-        phase : bool, optional
-            Whether to compute fermionic phases.
+        phase_dual : bool, optional
+            Whether to flip the phase of dual indices, by default False. If a
+            FermionicArray has a mix of dual and non-dual indices, and you are
+            explicitly forming the norm, you may want to set this to True. But
+            if it is part of a large tensor network you only need to flip the
+            phase of 'outer' dual indices.
+        phase_permutation : bool, optional
+            Whether to flip the phase of sectors whose odd charges undergo a
+            odd permutation due to *virtually* flipping the order of axes, by
+            default True.
         """
         new = self if inplace else self.copy()
 
@@ -258,18 +269,20 @@ class FermionicArray(SymmetricArray):
             # conjugate the actual array
             new.blocks[sector] = _conj(array)
 
-            if phase:
+            if phase_permutation or phase_dual:
                 parities = tuple(map(new.symmetry.parity, sector))
 
-                phase_new = (
-                    # start with old phase
-                    new._phases.get(sector, 1)
+                # start with old phase
+                phase_new = new._phases.get(sector, 1)
+
+                if phase_permutation:
                     # get the phase from 'virtually' reversing all axes:
                     #     (perm=[ndim-1, ..., 0])
-                    * calc_phase_permutation(parities, None)
+                    phase_new *= calc_phase_permutation(parities, None)
+
+                if phase_dual:
                     # get the phase from conjugating 'bra' indices
-                    * (-1 if (sum(parities[ax] for ax in axs_conj) % 2) else 1)
-                )
+                    phase_new *= (-1 if (sum(parities[ax] for ax in axs_conj) % 2) else 1)
 
                 if phase_new == 1:
                     new._phases.pop(sector, None)
@@ -278,13 +291,17 @@ class FermionicArray(SymmetricArray):
 
         return new
 
-    def dagger(self, phase=True, inplace=False):
+    def dagger(self, phase_dual=False, inplace=False):
         """Fermionic adjoint.
 
         Parameters
         ----------
-        phase : bool, optional
-            Whether to flip the phase conjugate indices, by default True.
+        phase_dual : bool, optional
+            Whether to flip the phase of dual indices, by default False. If a
+            FermionicArray has a mix of dual and non-dual indices, and you are
+            explicitly forming the norm, you may want to set this to True. But
+            if it is part of a large tensor network you only need to flip the
+            phase of 'outer' dual indices.
         inplace : bool, optional
             Whether to perform the operation in place.
 
@@ -315,7 +332,7 @@ class FermionicArray(SymmetricArray):
         new._blocks = new_blocks
         new._phases = new_phases
 
-        if phase:
+        if phase_dual:
             axs_conj = tuple(
                 ax for ax, ix in enumerate(new_indices) if ix.dual
             )
