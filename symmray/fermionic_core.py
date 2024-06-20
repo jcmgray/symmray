@@ -289,6 +289,8 @@ class FermionicArray(SymmetricArray):
                 else:
                     new._phases[sector] = phase_new
 
+        new._charge = new.symmetry.negate(new._charge)
+
         return new
 
     def dagger(self, phase_dual=False, inplace=False):
@@ -481,7 +483,19 @@ class FermionicArray(SymmetricArray):
         other : FermionicArray
             The other fermionic array to compare.
         """
-        return SymmetricArray.allclose(self.phase_sync(), other.phase_sync())
+        return SymmetricArray.allclose(self.phase_sync(), other.phase_sync(), **kwargs)
+
+    def trace(self):
+        """Fermionic matrix trace."""
+        ixl, ixr = self.indices
+
+        if ixl.dual and not ixr.dual:
+            return SymmetricArray.trace(self.phase_sync())
+        elif not ixl.dual and ixr.dual:
+            return SymmetricArray.trace(self.phase_flip(0).phase_sync())
+        else:
+            raise ValueError("Cannot trace a non-bra or non-ket.")
+
 
 
 @tensordot.register(FermionicArray)

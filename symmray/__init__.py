@@ -1,4 +1,4 @@
-from . import linalg, utils
+from . import linalg, scipy, utils
 from .block_core import (
     BlockVector,
 )
@@ -47,6 +47,7 @@ __all__ = (
     "min",
     "multiply_diagonal",
     "reshape",
+    "scipy",
     "sum",
     "SymmetricArray",
     "tensordot",

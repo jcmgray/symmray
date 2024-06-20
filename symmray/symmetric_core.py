@@ -133,6 +133,13 @@ class BlockIndex:
 
         assert sorted(self._chargemap) == list(self._chargemap)
 
+        if self.subinfo:
+            assert self.size_total == sum(
+                e[1]
+                for extent in self.subinfo.extents.values()
+                for e in extent
+            )
+
     def matches(self, other):
         """Whether this index matches ``other`` index, namely, whether the
         ``chargemap`` of each matches, their dualnesses are opposite, and also
@@ -812,7 +819,6 @@ class SymmetricArray(BlockBase):
         all_sliced = [slice(None)] * ndim
 
         def _recurse(ary, j=0, sector=()):
-
             if j < ndim:
                 for c, indices in charge_groups[j].items():
                     # for each charge, select all the indices along axis j

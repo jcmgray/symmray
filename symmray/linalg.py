@@ -4,7 +4,7 @@ import autoray as ar
 
 from .block_core import BlockVector
 from .fermionic_core import FermionicArray
-from .symmetric_core import SymmetricArray
+from .symmetric_core import BlockIndex, SymmetricArray
 from .utils import DEBUG
 
 
@@ -83,7 +83,7 @@ def qr(x, stabilized=False):
         r_sector = (sector[1], sector[1])
         r_blocks[r_sector] = r
 
-    bond_index = x.indices[1].copy_with(chargemap=new_chargemap)
+    bond_index = BlockIndex(new_chargemap, dual=x.indices[1].dual)
 
     q = x.__class__(
         indices=(x.indices[0].copy(), bond_index),
@@ -145,7 +145,8 @@ def svd(x):
         v_blocks[v_sector] = v
         new_chargemap[sector[1]] = ar.shape(u)[1]
 
-    bond_index = x.indices[1].copy_with(chargemap=new_chargemap)
+    bond_index = BlockIndex(new_chargemap, dual=x.indices[1].dual)
+
     u = x.__class__(
         indices=(x.indices[0], bond_index),
         charge=x.charge,
