@@ -176,26 +176,6 @@ class FermionicArray(SymmetricArray):
 
         return new
 
-    def phase_sync(self, inplace=False):
-        """Multiply all lazy phases into the block arrays.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-            Whether to perform the operation in place.
-
-        Returns
-        -------
-        FermionicArray
-            The resolved array, which now has no lazy phases.
-        """
-        new = self if inplace else self.copy()
-        while new._phases:
-            sector, phase = new._phases.popitem()
-            if phase == -1:
-                new._blocks[sector] = -new._blocks[sector]
-        return new
-
     def phase_transpose(self, axes=None, inplace=False):
         """Phase this fermionic array as if it were transposed virtually, i.e.
         the actual arrays are not transposed. Useful when one wants the actual
@@ -229,6 +209,54 @@ class FermionicArray(SymmetricArray):
                 new._phases.pop(sector, None)
             else:
                 new._phases[sector] = phase_new
+
+        return new
+
+    def phase_sector(self, sector, inplace=False):
+        """Flip the phase of a specific sector.
+
+        Parameters
+        ----------
+        sector : tuple of hashable
+            The sector to flip the phase of.
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        new = self if inplace else self.copy()
+        new_phase = -new._phases.pop(sector, 1)
+        if new_phase == -1:
+            new._phases[sector] = -1
+        return new
+
+    def phase_sync(self, inplace=False):
+        """Multiply all lazy phases into the block arrays.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArray
+            The resolved array, which now has no lazy phases.
+        """
+        new = self if inplace else self.copy()
+        while new._phases:
+            sector, phase = new._phases.popitem()
+            if phase == -1:
+                try:
+                    new._blocks[sector] = -new._blocks[sector]
+                except KeyError:
+                    # if the block is not present, it is zero
+                    # this can happen e.g. if two arrays have been aligned
+                    # for contraction
+                    # TODO: use a drop_sectors method instead?
+                    pass
 
         return new
 
@@ -408,7 +436,7 @@ class FermionicArray(SymmetricArray):
         #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
         #   but actual array layout should not be flipped, so do virtually
         if virtual_perm is not None:
-            new = new.phase_transpose(tuple(virtual_perm), inplace=True)
+            new.phase_transpose(tuple(virtual_perm), inplace=True)
 
         # insert phases
         new.phase_sync(inplace=True)

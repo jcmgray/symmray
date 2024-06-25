@@ -123,8 +123,9 @@ def rand_u1_index(
         ncharge = len(subsizes)
 
     charges = range(-ncharge // 2 + 1, ncharge // 2 + 1)
+    chargemap = dict(zip(charges, subsizes))
 
-    return sr.BlockIndex(chargemap=dict(zip(charges, subsizes)), dual=dual)
+    return sr.BlockIndex(chargemap=chargemap, dual=dual)
 
 
 def choose_duals(duals, ndim):
