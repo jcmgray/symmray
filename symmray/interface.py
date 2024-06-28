@@ -100,4 +100,4 @@ def fuse(x, *axes_groups):
     return x.fuse(*axes_groups)
 
 
-ar.register_function("symmray", "align_axes", align_axes)
+ar.register_function("symmray", "fuse", fuse)
