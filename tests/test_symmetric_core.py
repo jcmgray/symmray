@@ -35,7 +35,7 @@ def test_z2symmetric_array_basics():
 
 
 @pytest.mark.parametrize("symmetry", ("Z2",))
-def test_symmetricarray_to_dense(symmetry):
+def test_AbelianArray_to_dense(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
     assert ar.do("linalg.norm", x) == pytest.approx(
         ar.do("linalg.norm", x.to_dense())
@@ -50,7 +50,7 @@ def test_symmetricarray_to_dense(symmetry):
 
 
 @pytest.mark.parametrize("symmetry", ("Z2",))
-def test_symmetricarray_fuse(symmetry):
+def test_AbelianArray_fuse(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
     xf = x.fuse((0, 2), (1, 3))
     assert xf.shape == (15, 24)
@@ -69,7 +69,7 @@ def test_symmetricarray_fuse(symmetry):
         ((1, 1, 1, 1), (1, 1)),
     ],
 )
-def test_symmetricarray_reshape(symmetry, shape0, shape1):
+def test_AbelianArray_reshape(symmetry, shape0, shape1):
     x = sr.utils.get_rand(symmetry, shape0)
     y = ar.do("reshape", x, shape1)
     assert all(da <= db for da, db in zip(y.shape, shape1))
@@ -105,16 +105,20 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
         subsizes=subsizes,
     )
     c = ar.do("tensordot", a, b, axes=axes)
-    if symmetry == "U1":
-        assert c.charge == 2
-    else:
-        assert c.charge == 0
     d = ar.do("tensordot", a.to_dense(), b.to_dense(), axes=axes)
-    assert_allclose(c.to_dense(), d)
+
+    if isinstance(c, sr.AbelianArray):
+        if symmetry == "U1":
+            assert c.charge == 2
+        else:
+            assert c.charge == 0
+        assert_allclose(c.to_dense(), d)
+    else:
+        assert_allclose(c, d)
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
-def test_symmetricarray_reductions(symmetry):
+def test_AbelianArray_reductions(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6), dist="uniform")
     assert ar.do("min", x) < ar.do("max", x) < ar.do("sum", x)
 
@@ -136,6 +140,3 @@ def test_block_multiply_diagonal(symmetry):
         yd,
         np.einsum("abcd,c->abcd", x.to_dense(), v.to_dense()),
     )
-
-
-# def test_symmetric_binary_opts(op):

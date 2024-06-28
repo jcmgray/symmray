@@ -51,9 +51,9 @@ def tensordot(a, b, axes=2, **kwargs):
 
     Parameters
     ----------
-    a : SymmetricArray or FermionicArray
+    a : AbelianArray or FermionicArray
         First array to contract.
-    b : SymmetricArray or FermionicArray
+    b : AbelianArray or FermionicArray
         Second array to contract, with same type as `a`.
     axes : int or tuple of int, optional
         If an integer, the number of axes to contract. If a tuple, the axes

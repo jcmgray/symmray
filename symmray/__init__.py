@@ -5,7 +5,14 @@ from .block_core import (
 from .fermionic_core import (
     FermionicArray,
     U1FermionicArray,
+    U1U1FermionicArray,
     Z2FermionicArray,
+    Z2Z2FermionicArray,
+)
+from .fermionic_ops import (
+    compute_local_fermionic_elements,
+    fermi_hubbard_local_tensor,
+    fermi_hubbard_spinless_local_tensor,
 )
 from .interface import (
     align_axes,
@@ -23,11 +30,13 @@ from .interface import (
     trace,
     transpose,
 )
-from .symmetric_core import (
+from .abelian_core import (
     BlockIndex,
-    SymmetricArray,
+    AbelianArray,
     U1Array,
+    U1U1Array,
     Z2Array,
+    Z2Z2Array,
 )
 from .symmetries import U1, U1U1, Z2, Z2Z2, get_symmetry
 
@@ -37,7 +46,10 @@ __all__ = (
     "any",
     "BlockIndex",
     "BlockVector",
+    "compute_local_fermionic_elements",
     "conj",
+    "fermi_hubbard_local_tensor",
+    "fermi_hubbard_spinless_local_tensor",
     "FermionicArray",
     "fuse",
     "get_symmetry",
@@ -49,7 +61,7 @@ __all__ = (
     "reshape",
     "scipy",
     "sum",
-    "SymmetricArray",
+    "AbelianArray",
     "tensordot",
     "trace",
     "transpose",
@@ -57,9 +69,13 @@ __all__ = (
     "U1Array",
     "U1FermionicArray",
     "U1U1",
+    "U1U1Array",
+    "U1U1FermionicArray",
     "utils",
     "Z2",
     "Z2Array",
     "Z2FermionicArray",
     "Z2Z2",
+    "Z2Z2Array",
+    "Z2Z2FermionicArray",
 )

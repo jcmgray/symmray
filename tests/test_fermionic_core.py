@@ -100,19 +100,27 @@ def test_fuse_with_tensordot(seed):
     )
 
     # basic
-    z_b = sr.tensordot(x, y, axes=(axes_x, axes_y), mode="blockwise")
+    z_b = sr.tensordot(
+        x, y, axes=(axes_x, axes_y), mode="blockwise", preserve_array=True
+    )
 
     # fused tensordot
-    z_f = sr.tensordot(x, y, axes=(axes_x, axes_y), mode="fused")
+    z_f = sr.tensordot(
+        x, y, axes=(axes_x, axes_y), mode="fused", preserve_array=True
+    )
     assert z_b.allclose(z_f)
 
     # reversed then transposed
-    z_rb = sr.tensordot(y, x, axes=(axes_y, axes_x), mode="blockwise")
+    z_rb = sr.tensordot(
+        y, x, axes=(axes_y, axes_x), mode="blockwise", preserve_array=True
+    )
     z_rb.transpose(perm_reverse, inplace=True)
     assert z_b.allclose(z_rb)
 
     # reversed then transposed
-    z_rf = sr.tensordot(y, x, axes=(axes_y, axes_x), mode="fused")
+    z_rf = sr.tensordot(
+        y, x, axes=(axes_y, axes_x), mode="fused", preserve_array=True
+    )
     z_rf.transpose(perm_reverse, inplace=True)
     assert z_b.allclose(z_rf)
 
@@ -132,6 +140,7 @@ def test_fuse_with_tensordot(seed):
         y.fuse(axes_y),
         [faxes_a, faxes_b],
         mode="blockwise",
+        preserve_array=True,
     )
     assert z_b.allclose(z_efb)
 
@@ -141,6 +150,7 @@ def test_fuse_with_tensordot(seed):
         y.fuse(axes_y),
         [faxes_a, faxes_b],
         mode="fused",
+        preserve_array=True,
     )
     assert z_b.allclose(z_eff)
 
@@ -150,6 +160,7 @@ def test_fuse_with_tensordot(seed):
         x.fuse(axes_x),
         [faxes_b, faxes_a],
         mode="blockwise",
+        preserve_array=True,
     ).transpose(perm_reverse)
     assert z_b.allclose(z_refb)
 
@@ -159,6 +170,7 @@ def test_fuse_with_tensordot(seed):
         x.fuse(axes_x),
         [faxes_b, faxes_a],
         mode="fused",
+        preserve_array=True,
     ).transpose(perm_reverse)
     assert z_b.allclose(z_reff)
 

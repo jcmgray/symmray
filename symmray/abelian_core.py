@@ -16,7 +16,7 @@ from .utils import DEBUG
 
 
 class BlockIndex:
-    """An index of a block symmetric tensor.
+    """An index of a block sparse, abelian symmetric tensor.
 
     Parameters
     ----------
@@ -420,14 +420,14 @@ def calc_fuse_info(axes_groups, duals):
     )
 
 
-_symmetricarray_slots = (
+_AbelianArray_slots = (
     "_indices",
     "_blocks",
     "_charge",
 )
 
 
-class SymmetricArray(BlockBase):
+class AbelianArray(BlockBase):
     """A block sparse array with symmetry constraints.
 
     Parameters
@@ -442,7 +442,8 @@ class SymmetricArray(BlockBase):
         A mapping of each 'sector' (tuple of charges) to the data array.
     """
 
-    __slots__ = _symmetricarray_slots
+    __slots__ = _AbelianArray_slots
+    fermionic = False
 
     def __init__(
         self,
@@ -536,23 +537,6 @@ class SymmetricArray(BlockBase):
             for c in charges:
                 self._indices[i].chargemap.pop(c)
 
-    def gen_signed_sectors(self):
-        duals = self.duals
-        for sector in self.blocks:
-            yield tuple(
-                self.symmetry.negate(c, f) for c, f in zip(sector, duals)
-            )
-
-    def get_sparsity(self):
-        """Return the sparsity of the array, i.e. the number of blocks
-        divided by the number of possible blocks.
-        """
-        num_possible_blocks = sum(
-            self.symmetry.combine(*sector) == self.charge
-            for sector in self.gen_signed_sectors()
-        )
-        return self.num_blocks / num_possible_blocks
-
     def is_valid_sector(self, sector):
         """Check if a sector is valid for the block array, i.e., whether the
         total symmetry charge is satisfied.
@@ -568,9 +552,36 @@ class SymmetricArray(BlockBase):
         """Generate all valid sectors for the block array."""
         return filter(self.is_valid_sector, itertools.product(*self.charges))
 
+    def get_sparsity(self):
+        """Return the sparsity of the array, i.e. the number of blocks
+        divided by the number of possible blocks.
+        """
+        num_possible_blocks = len(tuple(self.gen_valid_sectors()))
+        return self.num_blocks / num_possible_blocks
+
     def get_block_shape(self, sector):
         """Get the shape of the block corresponding to a given sector."""
         return tuple(ix.size_of(c) for ix, c in zip(self._indices, sector))
+
+    def fill_missing_blocks(self):
+        """Insert any missing blocks for valid sectors with zeros, resulting
+        in a sparsity of 1.
+        """
+        _ex_array = self.get_any_array()
+        for sector in self.gen_valid_sectors():
+            if sector not in self.blocks:
+                shape = self.get_block_shape(sector)
+                array = ar.do("zeros", shape, like=_ex_array)
+                self.blocks[sector] = array
+
+    def drop_missing_blocks(self):
+        """Drop any present blocks that are all zero, resulting in a sparsity
+        possibly less that 1.
+        """
+        _all = ar.get_lib_fn(self.backend, "all")
+        for sector in list(self.blocks.keys()):
+            if _all(self.blocks[sector] == 0.0):
+                del self.blocks[sector]
 
     def check(self):
         """Check that all the block sizes and charges are consistent."""
@@ -616,7 +627,7 @@ class SymmetricArray(BlockBase):
 
         Parameters
         ----------
-        other : SymmetricArray or BlockVector
+        other : AbelianArray or BlockVector
             The other array or vector to compare to.
         *args
             The axes to compare, if ``other`` is a vector, the axis to compare
@@ -638,12 +649,12 @@ class SymmetricArray(BlockBase):
                 assert self.indices[axa].matches(other.indices[axb])
 
     def allclose(self, other, **allclose_opts):
-        """Test whether this ``SymmetricArray`` is close to another, that is,
+        """Test whether this ``AbelianArray`` is close to another, that is,
         has all the same sectors, and the corresponding arrays are close.
 
         Parameters
         ----------
-        other : SymmetricArray
+        other : AbelianArray
             The other array to compare to.
         allclose_opts
             Keyword arguments to pass to `allclose`.
@@ -746,7 +757,7 @@ class SymmetricArray(BlockBase):
 
         Returns
         -------
-        SymmetricArray
+        AbelianArray
         """
         self = cls.__new__(cls)
         if charge is None:
@@ -1128,7 +1139,7 @@ class SymmetricArray(BlockBase):
 
         Returns
         -------
-        SymmetricArray
+        AbelianArray
         """
         backend = self.backend
         # _split = ar.get_lib_fn(backend, "split")
@@ -1190,7 +1201,7 @@ class SymmetricArray(BlockBase):
 
         Returns
         -------
-        SymmetricArray
+        AbelianArray
         """
         new = self if inplace else self.copy()
         for ax in reversed(range(self.ndim)):
@@ -1231,7 +1242,7 @@ class SymmetricArray(BlockBase):
             raise ValueError("Matrix multiplication requires 2D arrays.")
 
         # block diagonal -> shortcut to tensordot
-        return tensordot_blockwise(
+        return _tensordot_blockwise(
             self,
             other,
             left_axes=(0,),
@@ -1288,7 +1299,7 @@ class SymmetricArray(BlockBase):
 
         Parameters
         ----------
-        other : SymmetricArray
+        other : AbelianArray
             The other array to align with.
         axes : tuple[tuple[int]]
             The pairs of axes to align, given as tuples of the corresponding
@@ -1323,7 +1334,7 @@ class SymmetricArray(BlockBase):
                 (
                     f"shape~{self.shape}:" f"[{pattern}]"
                     if self.indices
-                    else f"{self.get_any_array()}, "
+                    else f"{self.get_any_array()}"
                 ),
                 f", charge={self._charge}",
                 f", num_blocks={self.num_blocks})",
@@ -1334,13 +1345,13 @@ class SymmetricArray(BlockBase):
 # --------------------------------------------------------------------------- #
 
 
-def tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
+def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
     """Perform a tensordot between two block arrays, performing the contraction
     of each pair of aligned blocks separately.
     """
     aligned_blocks = defaultdict(list)
 
-    # iterate over all valid sectors of the new SymmetricArray
+    # iterate over all valid sectors of the new AbelianArray
     _tensordot = ar.get_lib_fn(a.backend, "tensordot")
     # _stack = ar.get_lib_fn(a.backend, "stack")
 
@@ -1407,14 +1418,14 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b):
 
     Parameters
     ----------
-    a, b : SymmetricArray
+    a, b : AbelianArray
         The arrays to be contracted.
     axes_a, axes_b : tuple[int]
         The axes that will be contracted, defined like in `tensordot`.
 
     Returns
     -------
-    a, b : SymmetricArray
+    a, b : AbelianArray
         The new arrays with misaligned sectors dropped.
     """
     # compute the intersection of fused charges for a and b
@@ -1443,13 +1454,13 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b):
     return a.copy_with(blocks=new_blocks_a), b.copy_with(blocks=new_blocks_b)
 
 
-def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
+def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     """Perform a tensordot between two block arrays, by first fusing both into
     matrices and unfusing afterwards.
 
     Parameters
     ----------
-    a, b : SymmetricArray
+    a, b : AbelianArray
         The arrays to be contracted.
     left_axes : tuple[int]
         The axes of ``a`` that will not be contracted.
@@ -1469,8 +1480,8 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
         )
 
     # fuse into matrices or maybe vectors
-    af = SymmetricArray.fuse(a, left_axes, axes_a)
-    bf = SymmetricArray.fuse(b, axes_b, right_axes)
+    af = AbelianArray.fuse(a, left_axes, axes_a)
+    bf = AbelianArray.fuse(b, axes_b, right_axes)
 
     # handle potential vector and scalar cases
     left_axes, axes_a = {
@@ -1488,19 +1499,34 @@ def tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     }[bool(axes_b), bool(right_axes)]
 
     # tensordot the fused blocks
-    cf = tensordot_blockwise(af, bf, left_axes, axes_a, axes_b, right_axes)
+    cf = _tensordot_blockwise(af, bf, left_axes, axes_a, axes_b, right_axes)
 
     # unfuse result into (*left_axes, *right_axes)
     for ax in reversed(range(cf.ndim)):
         if cf.indices[ax].subinfo is not None:
-            SymmetricArray.unfuse(cf, ax, inplace=True)
+            AbelianArray.unfuse(cf, ax, inplace=True)
 
     return cf
 
 
-@tensordot.register(SymmetricArray)
-def tensordot_symmetric(a, b, axes=2, mode="auto"):
-    """ """
+@tensordot.register(AbelianArray)
+def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
+    """Tensordot between two block sparse abelian symmetric arrays.
+
+    Parameters
+    ----------
+    a, b : AbelianArray
+        The arrays to be contracted.
+    axes : int or tuple[int]
+        The axes to contract. If an integer, the last ``axes`` axes of ``a``
+        will be contracted with the first ``axes`` axes of ``b``. If a tuple,
+        the axes to contract in ``a`` and ``b`` respectively.
+    mode : {"auto", "fused", "blockwise"}
+        The mode to use for the contraction. If "auto", it will choose between
+        "fused" and "blockwise" based on the number of axes to contract.
+    preserve_array : bool, optional
+        Whether to return a scalar if the result is a scalar.
+    """
     if DEBUG:
         a.check()
         b.check()
@@ -1527,14 +1553,15 @@ def tensordot_symmetric(a, b, axes=2, mode="auto"):
 
     if mode == "auto":
         if len(axes_a) == 0:
+            # outer product
             mode = "blockwise"
         else:
             mode = "fused"
 
     if mode == "fused":
-        _tdot = tensordot_via_fused
+        _tdot = _tensordot_via_fused
     elif mode == "blockwise":
-        _tdot = tensordot_blockwise
+        _tdot = _tensordot_blockwise
     else:
         raise ValueError(f"Unknown tensordot mode: {mode}.")
 
@@ -1542,12 +1569,19 @@ def tensordot_symmetric(a, b, axes=2, mode="auto"):
 
     if DEBUG:
         c.check()
-    # cf = tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
-    # cb = tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
+    # cf = _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
+    # cb = _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
     # if not cf.allclose(cb):
     #     breakpoint()
-    #     tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
+    #     _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
     #     raise ValueError("Blocks do not match.")
+
+    if (c.ndim == 0) and (not preserve_array):
+        try:
+            return c.blocks[()]
+        except KeyError:
+            # no aligned blocks, return zero
+            return 0.0
 
     return c
 
@@ -1555,33 +1589,33 @@ def tensordot_symmetric(a, b, axes=2, mode="auto"):
 # --------------------------------------------------------------------------- #
 
 
-class Z2Array(SymmetricArray):
+class Z2Array(AbelianArray):
     """A block array with Z2 symmetry."""
 
-    __slots__ = _symmetricarray_slots
+    __slots__ = _AbelianArray_slots
 
     symmetry = get_symmetry("Z2")
 
 
-class U1Array(SymmetricArray):
+class U1Array(AbelianArray):
     """A block array with U1 symmetry."""
 
-    __slots__ = _symmetricarray_slots
+    __slots__ = _AbelianArray_slots
 
     symmetry = get_symmetry("U1")
 
 
-class Z2Z2Array(SymmetricArray):
+class Z2Z2Array(AbelianArray):
     """A block array with Z2 x Z2 symmetry."""
 
-    __slots__ = _symmetricarray_slots
+    __slots__ = _AbelianArray_slots
 
     symmetry = get_symmetry("Z2Z2")
 
 
-class U1U1Array(SymmetricArray):
+class U1U1Array(AbelianArray):
     """A block array with U1 x U1 symmetry."""
 
-    __slots__ = _symmetricarray_slots
+    __slots__ = _AbelianArray_slots
 
     symmetry = get_symmetry("U1U1")

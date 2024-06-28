@@ -1,18 +1,34 @@
 import autoray as ar
 
-from .symmetric_core import (
-    SymmetricArray,
+from .abelian_core import (
+    AbelianArray,
     permuted,
-    tensordot_symmetric,
+    tensordot_abelian,
     without,
 )
 from .interface import tensordot
 from .symmetries import calc_phase_permutation, get_symmetry
 
-_fermionic_array_slots = SymmetricArray.__slots__ + ("_phases",)
+
+def argsort(seq):
+    return sorted(range(len(seq)), key=seq.__getitem__)
 
 
-class FermionicArray(SymmetricArray):
+def compute_positions(a, b, c):
+    new_position = a._position + b._position
+    n = len(new_position)
+    if n > 1:
+        perm = argsort(new_position)
+        phase = calc_phase_permutation((1,) * n, perm)
+        if phase == -1:
+            c.phase_global(inplace=True)
+        new_position = tuple(sorted(new_position))
+
+
+_fermionic_array_slots = AbelianArray.__slots__ + ("_phases", "_position")
+
+
+class FermionicArray(AbelianArray):
     """A fermionic block symmetry array.
 
     Parameters
@@ -37,11 +53,15 @@ class FermionicArray(SymmetricArray):
         charge=None,
         blocks=(),
         phases=(),
+        position=(),
     ):
         super().__init__(indices=indices, charge=charge, blocks=blocks)
         self._phases = dict(phases)
         if self.symmetry.parity(self.charge):
-            raise ValueError("Total charge must be even parity.")
+            assert position != ()
+        if isinstance(position, int):
+            position = (position,)
+        # self._position = position
 
     @property
     def phases(self):
@@ -64,6 +84,7 @@ class FermionicArray(SymmetricArray):
         """
         new = super().copy()
         new._phases = self.phases.copy()
+        # new._position = self._position
         return new
 
     def copy_with(self, indices=None, blocks=None, charge=None, phases=None):
@@ -83,8 +104,9 @@ class FermionicArray(SymmetricArray):
         new = super().copy_with(indices=indices, blocks=blocks, charge=charge)
         new._phases = self.phases.copy() if phases is None else phases
 
-        if new.symmetry.parity(new.charge):
-            raise ValueError("Total charge must be even parity.")
+        # if new.symmetry.parity(new.charge):
+        #     assert self._position
+        # new._position = self._position
 
         return new
 
@@ -134,7 +156,7 @@ class FermionicArray(SymmetricArray):
         new._phases = new_phases
 
         # transpose block arrays
-        SymmetricArray.transpose(new, axes, inplace=True)
+        AbelianArray.transpose(new, axes, inplace=True)
 
         return new
 
@@ -310,7 +332,9 @@ class FermionicArray(SymmetricArray):
 
                 if phase_dual:
                     # get the phase from conjugating 'bra' indices
-                    phase_new *= (-1 if (sum(parities[ax] for ax in axs_conj) % 2) else 1)
+                    phase_new *= (
+                        -1 if (sum(parities[ax] for ax in axs_conj) % 2) else 1
+                    )
 
                 if phase_new == 1:
                     new._phases.pop(sector, None)
@@ -318,6 +342,7 @@ class FermionicArray(SymmetricArray):
                     new._phases[sector] = phase_new
 
         new._charge = new.symmetry.negate(new._charge)
+        # new._position = tuple(-p for p in reversed(new._position))
 
         return new
 
@@ -361,6 +386,7 @@ class FermionicArray(SymmetricArray):
         new._indices = new_indices
         new._blocks = new_blocks
         new._phases = new_phases
+        # new._position = tuple(-p for p in reversed(new._position))
 
         if phase_dual:
             axs_conj = tuple(
@@ -394,7 +420,7 @@ class FermionicArray(SymmetricArray):
         -------
         FermionicArray
         """
-        from symmray.symmetric_core import calc_fuse_info
+        from symmray.abelian_core import calc_fuse_info
 
         new = self.copy()
 
@@ -442,7 +468,7 @@ class FermionicArray(SymmetricArray):
         new.phase_sync(inplace=True)
 
         # so we can do the actual block concatenations
-        return SymmetricArray.fuse(new, *axes_groups)
+        return AbelianArray.fuse(new, *axes_groups)
 
     def unfuse(self, axis, inplace=False):
         """Fermionic unfuse, which includes two sources of phase changes:
@@ -476,7 +502,7 @@ class FermionicArray(SymmetricArray):
         # need to insert actual phases prior to block operations
         new = self.phase_sync(inplace=inplace)
         # do the non-fermionic actual block unfusing
-        new = SymmetricArray.unfuse(new, axis, inplace=True)
+        new = AbelianArray.unfuse(new, axis, inplace=True)
 
         if index.dual:
             # apply the phase changes
@@ -494,13 +520,21 @@ class FermionicArray(SymmetricArray):
             # have |x><x| -> want <x|x>
             other = other.phase_flip(0)
 
-        return super().__matmul__(other)
+        new = super().__matmul__(other)
+
+        # # only track position if parity is still odd
+        # if new.symmetry.parity(new.charge):
+        #     new._position = self._position + other._position
+        # else:
+        #     new._position = ()
+
+        return new
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases
         multiplied in.
         """
-        return SymmetricArray.to_dense(self.phase_sync())
+        return AbelianArray.to_dense(self.phase_sync())
 
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a
@@ -511,19 +545,20 @@ class FermionicArray(SymmetricArray):
         other : FermionicArray
             The other fermionic array to compare.
         """
-        return SymmetricArray.allclose(self.phase_sync(), other.phase_sync(), **kwargs)
+        return AbelianArray.allclose(
+            self.phase_sync(), other.phase_sync(), **kwargs
+        )
 
     def trace(self):
         """Fermionic matrix trace."""
         ixl, ixr = self.indices
 
         if ixl.dual and not ixr.dual:
-            return SymmetricArray.trace(self.phase_sync())
+            return AbelianArray.trace(self.phase_sync())
         elif not ixl.dual and ixr.dual:
-            return SymmetricArray.trace(self.phase_flip(0).phase_sync())
+            return AbelianArray.trace(self.phase_flip(0).phase_sync())
         else:
             raise ValueError("Cannot trace a non-bra or non-ket.")
-
 
 
 @tensordot.register(FermionicArray)
@@ -567,7 +602,7 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
         (*range(ncon - 1, -1, -1), *range(ncon, b.ndim)), inplace=True
     )
 
-    # new axes for tensordot_symmetric having permuted inputs
+    # new axes for tensordot_abelian having permuted inputs
     new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
     new_axes_b = tuple(range(ncon))
 
@@ -584,9 +619,15 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
     b.phase_sync(inplace=True)
 
     # perform blocked contraction!
-    c = tensordot_symmetric(a, b, axes=(new_axes_a, new_axes_b), **kwargs)
+    new = tensordot_abelian(a, b, axes=(new_axes_a, new_axes_b), **kwargs)
 
-    return c
+    # # only track position if parity is still odd
+    # if new.symmetry.parity(new.charge):
+    #     new._position = a._position + b._position
+    # else:
+    #     new._position = ()
+
+    return new
 
 
 # --------------- specific fermionic symmetric array classes ---------------- #
@@ -621,3 +662,13 @@ class Z2FermionicArray(FermionicArray):
 class U1FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
     symmetry = get_symmetry("U1")
+
+
+class Z2Z2FermionicArray(FermionicArray):
+    __slots__ = _fermionic_array_slots
+    symmetry = get_symmetry("Z2Z2")
+
+
+class U1U1FermionicArray(FermionicArray):
+    __slots__ = _fermionic_array_slots
+    symmetry = get_symmetry("U1U1")

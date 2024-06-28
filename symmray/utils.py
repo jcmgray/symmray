@@ -285,7 +285,7 @@ def get_rand(
 
     Returns
     -------
-    SymmetricArray or FermionicArray
+    AbelianArray or FermionicArray
     """
     if symmetry == "Z2":
         fn = get_rand_z2array
@@ -333,6 +333,46 @@ def get_rand_blockvector(
         i += 1
 
     return sr.BlockVector(blocks)
+
+
+def from_dense(
+    array,
+    symmetry,
+    index_maps,
+    duals=None,
+    fermionic=False,
+    charge=None,
+):
+    from .abelian_core import (
+        Z2Array,
+        Z2Z2Array,
+        U1Array,
+        U1U1Array,
+    )
+    from .fermionic_core import (
+        Z2FermionicArray,
+        U1FermionicArray,
+        Z2Z2FermionicArray,
+        U1U1FermionicArray,
+    )
+
+    cls = {
+        ("Z2", False): Z2Array,
+        ("Z2Z2", False): Z2Z2Array,
+        ("U1", False): U1Array,
+        ("U1U1", False): U1U1Array,
+        ("Z2", True): Z2FermionicArray,
+        ("Z2Z2", True): Z2Z2FermionicArray,
+        ("U1", True): U1FermionicArray,
+        ("U1U1", True): U1U1FermionicArray,
+    }[symmetry, fermionic]
+
+    return cls.from_dense(
+        array,
+        index_maps,
+        duals=duals,
+        charge=charge,
+    )
 
 
 def parse_edges_to_site_info(

@@ -4,12 +4,12 @@ import autoray as ar
 
 from .block_core import BlockVector
 from .fermionic_core import FermionicArray
-from .symmetric_core import BlockIndex, SymmetricArray
+from .abelian_core import BlockIndex, AbelianArray
 from .utils import DEBUG
 
 
 def norm(x):
-    """Compute the frobenius norm of a SymmetricArray."""
+    """Compute the frobenius norm of an AbelianArray."""
     return x.norm()
 
 
@@ -45,11 +45,11 @@ def _get_qr_fn(backend, stabilized=False):
 
 @functools.singledispatch
 def qr(x, stabilized=False):
-    """QR decomposition of a SymmetricArray.
+    """QR decomposition of an AbelianArray.
 
     Parameters
     ----------
-    x : SymmetricArray
+    x : AbelianArray
         The block symmetric array to decompose.
     stabilized : bool, optional
         Whether to use a stabilized QR decomposition, that is, with positive
@@ -57,14 +57,14 @@ def qr(x, stabilized=False):
 
     Returns
     -------
-    q : SymmetricArray
+    q : AbelianArray
         The orthogonal matrix.
-    r : SymmetricArray
+    r : AbelianArray
         The upper triangular matrix.
     """
     if x.ndim != 2:
         raise NotImplementedError(
-            "qr only implemented for 2D SymmetricArrays,"
+            "qr only implemented for 2D AbelianArrays,"
             f" got {x.ndim}D. Consider fusing first."
         )
 
@@ -106,7 +106,7 @@ def qr(x, stabilized=False):
 
 @qr.register(FermionicArray)
 def qr_fermionic(x, stabilized=False):
-    q, r = qr.dispatch(SymmetricArray)(x, stabilized=stabilized)
+    q, r = qr.dispatch(AbelianArray)(x, stabilized=stabilized)
 
     if r.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
@@ -124,7 +124,7 @@ def qr_stabilized(x):
 def svd(x):
     if x.ndim != 2:
         raise NotImplementedError(
-            "svd only implemented for 2D SymmetricArrays,"
+            "svd only implemented for 2D AbelianArrays,"
             f" got {x.ndim}D. Consider fusing first."
         )
 
@@ -172,7 +172,7 @@ def svd(x):
 
 @svd.register(FermionicArray)
 def svd_fermionic(x):
-    u, s, vh = svd.dispatch(SymmetricArray)(x)
+    u, s, vh = svd.dispatch(AbelianArray)(x)
 
     if vh.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
@@ -353,10 +353,10 @@ def svd_truncated(
 
 @functools.singledispatch
 def eigh(x):
-    """Perform a hermitian eigendecomposition on a SymmetricArray."""
+    """Perform a hermitian eigendecomposition on a AbelianArray."""
     if x.ndim != 2:
         raise NotImplementedError(
-            "eigh only implemented for 2D SymmetricArrays,"
+            "eigh only implemented for 2D AbelianArrays,"
             f" got {x.ndim}D. Consider fusing first."
         )
     if x.charge != x.symmetry.combine():
