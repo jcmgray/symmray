@@ -341,7 +341,7 @@ class FermionicArray(AbelianArray):
                 else:
                     new._phases[sector] = phase_new
 
-        new._charge = new.symmetry.negate(new._charge)
+        new._charge = new.symmetry.sign(new._charge)
         # new._position = tuple(-p for p in reversed(new._position))
 
         return new

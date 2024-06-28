@@ -18,8 +18,8 @@ class Symmetry(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def negate(self, charge, dual=True):
-        """Negate a charge according to the symmetry."""
+    def sign(self, charge, dual=True):
+        """Negate a charge according to the symmetry and flag ``dual``."""
         raise NotImplementedError
 
     @abstractmethod
@@ -32,15 +32,15 @@ class Symmetry(ABC):
 
 
 @functools.lru_cache(2**14)
-def negate_scalar(charge, dual=True):
+def sign_scalar(charge, dual=True):
     if dual:
         return -charge
     return charge
 
 
 @functools.lru_cache(2**14)
-def negate_tuple(charge, dual=True):
-    return tuple(negate_scalar(c, dual) for c in charge)
+def sign_tuple(charge, dual=True):
+    return tuple(sign_scalar(c, dual) for c in charge)
 
 
 class Z2(Symmetry):
@@ -52,7 +52,7 @@ class Z2(Symmetry):
     def combine(self, *charges):
         return sum(charges) % 2
 
-    def negate(self, charge, dual=True):
+    def sign(self, charge, dual=True):
         # Z2 is self-inverse
         return charge
 
@@ -69,8 +69,8 @@ class U1(Symmetry):
     def combine(self, *charges):
         return sum(charges)
 
-    def negate(self, charge, dual=True):
-        return negate_scalar(charge, dual)
+    def sign(self, charge, dual=True):
+        return sign_scalar(charge, dual)
 
     def parity(self, charge):
         return charge % 2
@@ -93,7 +93,7 @@ class Z2Z2(Symmetry):
             sum(charge[1] for charge in charges) % 2,
         )
 
-    def negate(self, charge, dual=True):
+    def sign(self, charge, dual=True):
         # Z2Z2 is self-inverse
         return charge
 
@@ -118,8 +118,8 @@ class U1U1(Symmetry):
             sum(charge[1] for charge in charges),
         )
 
-    def negate(self, charge, dual=True):
-        return negate_tuple(charge, dual)
+    def sign(self, charge, dual=True):
+        return sign_tuple(charge, dual)
 
     def parity(self, charge):
         return (charge[0] + charge[1]) % 2

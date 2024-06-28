@@ -542,7 +542,7 @@ class AbelianArray(BlockBase):
         total symmetry charge is satisfied.
         """
         signed_sector = (
-            self.symmetry.negate(c, ix.dual)
+            self.symmetry.sign(c, ix.dual)
             for c, ix in zip(sector, self._indices)
         )
         block_charge = self.symmetry.combine(*signed_sector)
@@ -841,7 +841,7 @@ class AbelianArray(BlockBase):
             else:
                 # we have reached a fully specified block
                 signed_sector = tuple(
-                    cls.symmetry.negate(c, dual)
+                    cls.symmetry.sign(c, dual)
                     for c, dual in zip(sector, duals)
                 )
                 if cls.symmetry.combine(*signed_sector) == charge:
@@ -895,7 +895,7 @@ class AbelianArray(BlockBase):
         _conj = ar.get_lib_fn(new.backend, "conj")
         new.apply_to_arrays(_conj)
         new._indices = tuple(ix.conj() for ix in self._indices)
-        new._charge = self.symmetry.negate(self._charge)
+        new._charge = self.symmetry.sign(self._charge)
 
         if DEBUG:
             new.check()
@@ -1011,9 +1011,7 @@ class AbelianArray(BlockBase):
                     new_shape[new_ax] *= d
                     subsectors[g].append(c)
                     # need to match current dualness to group dualness
-                    signed_c = self.symmetry.negate(
-                        c, group_duals[g] ^ ix.dual
-                    )
+                    signed_c = self.symmetry.sign(c, group_duals[g] ^ ix.dual)
                     new_sector[new_ax] = self.symmetry.combine(
                         new_sector[new_ax], signed_c
                     )
