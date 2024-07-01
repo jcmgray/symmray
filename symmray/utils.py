@@ -409,6 +409,9 @@ def parse_edges_to_site_info(
     """
     sites = {}
 
+    starmap_ind = site_ind_id.count("{}") > 1
+    starmap_tag = site_tag_id.count("{}") > 1
+
     # create bonds
     for sitea, siteb in sorted(edges):
         if sitea > siteb:
@@ -429,9 +432,22 @@ def parse_edges_to_site_info(
 
     # create physical inds
     for site in sites:
-        sites[site]["inds"].append(site_ind_id.format(site))
+        sites[site]["coordination"] = len(sites[site]["inds"])
+
+        if starmap_ind:
+            site_ind = site_ind_id.format(*site)
+        else:
+            site_ind = site_ind_id.format(site)
+
+        sites[site]["inds"].append(site_ind)
         sites[site]["duals"].append(0)
         sites[site]["shape"].append(phys_dim)
-        sites[site]["tags"] = (site_tag_id.format(site),)
+
+        if starmap_tag:
+            site_tag = site_tag_id.format(*site)
+        else:
+            site_tag = site_tag_id.format(site)
+
+        sites[site]["tags"] = (site_tag,)
 
     return sites
