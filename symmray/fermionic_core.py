@@ -14,18 +14,49 @@ def argsort(seq):
     return sorted(range(len(seq)), key=seq.__getitem__)
 
 
-def compute_positions(a, b, c):
-    new_position = a._position + b._position
-    n = len(new_position)
-    if n > 1:
-        perm = argsort(new_position)
-        phase = calc_phase_permutation((1,) * n, perm)
+def resolve_combined_oddpos(left, right, new):
+    """Given we have contracted two fermionic arrays, resolve the oddposs
+    of the new array, possibly flipping the global phase.
+
+    Parameters
+    ----------
+    left, right, new : FermionicArray
+        The left and right arrays that were contracted, and the new array.
+    """
+    l_oddpos = left.oddpos
+    r_oddpos = right.oddpos
+    oddpos = [*l_oddpos, *r_oddpos]
+
+    # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
+
+    if l_oddpos and r_oddpos and (l_oddpos[-1] > r_oddpos[0]):
+        # overlapping -> compute the phase of sorting the oddposs
+        perm = tuple(argsort(oddpos))
+        phase = calc_phase_permutation((1,) * len(oddpos), perm)
         if phase == -1:
-            c.phase_global(inplace=True)
-        new_position = tuple(sorted(new_position))
+            new.phase_global(inplace=True)
+        # -> [1, 2, 3, 4, 5, 6, 7]
+        oddpos = [oddpos[i] for i in perm]
+
+    # trim adjacent pairs of oddposs, which act like even parity
+    i = 0
+    while i < len(oddpos) - 1:
+        # e.g. -> [3, 4, 5, 6, 7] -> [5, 6, 7] -> [7]
+        rl = oddpos[i]
+        rr = oddpos[i + 1]
+        if (rl + 1 == rr) or (rl, rr) == (-1, 1):
+            oddpos.pop(i)
+            oddpos.pop(i)
+        elif rl == rr:
+            # also detect duplicates here
+            raise ValueError("oddposs must be unique.")
+        else:
+            i += 1
+
+    new._oddpos = tuple(oddpos)
 
 
-_fermionic_array_slots = AbelianArray.__slots__ + ("_phases", "_position")
+_fermionic_array_slots = AbelianArray.__slots__ + ("_phases", "_oddpos")
 
 
 class FermionicArray(AbelianArray):
@@ -43,6 +74,12 @@ class FermionicArray(AbelianArray):
         The blocks of the array, by default empty.
     phases : dict, optional
         The lazy phases of each block, by default empty.
+    oddpos : int or tuple of int, optional
+        If the array has odd parity, the 'position' of it, or the ordering of
+        subsumed positions. If a single integer is given, it is assumed to be
+        the position of the odd rank. The integer must be non-zero so that it
+        is still sortable after negation. If a tuple is given, it is assumed to
+        be the sorted ordering of subsumed odd ranks. By default empty.
     """
 
     __slots__ = _fermionic_array_slots
@@ -53,15 +90,24 @@ class FermionicArray(AbelianArray):
         charge=None,
         blocks=(),
         phases=(),
-        position=(),
+        oddpos=(),
     ):
         super().__init__(indices=indices, charge=charge, blocks=blocks)
         self._phases = dict(phases)
-        if self.symmetry.parity(self.charge):
-            assert position != ()
-        if isinstance(position, int):
-            position = (position,)
-        # self._position = position
+        if self.parity and oddpos == ():
+            raise ValueError(
+                "`oddpos` must be specified for odd parity fermionic arrays."
+            )
+        if isinstance(oddpos, int):
+            assert oddpos != 0
+            self._oddpos = (oddpos,)
+        else:
+            self._oddpos = tuple(oddpos)
+
+    @property
+    def parity(self):
+        """The parity of the total charge."""
+        return self.symmetry.parity(self.charge)
 
     @property
     def phases(self):
@@ -74,6 +120,17 @@ class FermionicArray(AbelianArray):
             self._phases = {}
             return self._phases
 
+    @property
+    def oddpos(self):
+        """The odd rank of the array, i.e. the ordering of subsumed odd
+        positions.
+        """
+        try:
+            return self._oddpos
+        except AttributeError:
+            self._oddpos = ()
+            return self._oddpos
+
     def copy(self):
         """Create a copy of this fermionic array.
 
@@ -84,7 +141,7 @@ class FermionicArray(AbelianArray):
         """
         new = super().copy()
         new._phases = self.phases.copy()
-        # new._position = self._position
+        new._oddpos = self.oddpos
         return new
 
     def copy_with(self, indices=None, blocks=None, charge=None, phases=None):
@@ -103,10 +160,10 @@ class FermionicArray(AbelianArray):
         """
         new = super().copy_with(indices=indices, blocks=blocks, charge=charge)
         new._phases = self.phases.copy() if phases is None else phases
+        new._oddpos = self._oddpos
 
-        # if new.symmetry.parity(new.charge):
-        #     assert self._position
-        # new._position = self._position
+        if new.parity:
+            assert new._oddpos
 
         return new
 
@@ -254,6 +311,25 @@ class FermionicArray(AbelianArray):
             new._phases[sector] = -1
         return new
 
+    def phase_global(self, inplace=False):
+        """Flip the global phase of the array.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        new = self if inplace else self.copy()
+        for sector in new.sectors:
+            phase = -new.phases.pop(sector, 1)
+            if phase == -1:
+                new._phases[sector] = phase
+        return new
+
     def phase_sync(self, inplace=False):
         """Multiply all lazy phases into the block arrays.
 
@@ -342,7 +418,7 @@ class FermionicArray(AbelianArray):
                     new._phases[sector] = phase_new
 
         new._charge = new.symmetry.sign(new._charge)
-        # new._position = tuple(-p for p in reversed(new._position))
+        new._oddpos = tuple(-r for r in reversed(new._oddpos))
 
         return new
 
@@ -386,7 +462,7 @@ class FermionicArray(AbelianArray):
         new._indices = new_indices
         new._blocks = new_blocks
         new._phases = new_phases
-        # new._position = tuple(-p for p in reversed(new._position))
+        new._oddpos = tuple(-r for r in reversed(new._oddpos))
 
         if phase_dual:
             axs_conj = tuple(
@@ -424,8 +500,8 @@ class FermionicArray(AbelianArray):
 
         new = self.copy()
 
-        # handle empty groups
-        axes_groups = tuple(filter(None, axes_groups))
+        # handle empty groups and ensure hashable
+        axes_groups = tuple(tuple(group) for group in axes_groups if group)
         if not axes_groups:
             # ... and no groups -> nothing to do
             return new
@@ -522,11 +598,7 @@ class FermionicArray(AbelianArray):
 
         new = super().__matmul__(other)
 
-        # # only track position if parity is still odd
-        # if new.symmetry.parity(new.charge):
-        #     new._position = self._position + other._position
-        # else:
-        #     new._position = ()
+        resolve_combined_oddpos(self, other, new)
 
         return new
 
@@ -562,7 +634,7 @@ class FermionicArray(AbelianArray):
 
 
 @tensordot.register(FermionicArray)
-def tensordot_fermionic(a, b, axes=2, **kwargs):
+def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
     """Contract two fermionic arrays along the specified axes, accounting for
     phases from both transpositions and contractions.
 
@@ -619,15 +691,26 @@ def tensordot_fermionic(a, b, axes=2, **kwargs):
     b.phase_sync(inplace=True)
 
     # perform blocked contraction!
-    new = tensordot_abelian(a, b, axes=(new_axes_a, new_axes_b), **kwargs)
+    c = tensordot_abelian(
+        a,
+        b,
+        axes=(new_axes_a, new_axes_b),
+        # preserve array for resolving oddposs
+        preserve_array=True,
+        **kwargs
+    )
 
-    # # only track position if parity is still odd
-    # if new.symmetry.parity(new.charge):
-    #     new._position = a._position + b._position
-    # else:
-    #     new._position = ()
+    # potential global phase flip from oddpos sorting
+    resolve_combined_oddpos(a, b, c)
 
-    return new
+    if (c.ndim == 0) and (not preserve_array):
+        try:
+            return c.blocks[()]
+        except KeyError:
+            # no aligned blocks, return zero
+            return 0.0
+
+    return c
 
 
 # --------------- specific fermionic symmetric array classes ---------------- #

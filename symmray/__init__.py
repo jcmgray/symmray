@@ -9,7 +9,7 @@ from .fermionic_core import (
     Z2FermionicArray,
     Z2Z2FermionicArray,
 )
-from .fermionic_ops import (
+from .fermionic_local_operators import (
     compute_local_fermionic_elements,
     fermi_hubbard_local_tensor,
     fermi_hubbard_spinless_local_tensor,
