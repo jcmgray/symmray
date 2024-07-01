@@ -954,9 +954,9 @@ class AbelianArray(BlockBase):
             The axes to fuse. Each group of axes will be fused into a single
             axis.
         """
-        # handle empty groups
+        # handle empty groups and ensure hashable
         # XXX: error or warn about empty groups?
-        axes_groups = tuple(filter(None, axes_groups))
+        axes_groups = tuple(tuple(group) for group in axes_groups if group)
         if not axes_groups:
             # ... and no groups -> nothing to do
             return self.copy()
