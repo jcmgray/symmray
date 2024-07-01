@@ -183,11 +183,35 @@ def compute_local_fermionic_dense(terms, bases, like="numpy"):
 
 def fermi_hubbard_spinless_local_dense(
     t=1.0,
-    U=8.0,
+    V=8.0,
     mu=0.0,
     coordinations=(1, 1),
     like="numpy",
 ):
+    """Construct the dense local 4-tensor for the spinless Fermi-Hubbard model,
+    with internal signs precomputed. The indices are ordered as (a, b, a', b').
+
+    Parameters
+    ----------
+    t : float, optional
+        The hopping parameter, by default 1.0.
+    V : float, optional
+        The nearest-neighbor interaction parameter, by default 8.0.
+    mu : float, optional
+        The chemical potential, by default 0.0.
+    coordinations : tuple[int, int], optional
+        The coordinations of the sites, by default (1, 1). If applying this
+        local operator to every edge in a graph, then the single site
+        contributions can be properly accounted for if the coordinations are
+        provided.
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array
+        The local operator in dense form.
+    """
     a, b = map(FermionicOperator, "ab")
     basis_a = ((), (a.dag,))
     basis_b = ((), (b.dag,))
@@ -198,7 +222,7 @@ def fermi_hubbard_spinless_local_dense(
         (-t, (a.dag, b)),
         (-t, (b.dag, a)),
         # nearest-neighbor interaction
-        (U, (a.dag, a, b.dag, b)),
+        (V, (a.dag, a, b.dag, b)),
         # chemical potential
         # mu is single site and will be overcounted without coordinations
         (-mu / coordinations[0], (a.dag, a)),
@@ -211,13 +235,39 @@ def fermi_hubbard_spinless_local_dense(
 def fermi_hubbard_spinless_local_tensor(
     symmetry,
     t=1.0,
-    U=8.0,
+    V=8.0,
     mu=0.0,
     coordinations=(1, 1),
     like="numpy",
 ):
+    """Construct the fermionic local tensor for the spinless Fermi-Hubbard
+    model. The indices are ordered as (a, b, a', b').
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2" or "U1".
+    t : float, optional
+        The hopping parameter, by default 1.0.
+    V : float, optional
+        The nearest-neighbor interaction parameter, by default 8.0.
+    mu : float, optional
+        The chemical potential, by default 0.0.
+    coordinations : tuple[int, int], optional
+        The coordinations of the sites, by default (1, 1). If applying this
+        local operator to every edge in a graph, then the single site
+        contributions can be properly accounted for if the coordinations are
+        provided.
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array
+        The local operator in fermionic array form.
+    """
     hij = fermi_hubbard_spinless_local_dense(
-        t, U, mu, coordinations=coordinations, like=like
+        t, V, mu, coordinations=coordinations, like=like
     )
 
     if symmetry == "Z2" or symmetry == "U1":
@@ -241,6 +291,32 @@ def fermi_hubbard_local_dense(
     coordinations=(1, 1),
     like="numpy",
 ):
+    """Construct the dense local 4-tensor for the Fermi-Hubbard model, with
+    internal signs precomputed. The indices are ordered as (a, b, a', b').
+    The local basis is like (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a
+    with up (au) and down (ad) spin respectively and similar for site b.
+
+    Parameters
+    ----------
+    t : float, optional
+        The hopping parameter, by default 1.0.
+    U : float, optional
+        The on-site interaction parameter, by default 8.0.
+    mu : float, optional
+        The chemical potential, by default 0.0.
+    coordinations : tuple[int, int], optional
+        The coordinations of the sites, by default (1, 1). If applying this
+        local operator to every edge in a graph, then the single site
+        contributions can be properly accounted for if the coordinations are
+        provided.
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array
+        The local operator in dense form.
+    """
     au = FermionicOperator("au")
     ad = FermionicOperator("ad")
     bu = FermionicOperator("bu")
@@ -275,7 +351,10 @@ def fermi_hubbard_local_tensor(
     coordinations=(1, 1),
     like="numpy",
 ):
-    """Construct the fermionic local tensor for the Fermi-Hubbard model.
+    """Construct the fermionic local tensor for the Fermi-Hubbard model. The
+    indices are ordered as (a, b, a', b'), with the local basis like
+    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
+    spin respectively and similar for site b.
 
     Parameters
     ----------
