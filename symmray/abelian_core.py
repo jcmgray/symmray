@@ -50,8 +50,8 @@ class BlockIndex:
 
     @property
     def dual(self):
-        """Whether the index flows 'inwards' / (+ve) / ket-like = ``False`` or
-        'outwards' / (-ve) / bra-like= ``True``. The charge sign is given by
+        """Whether the index flows 'outwards' / (+ve) / ket-like = ``False`` or
+        'inwards' / (-ve) / bra-like= ``True``. The charge sign is given by
         ``(-1) ** dual``.
         """
         return self._dual

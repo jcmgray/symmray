@@ -64,13 +64,6 @@ class BlockBase:
         """The blocks of the array."""
         return self._blocks
 
-    @property
-    def size(self):
-        """The total size of the arrays blocks."""
-        # compute lazily
-        _size = ar.get_lib_fn(self.backend, "size")
-        return sum(_size(x) for x in self.blocks.values())
-
     def get_any_array(self):
         """Get any array from the blocks, to check type and backend for
         example.
@@ -266,6 +259,13 @@ class BlockVector(BlockBase):
     __slots__ = BlockBase.__slots__
 
     ndim = 1
+
+    @property
+    def size(self):
+        """The total size of the arrays blocks."""
+        # compute lazily
+        _size = ar.get_lib_fn(self.backend, "size")
+        return sum(_size(x) for x in self.blocks.values())
 
     @property
     def shape(self):
