@@ -6,24 +6,39 @@ import itertools
 
 import autoray as ar
 
-from .utils import from_dense
-
 
 class FermionicOperator:
     """Simple class to represent a fermionic operator with a label and a
     dagger flag.
     """
 
+    __slots__ = ("_label", "_dagger")
+
     def __init__(self, label, dagger=False):
-        self.label = label
-        self.dagger = dagger
+        self._label = label
+        self._dagger = dagger
 
     @property
     def dag(self):
-        return FermionicOperator(self.label, not self.dagger)
+        return FermionicOperator(self._label, not self._dagger)
+
+    def __eq__(self, other):
+        return (self._label, self._dagger) == (other._label, other._dagger)
+
+    def __lt__(self, other):
+        return (self._label, self._dagger) < (other._label, other._dagger)
+
+    def __le__(self, other):
+        return (self._label, self._dagger) <= (other._label, other._dagger)
+
+    def __gt__(self, other):
+        return (self._label, self._dagger) > (other._label, other._dagger)
+
+    def __ge__(self, other):
+        return (self._label, self._dagger) >= (other._label, other._dagger)
 
     def __repr__(self):
-        return f"{self.label}{'+' if self.dagger else '-'}"
+        return f"{self._label}{'+' if self._dagger else '-'}"
 
 
 def _dagger_basis(basis):
@@ -266,6 +281,8 @@ def fermi_hubbard_spinless_local_tensor(
     array
         The local operator in fermionic array form.
     """
+    from .utils import from_dense
+
     hij = fermi_hubbard_spinless_local_dense(
         t, V, mu, coordinations=coordinations, like=like
     )
@@ -369,6 +386,8 @@ def fermi_hubbard_local_tensor(
     like : str, optional
         The backend to use, by default "numpy".
     """
+    from .utils import from_dense
+
     if symmetry == "Z2":
         indexmap = [0, 1, 1, 0]
     elif symmetry == "Z2Z2":
