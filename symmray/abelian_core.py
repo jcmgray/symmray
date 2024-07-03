@@ -1594,7 +1594,7 @@ class Z2Array(AbelianArray):
 
     symmetry = get_symmetry("Z2")
 
-    def to_pyblock3(self):
+    def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion_symmetry import Z2
         from pyblock3.algebra.core import SparseTensor, SubTensor
 
@@ -1603,10 +1603,12 @@ class Z2Array(AbelianArray):
             for sector, array in self.blocks.items()
         ]
 
-        data = SparseTensor(
-            blocks,
-            pattern=["-" if dual else "+" for dual in self.duals],
-        )
+        data = SparseTensor(blocks)
+
+        if flat:
+            from pyblock3.algebra.flat import FlatSparseTensor
+
+            data = FlatSparseTensor.from_sparse(data)
 
         data.shape = self.shape
 
@@ -1620,7 +1622,7 @@ class U1Array(AbelianArray):
 
     symmetry = get_symmetry("U1")
 
-    def to_pyblock3(self):
+    def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion_symmetry import U1
         from pyblock3.algebra.core import SparseTensor, SubTensor
 
@@ -1629,10 +1631,12 @@ class U1Array(AbelianArray):
             for sector, array in self.blocks.items()
         ]
 
-        data = SparseTensor(
-            blocks,
-            pattern=["-" if dual else "+" for dual in self.duals],
-        )
+        data = SparseTensor(blocks)
+
+        if flat:
+            from pyblock3.algebra.flat import FlatSparseTensor
+
+            data = FlatSparseTensor.from_sparse(data)
 
         data.shape = self.shape
 

@@ -23,8 +23,8 @@ def rand_z2_index(
 
     Parameters
     ----------
-    d : int
-        The total size of the index.
+    d : int or dict
+        The total size of the index. If a dict, an explicit chargemap.
     dual : bool, optional
         The dualness of the index. If None, it is randomly chosen.
     subsizes : None, "equal", "maximal", or tuple of int, optional
@@ -44,6 +44,9 @@ def rand_z2_index(
 
     if dual is None:
         dual = rng.choice([False, True])
+
+    if isinstance(d, dict):
+        return sr.BlockIndex(chargemap=d, dual=dual)
 
     if d == 1:
         charge = int(rng.choice([0, 1]))
@@ -106,6 +109,9 @@ def rand_u1_index(
 
     if dual is None:
         dual = rng.choice([False, True])
+
+    if isinstance(d, dict):
+        return sr.BlockIndex(chargemap=d, dual=dual)
 
     if subsizes is None:
         ncharge = rng.integers(1, d + 1)

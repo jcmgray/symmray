@@ -716,7 +716,7 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
         axes=(new_axes_a, new_axes_b),
         # preserve array for resolving oddposs
         preserve_array=True,
-        **kwargs
+        **kwargs,
     )
 
     # potential global phase flip from oddpos sorting
@@ -739,7 +739,7 @@ class Z2FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
     symmetry = get_symmetry("Z2")
 
-    def to_pyblock3(self):
+    def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion_symmetry import Z2
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
 
@@ -756,6 +756,9 @@ class Z2FermionicArray(FermionicArray):
             pattern=["-" if dual else "+" for dual in self.duals],
         )
 
+        if flat:
+            data = data.to_flat()
+
         data.shape = self.shape
 
         return data
@@ -765,7 +768,7 @@ class U1FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
     symmetry = get_symmetry("U1")
 
-    def to_pyblock3(self):
+    def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion_symmetry import U1
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
 
@@ -782,9 +785,13 @@ class U1FermionicArray(FermionicArray):
             pattern=["-" if dual else "+" for dual in self.duals],
         )
 
+        if flat:
+            data = data.to_flat()
+
         data.shape = self.shape
 
         return data
+
 
 class Z2Z2FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
