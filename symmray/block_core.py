@@ -230,6 +230,10 @@ class BlockBase:
         """Check if all elements in the array are finite."""
         return self._do_unary_op("isfinite")
 
+    def abs(self):
+        """Get the absolute value of all elements in the array."""
+        return self._do_unary_op("abs")
+
     def norm(self):
         """Get the frobenius norm of the block array."""
         backend = self.backend

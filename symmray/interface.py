@@ -40,6 +40,11 @@ def isfinite(x):
     return x.isfinite()
 
 
+def abs(x):
+    """Return the absolute value of a `symmray` array."""
+    return x.abs()
+
+
 def reshape(a, newshape, **kwargs):
     """Reshape a `symmray` array, via fusing or unfusing."""
     return a.reshape(newshape, **kwargs)

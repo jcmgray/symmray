@@ -1,4 +1,12 @@
 from . import linalg, scipy, utils
+from .abelian_core import (
+    AbelianArray,
+    BlockIndex,
+    U1Array,
+    U1U1Array,
+    Z2Array,
+    Z2Z2Array,
+)
 from .block_core import (
     BlockVector,
 )
@@ -15,6 +23,7 @@ from .fermionic_local_operators import (
     fermi_hubbard_spinless_local_tensor,
 )
 from .interface import (
+    abs,
     align_axes,
     all,
     any,
@@ -30,17 +39,10 @@ from .interface import (
     trace,
     transpose,
 )
-from .abelian_core import (
-    BlockIndex,
-    AbelianArray,
-    U1Array,
-    U1U1Array,
-    Z2Array,
-    Z2Z2Array,
-)
 from .symmetries import U1, U1U1, Z2, Z2Z2, get_symmetry
 
 __all__ = (
+    "abs",
     "align_axes",
     "all",
     "any",
