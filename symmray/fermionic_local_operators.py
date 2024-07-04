@@ -9,36 +9,44 @@ import autoray as ar
 
 class FermionicOperator:
     """Simple class to represent a fermionic operator with a label and a
-    dagger flag.
+    dual flag.
     """
 
-    __slots__ = ("_label", "_dagger")
+    __slots__ = ("_label", "_dual")
 
-    def __init__(self, label, dagger=False):
+    def __init__(self, label, dual=False):
         self._label = label
-        self._dagger = dagger
+        self._dual = dual
+
+    @property
+    def label(self):
+        return self._label
+
+    @property
+    def dual(self):
+        return self._dual
 
     @property
     def dag(self):
-        return FermionicOperator(self._label, not self._dagger)
+        return FermionicOperator(self._label, not self._dual)
 
     def __eq__(self, other):
-        return (self._label, self._dagger) == (other._label, other._dagger)
+        return (self._label, self._dual) == (other._label, other._dual)
 
     def __lt__(self, other):
-        return (self._label, self._dagger) < (other._label, other._dagger)
+        return (self._label, self._dual) < (other._label, other._dual)
 
     def __le__(self, other):
-        return (self._label, self._dagger) <= (other._label, other._dagger)
+        return (self._label, self._dual) <= (other._label, other._dual)
 
     def __gt__(self, other):
-        return (self._label, self._dagger) > (other._label, other._dagger)
+        return (self._label, self._dual) > (other._label, other._dual)
 
     def __ge__(self, other):
-        return (self._label, self._dagger) >= (other._label, other._dagger)
+        return (self._label, self._dual) >= (other._label, other._dual)
 
     def __repr__(self):
-        return f"{self._label}{'+' if self._dagger else '-'}"
+        return f"{self._label}{'+' if self._dual else '-'}"
 
 
 def _dagger_basis(basis):
@@ -173,8 +181,8 @@ def compute_local_fermionic_elements(terms, bases):
             nonvanishing = all(
                 (
                     (len(group) % 2 == 0)
-                    and all(not op.dagger for op in group[::2])
-                    and all(op.dagger for op in group[1::2])
+                    and all(not op.dual for op in group[::2])
+                    and all(op.dual for op in group[1::2])
                 )
                 for group in groups.values()
             )
