@@ -51,8 +51,8 @@ z = ar.do("tensordot", x, y, axes=[(5, 2), (3, 7)])
 an array, meaning that these can be `numpy`, `torch`, `jax` or any other
 `autoray` compatible library.
 
-Whilst block sparse arrays do no have such a well defined notion of shape as
-dense arrays, for easy and compatibility with other libraries, `symmray` arrays
+Whilst block sparse arrays do not have such a well defined notion of shape as
+dense arrays, for ease and compatibility with other libraries, `symmray` arrays
 do have a `.shape` attribute which is the shape of the dense array that would
 be returned by calling `to_dense` on the array, and a similarly defined
 `.size`. Likewise, `symmray` supports fusing and unfusing of indices via
@@ -114,7 +114,7 @@ x.blocks
 #         [1., 1., 1., 1., 1.]])}
 ```
 
-We can pictorially represent the like so:
+We can pictorially represent this like so:
 
 ![simple-symmetric-array-pic](docs/images/simple-symmetric-array-pic.png)
 
@@ -276,7 +276,7 @@ common operators:
 - `build_local_fermionic_array`
 - `build_local_fermionic_elements`
 
-These take a specification of `terms`, which is a sequence of tuples of the
+These latter functions take a specification of `terms`, which is a sequence of tuples of the
 form `(coeff, ops)` where `ops` is a sequence of symbolic `FermionicOperator`
 objects, (or equivalent pair `(label, op)`).
 
@@ -380,7 +380,11 @@ $$
 \{|00\rangle, c_{\downarrow}|00\rangle, c_{\uparrow}|00\rangle, c_{\uparrow}c_{\downarrow}|00\rangle\}
 $$
 
-Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array`  also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any on-site terms by 1 over each coordination, so that these terms can be included in the pairwise local arrays without overcounting. For example in a 1D open chain the boundary coordinations would be `(1, 2)` and `(2, 1)`, and the bulk coordination `(2, 2)`.
+which has a U1 `index_map` of charges `[0, 1, 1, 2]` or a U1U1 `index_map` of
+charges `[(0, 0), (0, 1), (1, 0), (1, 1)]`.
+
+Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array` also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any *on-site* (i.e. 1-local) terms by inverse coordination, so that these terms can be included in the pairwise (i.e. 2-local) arrays without overcounting. For example in a 1D open chain the boundary `coordinations` would be `(1, 2)` and `(2, 1)`, whereas the bulk would be `(2, 2)`. The utility function
+`sr.utis.parse_edges_to_site_info` fills in coordination information.
 
 
 ### Linear Algebra
