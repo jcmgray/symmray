@@ -280,10 +280,11 @@ These take a specification of `terms`, which is a sequence of tuples of the
 form `(coeff, ops)` where `ops` is a sequence of symbolic `FermionicOperator`
 objects, (or equivalent pair `(label, op)`).
 
-Second they take specification of `bases`. This is a sequence of each local
+Secondly they take a specification of `bases`. This is a sequence of each local
 basis, each a sequence of `FermionicOperator` objects.
 
 For example, imagine we want to build the term:
+
 $$8 n_a n_b  - 2 (n_a + n_b)= 8 a^\dagger a b^\dagger b - 2 a^\dagger a - 2 b^\dagger b$$
 
 into an array with elements defined:
@@ -324,8 +325,8 @@ sr.build_local_fermionic_array(
     bases,
     symmetry="U1",
     index_maps=[
-        (0, 1),
-        (0, 1),
+        (0, 1),  # charges for basis i
+        (0, 1),  # charges for basis j
     ]
 )
 # U1FermionicArray(shape~(2, 2, 2, 2):[++--], charge=0, num_blocks=6)
@@ -373,11 +374,11 @@ sr.fermi_hubbard_local_array("U1U1", t=1.0, U=8.0, mu=5).blocks
 ```
 
 (Note that zero blocks are stored - for the sake of correctness when fusing and exponentiating.) The spinful versions uses the local basis:
+
 $$
 |i\rangle =
 \{|00\rangle, c_{\downarrow}|00\rangle, c_{\uparrow}|00\rangle, c_{\uparrow}c_{\downarrow}|00\rangle\}
 $$
-
 
 Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array`  also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any on-site terms by 1 over each coordination, so that these terms can be included in the pairwise local arrays without overcounting. For example in a 1D open chain the boundary coordinations would be `(1, 2)` and `(2, 1)`, and the bulk coordination `(2, 2)`.
 
