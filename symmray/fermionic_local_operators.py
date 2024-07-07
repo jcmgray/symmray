@@ -82,7 +82,7 @@ def _parse_bases(bases):
     )
 
 
-def compute_local_fermionic_elements(terms, bases):
+def build_local_fermionic_elements(terms, bases):
     """Compute the elements of a local fermionic operator in a given tensor
     basis, including 'internal' signs.
 
@@ -119,8 +119,8 @@ def compute_local_fermionic_elements(terms, bases):
             (U, (a.dag, a, b.dag, b)),
         )
 
-        compute_local_fermionic_elements(terms, bases)
-        # [((0, 1, 1, 0), -1.0), ((1, 0, 0, 1), -1.0), ((1, 1, 1, 1), -8.0)]
+        build_local_fermionic_elements(terms, bases)
+        # {(0, 1, 1, 0): -1.0, (1, 0, 0, 1): -1.0, (1, 1, 1, 1): -8.0}
 
     """
     terms = _parse_terms(terms)
@@ -136,7 +136,7 @@ def compute_local_fermionic_elements(terms, bases):
         itertools.product(*enum_right_bases),
     )
 
-    entries = []
+    entries = {}
     for l, r in all_locations:
         # get tensor index, and left and right
         # basis operators it corresponds to
@@ -190,72 +190,62 @@ def compute_local_fermionic_elements(terms, bases):
             if nonvanishing:
                 # a non-vanishing element
                 index = (*left_indices, *right_indices)
-                entries.append((index, phase * coeff))
+                entries[index] = entries.get(index, 0.0) + phase * coeff
 
     return entries
 
 
-def compute_local_fermionic_dense(terms, bases, like="numpy"):
+def build_local_fermionic_dense(terms, bases, like="numpy"):
     hij = ar.do("zeros", tuple(len(b) for b in bases) * 2, like=like)
 
-    for idx, val in compute_local_fermionic_elements(terms, bases):
+    for idx, val in build_local_fermionic_elements(terms, bases).items():
         hij[idx] += val
 
     return hij
 
 
-def fermi_hubbard_spinless_local_dense(
-    t=1.0,
-    V=8.0,
-    mu=0.0,
-    coordinations=(1, 1),
+def build_local_fermionic_array(
+    terms,
+    bases,
+    symmetry,
+    index_maps,
     like="numpy",
 ):
-    """Construct the dense local 4-tensor for the spinless Fermi-Hubbard model,
-    with internal signs precomputed. The indices are ordered as (a, b, a', b').
+    """Compute a local fermionic operator as a `FermionicArray`.
 
     Parameters
     ----------
-    t : float, optional
-        The hopping parameter, by default 1.0.
-    V : float, optional
-        The nearest-neighbor interaction parameter, by default 8.0.
-    mu : float, optional
-        The chemical potential, by default 0.0.
-    coordinations : tuple[int, int], optional
-        The coordinations of the sites, by default (1, 1). If applying this
-        local operator to every edge in a graph, then the single site
-        contributions can be properly accounted for if the coordinations are
-        provided.
-    like : str, optional
-        The backend to use, by default "numpy".
+    terms : tuple[tuple[float, tuple[FermionicOperator, ...]]]
+        The terms in the operator, each a tuple of a coefficient and a tuple
+        of FermionicOperator instances.
+    bases : tuple[tuple[tuple[FermionicOperator]]]
+        The tensor bases to compute the operator elements in. Each basis is a
+        sequence of multiple FermionicOperator instances acting on the vacuum.
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2" or "U1U1".
+    index_maps : Sequence[Dict[int, hashable]]
+        For each basis, a mapping of linear index to charge.
 
     Returns
     -------
-    array
-        The local operator in dense form.
+    FermionicArray
+        The local operator in fermionic array form.
     """
-    a, b = map(FermionicOperator, "ab")
-    basis_a = ((), (a.dag,))
-    basis_b = ((), (b.dag,))
-    bases = (basis_a, basis_b)
+    from .utils import from_dense
 
-    terms = (
-        # hopping
-        (-t, (a.dag, b)),
-        (-t, (b.dag, a)),
-        # nearest-neighbor interaction
-        (V, (a.dag, a, b.dag, b)),
-        # chemical potential
-        # mu is single site and will be overcounted without coordinations
-        (-mu / coordinations[0], (a.dag, a)),
-        (-mu / coordinations[1], (b.dag, b)),
+    dense = build_local_fermionic_dense(terms, bases, like=like)
+    duals = [False] * len(bases) + [True] * len(bases)
+
+    return from_dense(
+        dense,
+        duals=duals,
+        symmetry=symmetry,
+        fermionic=True,
+        index_maps=index_maps * 2,
     )
 
-    return compute_local_fermionic_dense(terms, bases, like=like)
 
-
-def fermi_hubbard_spinless_local_tensor(
+def fermi_hubbard_spinless_local_array(
     symmetry,
     t=1.0,
     V=8.0,
@@ -289,86 +279,39 @@ def fermi_hubbard_spinless_local_tensor(
     array
         The local operator in fermionic array form.
     """
-    from .utils import from_dense
+    a, b = map(FermionicOperator, "ab")
 
-    hij = fermi_hubbard_spinless_local_dense(
-        t, V, mu, coordinations=coordinations, like=like
+    terms = (
+        # hopping
+        (-t, (a.dag, b)),
+        (-t, (b.dag, a)),
+        # nearest-neighbor interaction
+        (V, (a.dag, a, b.dag, b)),
+        # chemical potential
+        # mu is single site and will be overcounted without coordinations
+        (-mu / coordinations[0], (a.dag, a)),
+        (-mu / coordinations[1], (b.dag, b)),
     )
 
+    basis_a = ((), (a.dag,))
+    basis_b = ((), (b.dag,))
+    bases = (basis_a, basis_b)
+
     if symmetry == "Z2" or symmetry == "U1":
-        indexmap = [0, 1]
+        indexmap = (0, 1)
     else:
         raise ValueError(f"Invalid symmetry: {symmetry}")
 
-    return from_dense(
-        hij,
-        symmetry=symmetry,
-        fermionic=True,
-        index_maps=[indexmap] * 4,
-        duals=[0, 0, 1, 1],
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap, indexmap],
+        like=like,
     )
 
 
-def fermi_hubbard_local_dense(
-    t=1.0,
-    U=8.0,
-    mu=0.0,
-    coordinations=(1, 1),
-    like="numpy",
-):
-    """Construct the dense local 4-tensor for the Fermi-Hubbard model, with
-    internal signs precomputed. The indices are ordered as (a, b, a', b').
-    The local basis is like (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a
-    with up (au) and down (ad) spin respectively and similar for site b.
-
-    Parameters
-    ----------
-    t : float, optional
-        The hopping parameter, by default 1.0.
-    U : float, optional
-        The on-site interaction parameter, by default 8.0.
-    mu : float, optional
-        The chemical potential, by default 0.0.
-    coordinations : tuple[int, int], optional
-        The coordinations of the sites, by default (1, 1). If applying this
-        local operator to every edge in a graph, then the single site
-        contributions can be properly accounted for if the coordinations are
-        provided.
-    like : str, optional
-        The backend to use, by default "numpy".
-
-    Returns
-    -------
-    array
-        The local operator in dense form.
-    """
-    au = FermionicOperator("au")
-    ad = FermionicOperator("ad")
-    bu = FermionicOperator("bu")
-    bd = FermionicOperator("bd")
-
-    basis_a = ((), (ad.dag,), (au.dag,), (au.dag, ad.dag))
-    basis_b = ((), (bd.dag,), (bu.dag,), (bu.dag, bd.dag))
-    bases = [basis_a, basis_b]
-
-    terms = [
-        (-t, (au.dag, bu)),
-        (-t, (bu.dag, au)),
-        (-t, (ad.dag, bd)),
-        (-t, (bd.dag, ad)),
-        # U, mu are single site and will be overcounted without coordinations
-        (U / coordinations[0], (au.dag, au, ad.dag, ad)),
-        (U / coordinations[1], (bu.dag, bu, bd.dag, bd)),
-        (-mu / coordinations[0], (au.dag, au)),
-        (-mu / coordinations[0], (ad.dag, ad)),
-        (-mu / coordinations[1], (bu.dag, bu)),
-        (-mu / coordinations[1], (bd.dag, bd)),
-    ]
-
-    return compute_local_fermionic_dense(terms, bases, like=like)
-
-
-def fermi_hubbard_local_tensor(
+def fermi_hubbard_local_array(
     symmetry,
     t=1.0,
     U=8.0,
@@ -394,7 +337,28 @@ def fermi_hubbard_local_tensor(
     like : str, optional
         The backend to use, by default "numpy".
     """
-    from .utils import from_dense
+    au = FermionicOperator("au")
+    ad = FermionicOperator("ad")
+    bu = FermionicOperator("bu")
+    bd = FermionicOperator("bd")
+
+    terms = [
+        (-t, (au.dag, bu)),
+        (-t, (bu.dag, au)),
+        (-t, (ad.dag, bd)),
+        (-t, (bd.dag, ad)),
+        # U, mu are single site and will be overcounted without coordinations
+        (U / coordinations[0], (au.dag, au, ad.dag, ad)),
+        (U / coordinations[1], (bu.dag, bu, bd.dag, bd)),
+        (-mu / coordinations[0], (au.dag, au)),
+        (-mu / coordinations[0], (ad.dag, ad)),
+        (-mu / coordinations[1], (bu.dag, bu)),
+        (-mu / coordinations[1], (bd.dag, bd)),
+    ]
+
+    basis_a = ((), (ad.dag,), (au.dag,), (au.dag, ad.dag))
+    basis_b = ((), (bd.dag,), (bu.dag,), (bu.dag, bd.dag))
+    bases = [basis_a, basis_b]
 
     if symmetry == "Z2":
         indexmap = [0, 1, 1, 0]
@@ -407,14 +371,10 @@ def fermi_hubbard_local_tensor(
     else:
         raise ValueError(f"Invalid symmetry: {symmetry}")
 
-    hij = fermi_hubbard_local_dense(
-        t, U, mu, coordinations=coordinations, like=like
-    )
-
-    return from_dense(
-        hij,
-        symmetry=symmetry,
-        fermionic=True,
-        index_maps=[indexmap] * 4,
-        duals=[0, 0, 1, 1],
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap, indexmap],
+        like=like,
     )

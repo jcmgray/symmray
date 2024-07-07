@@ -169,7 +169,7 @@ class FermionicArray(AbelianArray):
         """
         new = super().copy_with(indices=indices, blocks=blocks, charge=charge)
         new._phases = self.phases.copy() if phases is None else phases
-        new._oddpos = self._oddpos
+        new._oddpos = self.oddpos
 
         if new.parity:
             assert new._oddpos

@@ -263,7 +263,123 @@ diamond.
 
 #### Local fermionic operators
 
-- local fermionic operators
+Many tensor network algorithms involve applying local fermionic operators to
+the wavefunction. Such local operators need to be expressed in a local basis
+with a particular ordering and resulting phases. `symmray` provides several
+common operators:
+
+- `fermi_hubbard_local_array`
+- `fermi_hubbard_spinless_local_array`
+
+ plus lower level functions for building custom ones:
+
+- `build_local_fermionic_array`
+- `build_local_fermionic_elements`
+
+These take a specification of `terms`, which is a sequence of tuples of the
+form `(coeff, ops)` where `ops` is a sequence of symbolic `FermionicOperator`
+objects, (or equivalent pair `(label, op)`).
+
+Second they take specification of `bases`. This is a sequence of each local
+basis, each a sequence of `FermionicOperator` objects.
+
+For example, imagine we want to build the term:
+$$8 n_a n_b  - 2 (n_a + n_b)= 8 a^\dagger a b^\dagger b - 2 a^\dagger a - 2 b^\dagger b$$
+
+into an array with elements defined:
+
+$$o = \langle i' | \langle j' | \hat O | i \rangle | j \rangle$$
+
+where the two bases are given by: $| i \rangle = \{|0\rangle, a^\dagger|0\rangle\}$ and $| j \rangle = \{|0\rangle, b^\dagger|0\rangle\}$. We can build this operator as follows:
+
+```python
+a, b = map(sr.FermionicOperator, 'ab')
+# you can also use strings or pairs like
+# adag = 'a+' or ('a', '+')
+# a    = 'a-' or ('a', '-')
+
+terms = [
+    (+8, (a.dag, a, b.dag, b)),
+    (-2, (a.dag, a)),
+    (-2, (b.dag, b)),
+]
+
+bases = [
+    [(), (a.dag,)],
+    [(), (b.dag,)],
+]
+
+# get just the non-zero elements (with phases)
+sr.build_local_fermionic_elements(
+    terms, bases
+)
+# {(0, 1, 0, 1): -2.0, (1, 0, 1, 0): -2.0, (1, 1, 1, 1): -4.0}
+```
+
+To build an actual fermionic array we need to specify a symmetry and a `index_map` for each local basis that maps each index to a charge. For example, if we want to build the above operator into a `U1FermionicArray` we could do:
+
+```python
+sr.build_local_fermionic_array(
+    terms,
+    bases,
+    symmetry="U1",
+    index_maps=[
+        (0, 1),
+        (0, 1),
+    ]
+)
+# U1FermionicArray(shape~(2, 2, 2, 2):[++--], charge=0, num_blocks=6)
+```
+
+Fermi-hubbard and spinless fermi-hubbard operators have built-in local functions:
+```python
+sr.fermi_hubbard_local_array("U1U1", t=1.0, U=8.0, mu=5).blocks
+# {((0, 0), (0, 0), (0, 0), (0, 0)): array([[[[0.]]]]),
+#  ((0, 0), (0, 1), (0, 0), (0, 1)): array([[[[-5.]]]]),
+#  ((0, 0), (0, 1), (0, 1), (0, 0)): array([[[[-1.]]]]),
+#  ((0, 0), (1, 0), (0, 0), (1, 0)): array([[[[-5.]]]]),
+#  ((0, 0), (1, 0), (1, 0), (0, 0)): array([[[[-1.]]]]),
+#  ((0, 0), (1, 1), (0, 0), (1, 1)): array([[[[-2.]]]]),
+#  ((0, 0), (1, 1), (0, 1), (1, 0)): array([[[[1.]]]]),
+#  ((0, 0), (1, 1), (1, 0), (0, 1)): array([[[[-1.]]]]),
+#  ((0, 0), (1, 1), (1, 1), (0, 0)): array([[[[0.]]]]),
+#  ((0, 1), (0, 0), (0, 0), (0, 1)): array([[[[-1.]]]]),
+#  ((0, 1), (0, 0), (0, 1), (0, 0)): array([[[[-5.]]]]),
+#  ((0, 1), (0, 1), (0, 1), (0, 1)): array([[[[10.]]]]),
+#  ((0, 1), (1, 0), (0, 0), (1, 1)): array([[[[-1.]]]]),
+#  ((0, 1), (1, 0), (0, 1), (1, 0)): array([[[[10.]]]]),
+#  ((0, 1), (1, 0), (1, 0), (0, 1)): array([[[[0.]]]]),
+#  ((0, 1), (1, 0), (1, 1), (0, 0)): array([[[[-1.]]]]),
+#  ((0, 1), (1, 1), (0, 1), (1, 1)): array([[[[-7.]]]]),
+#  ((0, 1), (1, 1), (1, 1), (0, 1)): array([[[[1.]]]]),
+#  ((1, 0), (0, 0), (0, 0), (1, 0)): array([[[[-1.]]]]),
+#  ((1, 0), (0, 0), (1, 0), (0, 0)): array([[[[-5.]]]]),
+#  ((1, 0), (0, 1), (0, 0), (1, 1)): array([[[[1.]]]]),
+#  ((1, 0), (0, 1), (0, 1), (1, 0)): array([[[[0.]]]]),
+#  ((1, 0), (0, 1), (1, 0), (0, 1)): array([[[[10.]]]]),
+#  ((1, 0), (0, 1), (1, 1), (0, 0)): array([[[[1.]]]]),
+#  ((1, 0), (1, 0), (1, 0), (1, 0)): array([[[[10.]]]]),
+#  ((1, 0), (1, 1), (1, 0), (1, 1)): array([[[[-7.]]]]),
+#  ((1, 0), (1, 1), (1, 1), (1, 0)): array([[[[1.]]]]),
+#  ((1, 1), (0, 0), (0, 0), (1, 1)): array([[[[0.]]]]),
+#  ((1, 1), (0, 0), (0, 1), (1, 0)): array([[[[1.]]]]),
+#  ((1, 1), (0, 0), (1, 0), (0, 1)): array([[[[-1.]]]]),
+#  ((1, 1), (0, 0), (1, 1), (0, 0)): array([[[[-2.]]]]),
+#  ((1, 1), (0, 1), (0, 1), (1, 1)): array([[[[1.]]]]),
+#  ((1, 1), (0, 1), (1, 1), (0, 1)): array([[[[-7.]]]]),
+#  ((1, 1), (1, 0), (1, 0), (1, 1)): array([[[[1.]]]]),
+#  ((1, 1), (1, 0), (1, 1), (1, 0)): array([[[[-7.]]]]),
+#  ((1, 1), (1, 1), (1, 1), (1, 1)): array([[[[-4.]]]])}
+```
+
+(Note that zero blocks are stored - for the sake of correctness when fusing and exponentiating.) The spinful versions uses the local basis:
+$$
+|i\rangle =
+\{|00\rangle, c_{\downarrow}|00\rangle, c_{\uparrow}|00\rangle, c_{\uparrow}c_{\downarrow}|00\rangle\}
+$$
+
+
+Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array`  also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any on-site terms by 1 over each coordination, so that these terms can be included in the pairwise local arrays without overcounting. For example in a 1D open chain the boundary coordinations would be `(1, 2)` and `(2, 1)`, and the bulk coordination `(2, 2)`.
 
 
 ### Linear Algebra

@@ -1071,6 +1071,8 @@ class AbelianArray(BlockBase):
             *(old_indices[ax] for ax in axes_after),
         )
 
+        _ex_array = self.get_any_array()
+
         def _recurse_sorted_concat(new_sector, g=0, subkey=()):
             new_charge = new_sector[position + g]
             new_subkeys = [
@@ -1098,7 +1100,7 @@ class AbelianArray(BlockBase):
                             for ax in axes_after
                         )
                         new_shape = (*shape_before, *shape_new, *shape_after)
-                        array = ar.do("zeros", shape=new_shape, like=backend)
+                        array = ar.do("zeros", shape=new_shape, like=_ex_array)
                     arrays.append(array)
             else:
                 # recurse to next group

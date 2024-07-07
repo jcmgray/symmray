@@ -18,9 +18,11 @@ from .fermionic_core import (
     Z2Z2FermionicArray,
 )
 from .fermionic_local_operators import (
-    compute_local_fermionic_elements,
-    fermi_hubbard_local_tensor,
-    fermi_hubbard_spinless_local_tensor,
+    FermionicOperator,
+    build_local_fermionic_array,
+    build_local_fermionic_elements,
+    fermi_hubbard_local_array,
+    fermi_hubbard_spinless_local_array,
 )
 from .interface import (
     abs,
@@ -42,16 +44,19 @@ from .interface import (
 from .symmetries import U1, U1U1, Z2, Z2Z2, get_symmetry
 
 __all__ = (
+    "AbelianArray",
     "abs",
     "align_axes",
     "all",
     "any",
     "BlockIndex",
     "BlockVector",
-    "compute_local_fermionic_elements",
+    "build_local_fermionic_array",
+    "build_local_fermionic_elements",
     "conj",
-    "fermi_hubbard_local_tensor",
-    "fermi_hubbard_spinless_local_tensor",
+    "FermionicOperator",
+    "fermi_hubbard_local_array",
+    "fermi_hubbard_spinless_local_array",
     "FermionicArray",
     "fuse",
     "get_symmetry",
@@ -63,7 +68,6 @@ __all__ = (
     "reshape",
     "scipy",
     "sum",
-    "AbelianArray",
     "tensordot",
     "trace",
     "transpose",

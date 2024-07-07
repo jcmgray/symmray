@@ -403,4 +403,5 @@ class BlockVector(BlockBase):
     def to_dense(self):
         """Convert the block vector to a dense array."""
         arrays = tuple(self.blocks[k] for k in sorted(self.blocks))
-        return ar.do("concatenate", arrays, axis=0)
+        _concatenate = ar.get_lib_fn(self.backend, "concatenate")
+        return _concatenate(arrays, axis=0)

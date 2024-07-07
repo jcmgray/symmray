@@ -85,9 +85,8 @@ def qr(x, stabilized=False):
 
     bond_index = BlockIndex(new_chargemap, dual=x.indices[1].dual)
 
-    q = x.__class__(
+    q = x.copy_with(
         indices=(x.indices[0].copy(), bond_index),
-        charge=x.charge,
         blocks=q_blocks,
     )
     r = x.__class__(
@@ -147,9 +146,8 @@ def svd(x):
 
     bond_index = BlockIndex(new_chargemap, dual=x.indices[1].dual)
 
-    u = x.__class__(
+    u = x.copy_with(
         indices=(x.indices[0], bond_index),
-        charge=x.charge,
         blocks=u_blocks,
     )
     s = BlockVector(s_store)
