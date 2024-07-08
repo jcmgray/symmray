@@ -550,7 +550,34 @@ class AbelianArray(BlockBase):
 
     def gen_valid_sectors(self):
         """Generate all valid sectors for the block array."""
-        return filter(self.is_valid_sector, itertools.product(*self.charges))
+        if self.ndim == 0:
+            if self.charge == self.symmetry.combine():
+                yield ()
+            return
+
+        *first_charges, last_charges = self.charges
+        *first_duals, last_dual = self.duals
+
+        for partial_sector in itertools.product(*first_charges):
+            # signed first charges + signed last charge = overall charge
+            # thus
+            # last charge = signed(overall charge - signed first charges)
+            signed_partial_sector = self.symmetry.combine(
+                *(
+                    self.symmetry.sign(c, not dual)
+                    for c, dual in zip(partial_sector, first_duals)
+                )
+            )
+            required_charge = self.symmetry.sign(
+                self.symmetry.combine(
+                    self.charge,
+                    signed_partial_sector,
+                ),
+                last_dual,
+            )
+            if required_charge in last_charges:
+                # but only if it is a valid charge for that index
+                yield partial_sector + (required_charge,)
 
     def get_sparsity(self):
         """Return the sparsity of the array, i.e. the number of blocks
