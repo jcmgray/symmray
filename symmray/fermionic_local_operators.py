@@ -31,19 +31,21 @@ class FermionicOperator:
         return FermionicOperator(self._label, not self._dual)
 
     def __eq__(self, other):
-        return (self._label, self._dual) == (other._label, other._dual)
+        return (self._dual, self._label) == (other._dual, other._label)
 
     def __lt__(self, other):
-        return (self._label, self._dual) < (other._label, other._dual)
-
-    def __le__(self, other):
-        return (self._label, self._dual) <= (other._label, other._dual)
-
-    def __gt__(self, other):
-        return (self._label, self._dual) > (other._label, other._dual)
-
-    def __ge__(self, other):
-        return (self._label, self._dual) >= (other._label, other._dual)
+        if self.dual:
+            if other.dual:
+                # dual operator are reflected
+                return self.label > other.label
+            else:
+                # creation left of annihilation
+                return True
+        else:
+            if other.dual:
+                return False
+            else:
+                return self.label < other.label
 
     def __repr__(self):
         return f"{self._label}{'+' if self._dual else '-'}"

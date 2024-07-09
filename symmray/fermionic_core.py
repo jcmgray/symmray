@@ -6,6 +6,7 @@ from .abelian_core import (
     tensordot_abelian,
     without,
 )
+from .fermionic_local_operators import FermionicOperator
 from .interface import tensordot
 from .symmetries import calc_phase_permutation, get_symmetry
 
@@ -14,8 +15,36 @@ def argsort(seq):
     return sorted(range(len(seq)), key=seq.__getitem__)
 
 
+def oddpos_parse(oddpos, parity):
+    """Parse the label ``oddpos``, given the parity of the array."""
+    if parity and oddpos is None:
+        raise ValueError(
+            "`oddpos` required for calculating global phase of "
+            "contractions with odd parity fermionic arrays."
+        )
+
+    if isinstance(oddpos, list):
+        # XXX: needed at all?
+        # an explicit sequence of subsumed odd ranks
+        return tuple(oddpos)
+
+    if not parity:
+        # we can just drop even parity labels
+        return ()
+
+    if not isinstance(oddpos, FermionicOperator):
+        oddpos = FermionicOperator(oddpos)
+
+    return (oddpos,)
+
+
+def oddpos_dag(oddpos):
+    """Conjugate a sequence of `oddpos` charges."""
+    return tuple(r.dag for r in reversed(oddpos))
+
+
 def resolve_combined_oddpos(left, right, new):
-    """Given we have contracted two fermionic arrays, resolve the oddposs
+    """Given we have contracted two fermionic arrays, resolve the oddpos
     of the new array, possibly flipping the global phase.
 
     Parameters
@@ -25,11 +54,16 @@ def resolve_combined_oddpos(left, right, new):
     """
     l_oddpos = left.oddpos
     r_oddpos = right.oddpos
+
+    if not l_oddpos and not r_oddpos:
+        new._oddpos = ()
+        return
+
     oddpos = [*l_oddpos, *r_oddpos]
 
     # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
     if left.parity and len(r_oddpos) % 2 == 1:
-        # moving right oddpos charges over left will generate sign
+        # moving right oddpos charges over left sectors will generate sign
         phase = -1
     else:
         phase = 1
@@ -44,19 +78,27 @@ def resolve_combined_oddpos(left, right, new):
     if phase == -1:
         new.phase_global(inplace=True)
 
-    # trim adjacent pairs of oddposs, which act like even parity
+    # trim adjacent conjugate pairs of oddposs
+    # e.g. [4+, 3+, 3-, 4-, 5-] -> [4+, 4-, 5-] -> [5-]
+    #           ......              ......
     i = 0
     while i < len(oddpos) - 1:
-        # e.g. -> [3, 4, 5, 6, 7] -> [5, 6, 7] -> [7]
         rl = oddpos[i]
         rr = oddpos[i + 1]
-        if (rl + 1 == rr) or (rl, rr) == (-1, 1):
-            oddpos.pop(i)
-            oddpos.pop(i)
-        elif rl == rr:
-            # also detect duplicates here
-            raise ValueError("`oddpos` values must be unique.")
+        if rl.label == rr.label:
+            # labels match ...
+            if rl.dual != rr.dual:
+                # ... and are a conjugate pair
+                oddpos.pop(i)
+                oddpos.pop(i)
+                if i > 0:
+                    # move back to check for more
+                    i -= 1
+            else:
+                # detect non conjugate duplicates here as well
+                raise ValueError("`oddpos` must be unique conjugate pairs.")
         else:
+            # check next
             i += 1
 
     new._oddpos = tuple(oddpos)
@@ -96,22 +138,11 @@ class FermionicArray(AbelianArray):
         charge=None,
         blocks=(),
         phases=(),
-        oddpos=(),
+        oddpos=None,
     ):
         super().__init__(indices=indices, charge=charge, blocks=blocks)
         self._phases = dict(phases)
-        if self.parity and oddpos == ():
-            raise ValueError(
-                "`oddpos` required for odd parity fermionic arrays."
-            )
-        if isinstance(oddpos, int):
-            if oddpos == 0:
-                raise ValueError(
-                    "`oddpos` must be non-zero for sorting purposes."
-                )
-            self._oddpos = (oddpos,)
-        else:
-            self._oddpos = tuple(oddpos)
+        self._oddpos = oddpos_parse(oddpos, self.parity)
 
     @property
     def parity(self):
@@ -427,7 +458,7 @@ class FermionicArray(AbelianArray):
                     new._phases[sector] = phase_new
 
         new._charge = new.symmetry.sign(new._charge)
-        new._oddpos = tuple(-r for r in reversed(new._oddpos))
+        new._oddpos = oddpos_dag(new._oddpos)
 
         if phase_permutation and new.parity and (len(new._oddpos) % 2 == 1):
             # moving oddpos charges back to left
@@ -477,7 +508,7 @@ class FermionicArray(AbelianArray):
         new._blocks = new_blocks
         new._phases = new_phases
         new._charge = new.symmetry.sign(new._charge)
-        new._oddpos = tuple(-r for r in reversed(new._oddpos))
+        new._oddpos = oddpos_dag(new._oddpos)
 
         if new.parity and (len(new._oddpos) % 2 == 1):
             # moving oddpos charges back to left
@@ -740,8 +771,8 @@ class Z2FermionicArray(FermionicArray):
     symmetry = get_symmetry("Z2")
 
     def to_pyblock3(self, flat=False):
-        from pyblock3.algebra.fermion_symmetry import Z2
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
+        from pyblock3.algebra.fermion_symmetry import Z2
 
         blocks = [
             SubTensor(
@@ -769,8 +800,8 @@ class U1FermionicArray(FermionicArray):
     symmetry = get_symmetry("U1")
 
     def to_pyblock3(self, flat=False):
-        from pyblock3.algebra.fermion_symmetry import U1
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
+        from pyblock3.algebra.fermion_symmetry import U1
 
         blocks = [
             SubTensor(
