@@ -1174,7 +1174,14 @@ class AbelianArray(BlockBase):
             new_blocks.setdefault(new_sector, {})[subsectors] = new_array
 
         old_indices = self._indices
+
+        # explicity handle zeros function and dtype and device kwargs
         _ex_array = self.get_any_array()
+        backend = ar.infer_backend(_ex_array)
+        _zeros = ar.get_lib_fn(backend, "zeros")
+        zeros_kwargs = {"dtype": _ex_array.dtype}
+        if hasattr(_ex_array, "device"):
+            zeros_kwargs["device"] = _ex_array.device
 
         def _recurse_sorted_concat(new_sector, g=0, subkey=()):
             new_charge = new_sector[position + g]
@@ -1203,7 +1210,7 @@ class AbelianArray(BlockBase):
                             for ax in axes_after
                         )
                         new_shape = (*shape_before, *shape_new, *shape_after)
-                        array = ar.do("zeros", shape=new_shape, like=_ex_array)
+                        array = _zeros(new_shape, **zeros_kwargs)
                     arrays.append(array)
             else:
                 # recurse to next group
