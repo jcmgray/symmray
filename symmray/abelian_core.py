@@ -558,8 +558,7 @@ _fuseinfos = {}
 
 
 def cached_fuse_block_info(self, axes_groups):
-    """Calculating fusing block information is expensive, so cache the results.
-    """
+    """Calculating fusing block information is expensive, so cache the results."""
     key = hash(
         (
             tuple(
@@ -866,6 +865,7 @@ class AbelianArray(BlockBase):
         fill_fn,
         indices,
         charge=None,
+        **kwargs,
     ):
         """Generate a block array from a filling function. Every valid sector
         will be filled with the result of the filling function.
@@ -879,27 +879,25 @@ class AbelianArray(BlockBase):
         charge : hashable
             The total charge of the array. If not given, it will be
             taken as the identity / zero element.
+
+        Returns
+        -------
+        AbelianArray
         """
-        self = cls.__new__(cls)
-
-        self._indices = tuple(indices)
-
         if charge is None:
-            self._charge = cls.symmetry.combine()
+            charge = cls.symmetry.combine()
         else:
-            self._charge = charge
+            charge = charge
 
-        self._blocks = {
-            sector: fill_fn(self.get_block_shape(sector))
-            for sector in self.gen_valid_sectors()
-        }
+        new = cls(indices=indices, charge=charge, **kwargs)
 
-        # self.sync_charges()
+        for sector in new.gen_valid_sectors():
+            new.blocks[sector] = fill_fn(new.get_block_shape(sector))
 
-        return self
+        return new
 
     @classmethod
-    def random(cls, indices, charge=None, seed=None, dist="normal"):
+    def random(cls, indices, charge=None, seed=None, dist="normal", **kwargs):
         """Create a block array with random values.
 
         Parameters
@@ -923,10 +921,10 @@ class AbelianArray(BlockBase):
         def fill_fn(shape):
             return rand_fn(size=shape)
 
-        return cls.from_fill_fn(fill_fn, indices, charge)
+        return cls.from_fill_fn(fill_fn, indices, charge, **kwargs)
 
     @classmethod
-    def from_blocks(cls, blocks, duals, charge=None):
+    def from_blocks(cls, blocks, duals, charge=None, **kwargs):
         """Create a block array from a dictionary of blocks and sequence of
         duals.
 
@@ -944,17 +942,15 @@ class AbelianArray(BlockBase):
         -------
         AbelianArray
         """
-        self = cls.__new__(cls)
         if charge is None:
-            self._charge = cls.symmetry.combine()
+            charge = cls.symmetry.combine()
         else:
-            self._charge = charge
-        self._blocks = dict(blocks)
+            charge = charge
 
         ndim = len(next(iter(blocks.keys())))
         charge_size_maps = [{} for _ in range(ndim)]
 
-        for sector, array in self.blocks.items():
+        for sector, array in blocks.items():
             for i, (c, d) in enumerate(zip(sector, ar.shape(array))):
                 d = int(d)
                 d_existing = charge_size_maps[i].get(c, None)
@@ -970,14 +966,14 @@ class AbelianArray(BlockBase):
         if len(duals) != ndim:
             raise ValueError(f"Expected {ndim} duals, got {len(duals)}.")
 
-        self._indices = tuple(
-            BlockIndex(x, f) for x, f in zip(charge_size_maps, duals)
+        indices = tuple(
+            BlockIndex(x, dual) for x, dual in zip(charge_size_maps, duals)
         )
 
-        return self
+        return cls(blocks=blocks, indices=indices, charge=charge, **kwargs)
 
     @classmethod
-    def from_dense(cls, array, index_maps, duals, charge=None):
+    def from_dense(cls, array, index_maps, duals, charge=None, **kwargs):
         """Create a block array from a dense array by supplying a mapping for
         each axis that labels each linear index with a particular charge.
 
@@ -1043,7 +1039,7 @@ class AbelianArray(BlockBase):
         ]
 
         # create the block array!
-        return cls(blocks=blocks, indices=indices, charge=charge)
+        return cls(blocks=blocks, indices=indices, charge=charge, **kwargs)
 
     def to_dense(self):
         """Convert this block array to a dense array."""
