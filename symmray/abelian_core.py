@@ -368,7 +368,7 @@ def reshape_to_unfuse_axes(indices, newshape):
 
 
 @functools.lru_cache(2**14)
-def calc_fuse_info(axes_groups, duals):
+def calc_fuse_group_info(axes_groups, duals):
     ndim = len(duals)
 
     # which group does each axis appear in, if any
@@ -418,6 +418,144 @@ def calc_fuse_info(axes_groups, duals):
         group_duals,
         new_axes,
     )
+
+
+def calc_fuse_block_info(self, axes_groups):
+    # basic info that doesn't depend on sectors themselves
+    (
+        num_groups,
+        new_ndim,
+        perm,
+        position,
+        axes_before,
+        axes_after,
+        ax2group,
+        group_duals,
+        new_axes,
+    ) = calc_fuse_group_info(axes_groups, self.duals)
+
+    # then we process the blocks one by one into new fused sectors
+    blockinfo = {}
+    subinfos = [{} for _ in range(num_groups)]
+    old_indices = self.indices
+    _combine = self.symmetry.combine
+    _sign = self.symmetry.sign
+    empty_sector = (_combine(),) * new_ndim
+
+    for sector in self.blocks:
+        # keep track of a shape in order to fuse the actual array
+        new_shape = [1] * new_ndim
+        # the key of the new fused block to add this block to
+        new_sector = list(empty_sector)
+        # only the parts of the sector that will be fused
+        subsectors = [[] for _ in range(num_groups)]
+
+        # n.b. we have to use `perm` here, not `enumerate(sector)`, so
+        # that subsectors are built in matching order for tensordot e.g.
+        for ax in perm:
+            # the size of charge `c` along axis `ax`
+            c = sector[ax]
+            ix = old_indices[ax]
+            d = ix.size_of(c)
+
+            # which group is this axis in, if any, and where is it going
+            g = ax2group[ax]
+            new_ax = new_axes[ax]
+            if g is None:
+                # not fusing, new value is just copied
+                new_sector[new_ax] = c
+                new_shape[new_ax] = d
+            else:
+                # fusing: need to accumulate
+                new_shape[new_ax] *= d
+                subsectors[g].append(c)
+                # need to match current dualness to group dualness
+                signed_c = _sign(c, group_duals[g] != ix.dual)
+                new_sector[new_ax] = _combine(new_sector[new_ax], signed_c)
+
+        # make hashable
+        new_sector = tuple(new_sector)
+        new_shape = tuple(new_shape)
+        subsectors = tuple(map(tuple, subsectors))
+        # to fuse (via transpose+reshape) the actual array, and concat later
+        # first group the subblock into the correct new fused block
+        blockinfo[sector] = (new_shape, new_sector, subsectors)
+
+        # keep track of the new blocksize of each fused index, for unfusing
+        # and also missing blocks
+        for g, subsector in enumerate(subsectors):
+            new_charge = new_sector[position + g]
+            new_size = new_shape[position + g]
+            subinfos[g][subsector] = (new_charge, new_size)
+
+    # sort and accumulate subsectors into their new charges for each group
+    chargemaps = []
+    extents = []
+    for g in range(num_groups):
+        chargemap = {}
+        extent = {}
+        for subsector, (new_charge, new_size) in sorted(subinfos[g].items()):
+            if new_charge not in chargemap:
+                chargemap[new_charge] = new_size
+                extent[new_charge] = [(subsector, new_size)]
+            else:
+                chargemap[new_charge] += new_size
+                extent[new_charge].append((subsector, new_size))
+        chargemaps.append(chargemap)
+        extents.append(extent)
+
+    new_indices = (
+        *(old_indices[ax] for ax in axes_before),
+        # the new fused indices
+        *(
+            BlockIndex(
+                chargemap=chargemaps[g],
+                dual=group_duals[g],
+                # for unfusing
+                subinfo=SubIndexInfo(
+                    indices=tuple(old_indices[i] for i in axes_groups[g]),
+                    extents=extents[g],
+                ),
+            )
+            for g in range(num_groups)
+        ),
+        *(old_indices[ax] for ax in axes_after),
+    )
+
+    return (
+        num_groups,
+        perm,
+        position,
+        axes_before,
+        axes_after,
+        new_axes,
+        subinfos,
+        extents,
+        new_indices,
+        blockinfo,
+    )
+
+
+_fuseinfos = {}
+
+
+def cached_fuse_block_info(self, axes_groups):
+    key = hash(
+        (
+            tuple(
+                (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
+            ),
+            tuple(self.blocks),
+            self.symmetry,
+            axes_groups,
+        )
+    )
+    try:
+        res = _fuseinfos[key]
+    except KeyError:
+        res = _fuseinfos[key] = calc_fuse_block_info(self, axes_groups)
+
+    return res
 
 
 _AbelianArray_slots = (
@@ -988,116 +1126,34 @@ class AbelianArray(BlockBase):
             # ... and no groups -> nothing to do
             return self.copy()
 
+        (
+            num_groups,
+            perm,
+            position,
+            axes_before,
+            axes_after,
+            new_axes,
+            subinfos,
+            extents,
+            new_indices,
+            blockinfo,
+        ) = cached_fuse_block_info(self, axes_groups)
+
         backend = self.backend
         _transpose = ar.get_lib_fn(backend, "transpose")
         _reshape = ar.get_lib_fn(backend, "reshape")
         _concatenate = ar.get_lib_fn(backend, "concatenate")
 
-        (
-            num_groups,
-            new_ndim,
-            perm,
-            position,
-            axes_before,
-            axes_after,
-            ax2group,
-            group_duals,
-            new_axes,
-        ) = calc_fuse_info(axes_groups, self.duals)
-
-        # then we process the blocks one by one into new fused sectors
         new_blocks = {}
-        subinfos = [{} for _ in range(num_groups)]
-        old_indices = self._indices
-
         for sector, array in self.blocks.items():
-            # keep track of a perm+shape in order to fuse the actual array
-            new_shape = [1] * new_ndim
-            # the key of the new fused block to add this block to
-            new_sector = [self.symmetry.combine()] * new_ndim
-            # only the parts of the sector that will be fused
-            subsectors = [[] for _ in range(num_groups)]
-
-            # n.b. we have to use `perm` here, not `enumerate(sector)`, so
-            # that subsectors are built in matching order for tensordot e.g.
-            for ax in perm:
-                # the size of charge `c` along axis `ax`
-                c = sector[ax]
-                ix = old_indices[ax]
-                d = ix.size_of(c)
-
-                # which group is this axis in, if any, and where is it going
-                g = ax2group[ax]
-                new_ax = new_axes[ax]
-                if g is None:
-                    # not fusing, new value is just copied
-                    new_sector[new_ax] = c
-                    new_shape[new_ax] = d
-                else:
-                    # fusing: need to accumulate
-                    new_shape[new_ax] *= d
-                    subsectors[g].append(c)
-                    # need to match current dualness to group dualness
-                    signed_c = self.symmetry.sign(c, group_duals[g] ^ ix.dual)
-                    new_sector[new_ax] = self.symmetry.combine(
-                        new_sector[new_ax], signed_c
-                    )
-
-            # make hashable
-            new_sector = tuple(new_sector)
-            new_shape = tuple(new_shape)
-
+            new_shape, new_sector, subsectors = blockinfo[sector]
             # fuse (via transpose+reshape) the actual array, to concat later
             new_array = _transpose(array, perm)
             new_array = _reshape(new_array, new_shape)
-
             # group the subblock into the correct new fused block
-            subsectors = tuple(map(tuple, subsectors))
             new_blocks.setdefault(new_sector, {})[subsectors] = new_array
 
-            # keep track of the new blocksize of each fused index, for unfusing
-            # and also missing blocks
-            for g, subsector in enumerate(subsectors):
-                new_charge = new_sector[position + g]
-                new_size = new_shape[position + g]
-                subinfos[g][subsector] = (new_charge, new_size)
-
-        # sort and accumulate subsectors into their new charges for each group
-        chargemaps = []
-        extents = []
-        for g in range(num_groups):
-            chargemap = {}
-            extent = {}
-            for subsector, (new_charge, new_size) in sorted(
-                subinfos[g].items()
-            ):
-                if new_charge not in chargemap:
-                    chargemap[new_charge] = new_size
-                    extent[new_charge] = [(subsector, new_size)]
-                else:
-                    chargemap[new_charge] += new_size
-                    extent[new_charge].append((subsector, new_size))
-            chargemaps.append(chargemap)
-            extents.append(extent)
-
-        new_indices = (
-            *(old_indices[ax] for ax in axes_before),
-            # the new fused indices
-            *(
-                BlockIndex(
-                    chargemap=chargemaps[g],
-                    dual=group_duals[g],
-                    # for unfusing
-                    subinfo=SubIndexInfo(
-                        indices=tuple(old_indices[i] for i in axes_groups[g]),
-                        extents=extents[g],
-                    ),
-                )
-                for g in range(num_groups)
-            ),
-            *(old_indices[ax] for ax in axes_after),
-        )
-
+        old_indices = self._indices
         _ex_array = self.get_any_array()
 
         def _recurse_sorted_concat(new_sector, g=0, subkey=()):
@@ -1624,8 +1680,8 @@ class Z2Array(AbelianArray):
     symmetry = get_symmetry("Z2")
 
     def to_pyblock3(self, flat=False):
-        from pyblock3.algebra.fermion_symmetry import Z2
         from pyblock3.algebra.core import SparseTensor, SubTensor
+        from pyblock3.algebra.fermion_symmetry import Z2
 
         blocks = [
             SubTensor(array, q_labels=tuple(map(Z2, sector)))
@@ -1652,8 +1708,8 @@ class U1Array(AbelianArray):
     symmetry = get_symmetry("U1")
 
     def to_pyblock3(self, flat=False):
-        from pyblock3.algebra.fermion_symmetry import U1
         from pyblock3.algebra.core import SparseTensor, SubTensor
+        from pyblock3.algebra.fermion_symmetry import U1
 
         blocks = [
             SubTensor(array, q_labels=tuple(map(U1, sector)))

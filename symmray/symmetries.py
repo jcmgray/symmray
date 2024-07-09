@@ -27,6 +27,9 @@ class Symmetry(ABC):
         """Return the parity, 0 or 1, of a charge according to the symmetry."""
         raise NotImplementedError
 
+    def __hash__(self):
+        return hash(self.__class__)
+
     def __repr__(self):
         return f"<{self.__class__.__name__}>"
 

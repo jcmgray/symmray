@@ -516,7 +516,7 @@ class FermionicArray(AbelianArray):
         -------
         FermionicArray
         """
-        from symmray.abelian_core import calc_fuse_info
+        from symmray.abelian_core import calc_fuse_group_info
 
         new = self.copy()
 
@@ -527,7 +527,7 @@ class FermionicArray(AbelianArray):
             return new
 
         # first make groups into contiguous blocks using fermionic transpose
-        perm = calc_fuse_info(axes_groups, new.duals)[2]
+        perm = calc_fuse_group_info(axes_groups, new.duals)[2]
         # this is the first step which introduces phases
         new.transpose(perm, inplace=True)
         # update groups to reflect new axes
