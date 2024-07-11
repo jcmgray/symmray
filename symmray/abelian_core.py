@@ -135,9 +135,9 @@ class BlockIndex:
 
         if self.subinfo:
             assert self.size_total == sum(
-                e[1]
+                d
                 for extent in self.subinfo.extents.values()
-                for e in extent
+                for d in extent.values()
             )
 
     def matches(self, other):
@@ -178,7 +178,8 @@ class BlockIndex:
 
         if self.subinfo:
             for charge, extent in sorted(self.subinfo.extents.items()):
-                subcharges, subsizes = zip(*extent)
+                subcharges = extent.keys()
+                subsizes = extent.values()
                 lines.append(
                     f"    {charge} ; "
                     f"({'+'.join(map(str, subsizes))}) : "
@@ -219,9 +220,10 @@ class SubIndexInfo:
     ----------
     indices : tuple[BlockIndex]
         The indices (ordered) that were fused to make this index.
-    extents : dict[int, dict[int, int]]
+    extents : dict[hashable, dict[hashable, int]]
         A mapping of each charge of the fused index to a mapping of each
         subsector (combination of sub charges) to the size of that subsector.
+        This should not be mutated after creation.
     """
 
     __slots__ = ("extents", "indices")
@@ -435,9 +437,10 @@ def calc_fuse_block_info(self, axes_groups):
     ) = calc_fuse_group_info(axes_groups, self.duals)
 
     # then we process the blocks one by one into new fused sectors
-    blockmap = {}
-    subinfos = [{} for _ in range(num_groups)]
     old_indices = self.indices
+    blockmap = {}
+    # for each group, map each subsector to a new charge and size
+    subinfos = [{} for _ in range(num_groups)]
     combine = self.symmetry.combine
     sign = self.symmetry.sign
     empty_sector = (combine(),) * new_ndim
@@ -515,10 +518,10 @@ def calc_fuse_block_info(self, axes_groups):
         for subsector, (new_charge, new_size) in sorted(subinfos[g].items()):
             if new_charge not in chargemap:
                 chargemap[new_charge] = new_size
-                extent[new_charge] = [(subsector, new_size)]
+                extent[new_charge] = {subsector: new_size}
             else:
                 chargemap[new_charge] += new_size
-                extent[new_charge].append((subsector, new_size))
+                extent[new_charge][subsector] = new_size
         chargemaps.append(chargemap)
         extents.append(extent)
 
@@ -547,8 +550,6 @@ def calc_fuse_block_info(self, axes_groups):
         axes_before,
         axes_after,
         new_axes,
-        subinfos,
-        extents,
         new_indices,
         blockmap,
     )
@@ -848,15 +849,25 @@ class AbelianArray(BlockBase):
         bool
         """
         _allclose = ar.get_lib_fn(self.backend, "allclose")
-        other_blocks = other.blocks.copy()
-        for sector, array in self.blocks.items():
-            if sector not in other_blocks:
+
+        # all shared blocks must be close
+        shared = self.blocks.keys() & other.blocks.keys()
+        for sector in shared:
+            if not _allclose(
+                self.blocks[sector], other.blocks[sector], **allclose_opts
+            ):
                 return False
-            other_array = other_blocks.pop(sector)
-            if not _allclose(array, other_array, **allclose_opts):
+
+        # all missing blocks must be zero
+        left = self.blocks.keys() - other.blocks.keys()
+        right = other.blocks.keys() - self.blocks.keys()
+        for sector in left:
+            if not _allclose(self.blocks[sector], 0.0, **allclose_opts):
                 return False
-        if other_blocks:
-            return False
+        for sector in right:
+            if not _allclose(other.blocks[sector], 0.0, **allclose_opts):
+                return False
+
         return True
 
     @classmethod
@@ -1149,8 +1160,6 @@ class AbelianArray(BlockBase):
             axes_before,
             axes_after,
             new_axes,
-            subinfos,
-            extents,
             new_indices,
             blockmap,
         ) = cached_fuse_block_info(self, axes_groups)
@@ -1182,7 +1191,10 @@ class AbelianArray(BlockBase):
         def _recurse_sorted_concat(new_sector, g=0, subkey=()):
             new_charge = new_sector[position + g]
             new_subkeys = [
-                (*subkey, subsector) for subsector, _ in extents[g][new_charge]
+                (*subkey, subsector)
+                for subsector in new_indices[position + g].subinfo.extents[
+                    new_charge
+                ]
             ]
 
             if g == num_groups - 1:
@@ -1198,7 +1210,10 @@ class AbelianArray(BlockBase):
                             for ax in axes_before
                         )
                         shape_new = (
-                            subinfos[g][ss][1]
+                            new_indices[position + g].subinfo.extents[
+                                new_charge
+                            ][ss]
+                            # subinfos[g][ss][1]
                             for g, ss in enumerate(new_subkey)
                         )
                         shape_after = (
@@ -1256,7 +1271,7 @@ class AbelianArray(BlockBase):
 
         # info for how to split/slice the linear index into sub charges
         subindex_slices = {
-            c: accum_for_split(x[1] for x in charge_extent)
+            c: accum_for_split(d for d in charge_extent.values())
             for c, charge_extent in subinfo.extents.items()
         }
         selector = tuple(slice(None) for _ in range(axis))
@@ -1273,7 +1288,7 @@ class AbelianArray(BlockBase):
                 new_arrays.append(array[(*selector, slc)])
             # new_arrays = _split(array, splits, axis=axis)
 
-            for (subsector, _), new_array in zip(charge_extent, new_arrays):
+            for subsector, new_array in zip(charge_extent, new_arrays):
                 # expand the old charge into the new subcharges
                 new_key = replace_with_seq(sector, axis, subsector)
 
@@ -1749,6 +1764,19 @@ class U1Array(AbelianArray):
         data.shape = self.shape
 
         return data
+
+    def to_yastn(self, **config_opts):
+        import yastn
+
+        t = yastn.Tensor(
+            config=yastn.make_config(sym="U1", **config_opts),
+            s=tuple(-1 if ix.dual else 1 for ix in self.indices),
+            n=self.charge,
+        )
+        for sector, array in self.blocks.items():
+            t.set_block(ts=sector, Ds=array.shape, val=array)
+
+        return t
 
 
 class Z2Z2Array(AbelianArray):

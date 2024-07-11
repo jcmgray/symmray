@@ -230,7 +230,7 @@ oddpos_new = (6,)
 
 This gives a canonical sign to the overall network that is handled
 automatically and locally (once the initial `oddpos` values are chosen.)
-The phase is lazily computed via `FermionicArray.phase_global`.
+The phase is tracked lazily via `FermionicArray.phase_global`.
 
 
 #### Conjugation and tensor networks

@@ -49,12 +49,19 @@ def test_AbelianArray_to_dense(symmetry):
     )
 
 
-@pytest.mark.parametrize("symmetry", ("Z2",))
-def test_AbelianArray_fuse(symmetry):
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2"))
+@pytest.mark.parametrize("missing", (False, True))
+def test_AbelianArray_fuse(symmetry, missing):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
+
+    if missing:
+        sector_to_drop = list(x.sectors)[len(x.sectors) // 2]
+        x.blocks.pop(sector_to_drop)
+
     xf = x.fuse((0, 2), (1, 3))
-    assert xf.shape == (15, 24)
-    assert xf.num_blocks == 2
+    if symmetry == "Z2":
+        assert xf.shape == (15, 24)
+        assert xf.num_blocks == 2
     xu = xf.unfuse_all().transpose((0, 2, 1, 3))
     assert x.allclose(xu)
 

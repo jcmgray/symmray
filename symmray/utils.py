@@ -78,6 +78,38 @@ def rand_partition(d, n, seed=None):
     return [int(splits[i + 1] - splits[i]) for i in range(n)]
 
 
+def rand_z2z2_index(
+    d,
+    dual=None,
+    subsizes=None,
+    seed=None,
+):
+    import symmray as sr
+
+    rng = get_rng(seed)
+
+    if dual is None:
+        dual = rng.choice([False, True])
+
+    possible = [(0, 0), (0, 1), (1, 0), (1, 1)]
+
+    if subsizes is None:
+        # randomly distributed
+        if d < 4:
+            charges = rng.choice(possible, size=d, replace=False)
+            chargemap = {tuple(c): 1 for c in charges}
+        else:
+            subsizes = rand_partition(d, 4)
+            chargemap = dict(zip(possible, subsizes))
+
+    elif subsizes in ("equal", "maximal"):
+        # round-robin distribution
+        ncharge = min(d, 4)
+        charges = possible[:ncharge]
+        chargemap = {c: d // 4 + (i < d % 4) for i, c in enumerate(charges)}
+
+    return sr.BlockIndex(chargemap=chargemap, dual=dual)
+
 def rand_u1_index(
     d,
     dual=None,
@@ -199,6 +231,58 @@ def get_rand_z2array(
     )
 
 
+def get_rand_z2z2array(
+    shape,
+    duals=None,
+    charge=None,
+    seed=None,
+    dist="normal",
+    fermionic=False,
+    subsizes=None,
+):
+    """Generate a random Z2Z2Array with the given shape, with charge sectors
+    and duals automatically determined.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        The overall shape of the array.
+    duals : list of bool, optional
+        The dualness of each dimension. If None, the dual is set to False for
+        the first half of the dimensions and True for the second half.
+    charge : tuple of int, optional
+        The total charge of the array.
+    seed : int, optional
+        The seed for the random number generator.
+    dist : str, optional
+        The distribution of the random numbers. Can be "normal" or "uniform".
+
+    Returns
+    -------
+    Z2Z2Array
+    """
+    import symmray as sr
+
+    rng = get_rng(seed)
+
+    duals = choose_duals(duals, len(shape))
+
+    if fermionic:
+        cls = sr.Z2Z2FermionicArray
+    else:
+        cls = sr.Z2Z2Array
+
+    return cls.random(
+        indices=[
+            rand_z2z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+            for d, f in zip(shape, duals)
+        ],
+        charge=charge,
+        seed=seed,
+        dist=dist,
+    )
+
+
 def get_rand_u1array(
     shape,
     duals=None,
@@ -258,7 +342,7 @@ def get_rand(
     symmetry,
     shape,
     duals=None,
-    charge=0,
+    charge=None,
     seed=None,
     dist="normal",
     fermionic=False,
@@ -295,6 +379,8 @@ def get_rand(
     """
     if symmetry == "Z2":
         fn = get_rand_z2array
+    elif symmetry == "Z2Z2":
+        fn = get_rand_z2z2array
     elif symmetry == "U1":
         fn = get_rand_u1array
     else:
