@@ -1163,8 +1163,10 @@ class AbelianArray(BlockBase):
             new_indices,
             blockmap,
         ) = cached_fuse_block_info(self, axes_groups)
+        # ) = calc_fuse_block_info(self, axes_groups)
 
-        backend = self.backend
+        _ex_array = self.get_any_array()
+        backend = ar.infer_backend(_ex_array)
         _transpose = ar.get_lib_fn(backend, "transpose")
         _reshape = ar.get_lib_fn(backend, "reshape")
         _concatenate = ar.get_lib_fn(backend, "concatenate")
@@ -1178,29 +1180,24 @@ class AbelianArray(BlockBase):
             # group the subblock into the correct new fused block
             new_blocks.setdefault(new_sector, {})[subsectors] = new_array
 
-        old_indices = self._indices
-
         # explicity handle zeros function and dtype and device kwargs
-        _ex_array = self.get_any_array()
-        backend = ar.infer_backend(_ex_array)
         _zeros = ar.get_lib_fn(backend, "zeros")
         zeros_kwargs = {"dtype": _ex_array.dtype}
         if hasattr(_ex_array, "device"):
             zeros_kwargs["device"] = _ex_array.device
 
-        def _recurse_sorted_concat(new_sector, g=0, subkey=()):
+        old_indices = self._indices
+
+        def _recurse_concat(new_sector, g=0, subkey=()):
             new_charge = new_sector[position + g]
-            new_subkeys = [
-                (*subkey, subsector)
-                for subsector in new_indices[position + g].subinfo.extents[
-                    new_charge
-                ]
-            ]
+            extent = new_indices[position + g].subinfo.extents[new_charge]
+            # given the current partial sector, get each next possible charge
+            next_subkeys = [(*subkey, subsector) for subsector in extent]
 
             if g == num_groups - 1:
                 # final group (/level of recursion), get actual arrays
                 arrays = []
-                for new_subkey in new_subkeys:
+                for new_subkey in next_subkeys:
                     try:
                         array = new_blocks[new_sector][new_subkey]
                     except KeyError:
@@ -1210,11 +1207,10 @@ class AbelianArray(BlockBase):
                             for ax in axes_before
                         )
                         shape_new = (
-                            new_indices[position + g].subinfo.extents[
+                            new_indices[position + gs].subinfo.extents[
                                 new_charge
                             ][ss]
-                            # subinfos[g][ss][1]
-                            for g, ss in enumerate(new_subkey)
+                            for gs, ss in enumerate(new_subkey)
                         )
                         shape_after = (
                             old_indices[ax].size_of(new_sector[new_axes[ax]])
@@ -1226,14 +1222,14 @@ class AbelianArray(BlockBase):
             else:
                 # recurse to next group
                 arrays = (
-                    _recurse_sorted_concat(new_sector, g + 1, new_subkey)
-                    for new_subkey in new_subkeys
+                    _recurse_concat(new_sector, g + 1, new_subkey)
+                    for new_subkey in next_subkeys
                 )
 
             return _concatenate(tuple(arrays), axis=position + g)
 
         new_blocks = {
-            new_sector: _recurse_sorted_concat(new_sector)
+            new_sector: _recurse_concat(new_sector)
             for new_sector in new_blocks
         }
 
@@ -1242,10 +1238,7 @@ class AbelianArray(BlockBase):
             self._blocks = new_blocks
             return self
         else:
-            return self.copy_with(
-                indices=new_indices,
-                blocks=new_blocks,
-            )
+            return self.copy_with(indices=new_indices, blocks=new_blocks)
 
     def unfuse(self, axis, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
