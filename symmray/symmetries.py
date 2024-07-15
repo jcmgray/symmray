@@ -63,6 +63,24 @@ class Z2(Symmetry):
         return charge % 2
 
 
+class Z4(Symmetry):
+    __slots__ = ()
+
+    def valid(self, *charges):
+        return all(charge in {0, 1, 2, 3} for charge in charges)
+
+    def combine(self, *charges):
+        return sum(charges) % 4
+
+    def sign(self, charge, dual=True):
+        if dual:
+            return 4 - charge
+        return charge
+
+    def parity(self, charge):
+        return charge % 2
+
+
 class U1(Symmetry):
     __slots__ = ()
 
