@@ -28,6 +28,8 @@ class Symmetry(ABC):
         raise NotImplementedError
 
     def __eq__(self, other):
+        if isinstance(other, str):
+            return self.__class__.__name__ == other
         return self.__class__ == other.__class__
 
     def __hash__(self):

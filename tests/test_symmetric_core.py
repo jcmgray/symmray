@@ -97,28 +97,37 @@ def test_AbelianArray_reshape(symmetry, shape0, shape1):
     ],
 )
 def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
+    if symmetry in ("Z2", "U1"):
+        charge = 1
+    else:
+        charge = (1, 1)
+
     a = sr.utils.get_rand(
         symmetry,
         shape1,
         duals=[False] * len(shape1),
-        charge=1,
+        charge=charge,
         subsizes=subsizes,
     )
     b = sr.utils.get_rand(
         symmetry,
         shape2,
         duals=[True] * len(shape2),
-        charge=1,
+        charge=charge,
         subsizes=subsizes,
     )
     c = ar.do("tensordot", a, b, axes=axes)
     d = ar.do("tensordot", a.to_dense(), b.to_dense(), axes=axes)
 
     if isinstance(c, sr.AbelianArray):
-        if symmetry == "U1":
-            assert c.charge == 2
-        else:
+        if symmetry == "Z2":
             assert c.charge == 0
+        elif symmetry == "U1":
+            assert c.charge == 2
+        elif symmetry == "Z2Z2":
+            assert c.charge == (0, 0)
+        elif symmetry == "U1U1":
+            assert c.charge == (2, 2)
         assert_allclose(c.to_dense(), d)
     else:
         assert_allclose(c, d)
