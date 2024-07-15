@@ -34,7 +34,7 @@ def test_z2symmetric_array_basics():
     assert x.allclose(x.copy())
 
 
-@pytest.mark.parametrize("symmetry", ("Z2",))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 def test_AbelianArray_to_dense(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
     assert ar.do("linalg.norm", x) == pytest.approx(
@@ -49,7 +49,7 @@ def test_AbelianArray_to_dense(symmetry):
     )
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("missing", (False, True))
 def test_AbelianArray_fuse(symmetry, missing):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
@@ -66,7 +66,7 @@ def test_AbelianArray_fuse(symmetry, missing):
     assert x.allclose(xu)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize(
     "shape0, shape1",
     [
@@ -86,7 +86,7 @@ def test_AbelianArray_reshape(symmetry, shape0, shape1):
     assert x.allclose(z)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("subsizes", ("maximal", "equal"))
 @pytest.mark.parametrize(
     "shape1,shape2,axes",
@@ -124,13 +124,13 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
         assert_allclose(c, d)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 def test_AbelianArray_reductions(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6), dist="uniform")
     assert ar.do("min", x) < ar.do("max", x) < ar.do("sum", x)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 def test_block_multiply_diagonal(symmetry):
     import numpy as np
 

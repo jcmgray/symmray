@@ -44,7 +44,7 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
     assert usvh.allclose(x)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 def test_eigh(symmetry, d):
     x = sr.utils.get_rand(
@@ -63,7 +63,7 @@ def test_eigh(symmetry, d):
     assert x.allclose(xr)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 def test_expm_with_reshape(symmetry, d):
     pytest.importorskip("scipy")
