@@ -93,6 +93,7 @@ def qr(x, stabilized=False):
         indices=(bond_index.conj(), x.indices[1].copy()),
         charge=x.symmetry.combine(),
         blocks=r_blocks,
+        symmetry=x.symmetry,
     )
 
     if DEBUG:
@@ -155,6 +156,7 @@ def svd(x):
         indices=(bond_index.conj(), x.indices[1]),
         charge=x.symmetry.combine(),
         blocks=v_blocks,
+        symmetry=x.symmetry,
     )
 
     if DEBUG:
