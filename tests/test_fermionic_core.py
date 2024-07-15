@@ -248,10 +248,11 @@ def test_transpose_vs_pyblock3(seed):
         seed=rng,
     )
 
-    perm = tuple(rng.permutation(x.ndim))
+    perma = tuple(rng.permutation(x.ndim))
+    permb = tuple(rng.permutation(x.ndim))
 
-    pb1 = x.to_pyblock3().transpose(perm)
-    pb2 = x.transpose(perm).to_pyblock3()
+    pb1 = x.to_pyblock3().transpose(perma).transpose(permb)
+    pb2 = x.transpose(perma).transpose(permb).to_pyblock3()
 
     assert (pb1 - pb2).norm() == pytest.approx(0.0)
 
