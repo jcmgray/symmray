@@ -41,7 +41,7 @@ from .interface import (
     trace,
     transpose,
 )
-from .symmetries import U1, U1U1, Z2, Z2Z2, get_symmetry
+from .symmetries import U1, U1U1, Z2, Z2Z2, Symmetry, get_symmetry
 
 __all__ = (
     "AbelianArray",
@@ -49,6 +49,7 @@ __all__ = (
     "align_axes",
     "all",
     "any",
+    "Symmetry",
     "BlockIndex",
     "BlockVector",
     "build_local_fermionic_array",

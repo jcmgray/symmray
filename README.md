@@ -60,16 +60,17 @@ be returned by calling `to_dense` on the array, and a similarly defined
 
 ### Block sparse abelian symmetric arrays
 
-The core `AbelianArray` object consists of 3 main components:
+The core `AbelianArray` object consists of 4 main components:
 
 1. `.indices`: a sequence of `BlockIndex` instances describing the charge
    distribution and 'dualness' of each dimension.
 2. `.charge`: an overall charge for the array, which sets which combinations
    of index charges ('sectors') are allowed.
 3. `.blocks`: a dict mapping each non-zero sector to a 'raw' array.
+4. `.symmetry`: an object defining allowed charges and how they combine.
 
-Specific subclasses of `AbelianArray` have a `.symmetry` class attribute which
-defines the allowed charges and the rules for combining them.
+Specific subclasses of `AbelianArray` have a static `.symmetry` class
+attribute.
 
 The `BlockIndex` object consists of 2 main components:
 

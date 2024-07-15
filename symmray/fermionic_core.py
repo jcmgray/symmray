@@ -128,9 +128,13 @@ class FermionicArray(AbelianArray):
         the position of the odd rank. The integer must be non-zero so that it
         is still sortable after negation. If a tuple is given, it is assumed to
         be the sorted ordering of subsumed odd ranks. By default empty.
+    symmetry : str or Symmetry, optional
+        The symmetry of the array, if not using a specific symmetry class.
     """
 
     __slots__ = _fermionic_array_slots
+    fermionic = True
+    static_symmetry = False
 
     def __init__(
         self,
@@ -139,8 +143,11 @@ class FermionicArray(AbelianArray):
         blocks=(),
         phases=(),
         oddpos=None,
+        symmetry=None,
     ):
-        super().__init__(indices=indices, charge=charge, blocks=blocks)
+        super().__init__(
+            indices=indices, charge=charge, blocks=blocks, symmetry=symmetry
+        )
         self._phases = dict(phases)
         self._oddpos = oddpos_parse(oddpos, self.parity)
 
@@ -768,7 +775,16 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
 
 class Z2FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
-    symmetry = get_symmetry("Z2")
+    static_symmetry = True
+
+    @staticmethod
+    def get_class_symmetry(symmetry=None):
+        Z2 = get_symmetry("Z2")
+
+        if (symmetry is not None) and (symmetry != Z2):
+            raise ValueError(f"Expected Z2 symmetry, got {symmetry}.")
+
+        return Z2
 
     def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
@@ -797,7 +813,16 @@ class Z2FermionicArray(FermionicArray):
 
 class U1FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
-    symmetry = get_symmetry("U1")
+    static_symmetry = True
+
+    @staticmethod
+    def get_class_symmetry(symmetry=None):
+        U1 = get_symmetry("U1")
+
+        if (symmetry is not None) and (symmetry != U1):
+            raise ValueError(f"Expected U1 symmetry, got {symmetry}.")
+
+        return U1
 
     def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
@@ -826,9 +851,27 @@ class U1FermionicArray(FermionicArray):
 
 class Z2Z2FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
-    symmetry = get_symmetry("Z2Z2")
+    static_symmetry = True
+
+    @staticmethod
+    def get_class_symmetry(symmetry=None):
+        Z2Z2 = get_symmetry("Z2Z2")
+
+        if (symmetry is not None) and (symmetry != Z2Z2):
+            raise ValueError(f"Expected Z2Z2 symmetry, got {symmetry}.")
+
+        return Z2Z2
 
 
 class U1U1FermionicArray(FermionicArray):
     __slots__ = _fermionic_array_slots
-    symmetry = get_symmetry("U1U1")
+    static_symmetry = True
+
+    @staticmethod
+    def get_class_symmetry(symmetry=None):
+        U1U1 = get_symmetry("U1U1")
+
+        if (symmetry is not None) and (symmetry != U1U1):
+            raise ValueError(f"Expected U1U1 symmetry, got {symmetry}.")
+
+        return U1U1

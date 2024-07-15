@@ -27,6 +27,9 @@ class Symmetry(ABC):
         """Return the parity, 0 or 1, of a charge according to the symmetry."""
         raise NotImplementedError
 
+    def __eq__(self, other):
+        return self.__class__ == other.__class__
+
     def __hash__(self):
         return hash(self.__class__)
 
@@ -162,6 +165,8 @@ def get_symmetry(symmetry):
     """
     if symmetry == "Z2":
         return Z2()
+    elif symmetry == "Z4":
+        return Z4()
     elif symmetry == "U1":
         return U1()
     elif symmetry == "Z2Z2":
