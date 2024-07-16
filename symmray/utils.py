@@ -163,8 +163,10 @@ def rand_u1_index(
 
     elif subsizes == "equal":
         # 3 approx equal charges around the origin
-        ncharge = 3
-        subsizes = [d // 3 + int(i < d % 3) for i in range(ncharge)]
+        ncharge = min(d, 3)
+        subsizes = [
+            d // ncharge + int(i < d % ncharge) for i in range(ncharge)
+        ]
 
     elif subsizes == "maximal":
         # maximal spread of charges each with size 1
@@ -229,8 +231,7 @@ def rand_u1u1_index(
         # 9 approx equal charges around the origin
         ncharge = min(d, 9)
         subsizes = [
-            d // ncharge + int(i < d % ncharge)
-            for i in range(ncharge)
+            d // ncharge + int(i < d % ncharge) for i in range(ncharge)
         ]
 
     elif subsizes == "maximal":
@@ -306,8 +307,11 @@ def get_rand_z2array(
 
     return cls.random(
         indices=[
-            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
-            rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+            (
+                sr.BlockIndex(d, dual=f)
+                if isinstance(d, dict)
+                else rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+            )
             for d, f in zip(shape, duals)
         ],
         charge=charge,
@@ -362,8 +366,11 @@ def get_rand_z2z2array(
 
     return cls.random(
         indices=[
-            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
-            rand_z2z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+            (
+                sr.BlockIndex(d, dual=f)
+                if isinstance(d, dict)
+                else rand_z2z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+            )
             for d, f in zip(shape, duals)
         ],
         charge=charge,
@@ -421,8 +428,11 @@ def get_rand_u1array(
 
     return cls.random(
         indices=[
-            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
-            rand_u1_index(d, f, subsizes=subsizes, seed=rng)
+            (
+                sr.BlockIndex(d, dual=f)
+                if isinstance(d, dict)
+                else rand_u1_index(d, f, subsizes=subsizes, seed=rng)
+            )
             for d, f in zip(shape, duals)
         ],
         charge=charge,
@@ -480,8 +490,11 @@ def get_rand_u1u1array(
 
     return cls.random(
         indices=[
-            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
-            rand_u1u1_index(d, f, subsizes=subsizes, seed=rng)
+            (
+                sr.BlockIndex(d, dual=f)
+                if isinstance(d, dict)
+                else rand_u1u1_index(d, f, subsizes=subsizes, seed=rng)
+            )
             for d, f in zip(shape, duals)
         ],
         charge=charge,
