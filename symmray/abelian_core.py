@@ -1247,7 +1247,9 @@ class AbelianArray(BlockBase):
 
         # explicity handle zeros function and dtype and device kwargs
         _zeros = ar.get_lib_fn(backend, "zeros")
-        zeros_kwargs = {"dtype": _ex_array.dtype}
+        zeros_kwargs = {}
+        if hasattr(_ex_array, "dtype"):
+            zeros_kwargs["dtype"] = _ex_array.dtype
         if hasattr(_ex_array, "device"):
             zeros_kwargs["device"] = _ex_array.device
 
