@@ -111,6 +111,15 @@ def rand_z2z2_index(
     return sr.BlockIndex(chargemap=chargemap, dual=dual)
 
 
+def get_u1_charges(ncharge):
+    """Get a list of ``ncharge`` distinct U1 charges that are as close to the
+    origin as possible, with a slight bias towards positive charges.
+    """
+    charges = list(range(-ncharge // 2 + 1, +ncharge // 2 + 1))
+    charges.sort(key=lambda x: (abs(x), -x))
+    return tuple(charges[:ncharge])
+
+
 def rand_u1_index(
     d,
     dual=None,
@@ -144,24 +153,29 @@ def rand_u1_index(
         dual = rng.choice([False, True])
 
     if isinstance(d, dict):
+        # charges and sizes given explicitly
         return sr.BlockIndex(chargemap=d, dual=dual)
 
     if subsizes is None:
+        # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
         subsizes = rand_partition(d, ncharge)
+
     elif subsizes == "equal":
-        ncharge = d // 2
-        subsizes = [2 for _ in range(ncharge)]
-        if d % 2:
-            ncharge += 1
-            subsizes.append(1)
+        # 3 approx equal charges around the origin
+        ncharge = 3
+        subsizes = [d // 3 + int(i < d % 3) for i in range(ncharge)]
+
     elif subsizes == "maximal":
+        # maximal spread of charges each with size 1
         ncharge = d
         subsizes = [1 for _ in range(ncharge)]
+
     else:
+        # only sizes given explicitly
         ncharge = len(subsizes)
 
-    charges = range(-ncharge // 2 + 1, ncharge // 2 + 1)
+    charges = get_u1_charges(ncharge)
     chargemap = dict(zip(charges, subsizes))
 
     return sr.BlockIndex(chargemap=chargemap, dual=dual)
@@ -203,21 +217,29 @@ def rand_u1u1_index(
         dual = rng.choice([False, True])
 
     if isinstance(d, dict):
+        # charges and sizes given explicitly
         return sr.BlockIndex(chargemap=d, dual=dual)
 
     if subsizes is None:
+        # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
         subsizes = rand_partition(d, ncharge)
+
     elif subsizes == "equal":
-        ncharge = d // 2
-        subsizes = [2 for _ in range(ncharge)]
-        if d % 2:
-            ncharge += 1
-            subsizes.append(1)
+        # 9 approx equal charges around the origin
+        ncharge = min(d, 9)
+        subsizes = [
+            d // ncharge + int(i < d % ncharge)
+            for i in range(ncharge)
+        ]
+
     elif subsizes == "maximal":
+        # maximal spread of charges each with size 1
         ncharge = d
         subsizes = [1 for _ in range(ncharge)]
+
     else:
+        # only sizes given explicitly
         ncharge = len(subsizes)
 
     charges = get_u1u1_charges(ncharge)
@@ -247,6 +269,7 @@ def get_rand_z2array(
     dist="normal",
     fermionic=False,
     subsizes=None,
+    **kwargs,
 ):
     """Generate a random Z2Array with the given shape, with charge sectors and
     duals automatically determined.
@@ -254,7 +277,8 @@ def get_rand_z2array(
     Parameters
     ----------
     shape : tuple of int
-        The overall shape of the array.
+        The overall shape of the array. Each element can be an int or an
+        explicit dict of charge sizes.
     duals : list of bool, optional
         The dualness of each dimension. If None, the dual is set to False for
         the first half of the dimensions and True for the second half.
@@ -282,12 +306,14 @@ def get_rand_z2array(
 
     return cls.random(
         indices=[
+            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
             rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, duals)
         ],
         charge=charge,
         seed=seed,
         dist=dist,
+        **kwargs,
     )
 
 
@@ -299,6 +325,7 @@ def get_rand_z2z2array(
     dist="normal",
     fermionic=False,
     subsizes=None,
+    **kwargs,
 ):
     """Generate a random Z2Z2Array with the given shape, with charge sectors
     and duals automatically determined.
@@ -306,7 +333,8 @@ def get_rand_z2z2array(
     Parameters
     ----------
     shape : tuple of int
-        The overall shape of the array.
+        The overall shape of the array. Each element can be an int or an
+        explicit dict of charge sizes.
     duals : list of bool, optional
         The dualness of each dimension. If None, the dual is set to False for
         the first half of the dimensions and True for the second half.
@@ -334,12 +362,14 @@ def get_rand_z2z2array(
 
     return cls.random(
         indices=[
+            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
             rand_z2z2_index(d, dual=f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, duals)
         ],
         charge=charge,
         seed=seed,
         dist=dist,
+        **kwargs,
     )
 
 
@@ -351,6 +381,7 @@ def get_rand_u1array(
     dist="normal",
     fermionic=False,
     subsizes=None,
+    **kwargs,
 ):
     """Generate a random U1Array with the given shape, with charge sectors and
     duals automatically determined.
@@ -358,7 +389,8 @@ def get_rand_u1array(
     Parameters
     ----------
     shape : tuple of int
-        The overall shape of the array.
+        The overall shape of the array. Each element can be an int or an
+        explicit dict of charge sizes.
     duals : list of bool, optional
         The dualness of each dimension. If None, then dual is set to False for
         the first half of the dimensions and True for the second half.
@@ -389,12 +421,14 @@ def get_rand_u1array(
 
     return cls.random(
         indices=[
+            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
             rand_u1_index(d, f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, duals)
         ],
         charge=charge,
         seed=seed,
         dist=dist,
+        **kwargs,
     )
 
 
@@ -406,6 +440,7 @@ def get_rand_u1u1array(
     dist="normal",
     fermionic=False,
     subsizes=None,
+    **kwargs,
 ):
     """Generate a random U1U1Array with the given shape, with charge sectors
     and duals automatically determined.
@@ -413,7 +448,8 @@ def get_rand_u1u1array(
     Parameters
     ----------
     shape : tuple of int
-        The overall shape of the array.
+        The overall shape of the array. Each element can be an int or an
+        explicit dict of charge sizes.
     duals : list of bool, optional
         The dualness of each dimension. If None, then dual is set to False for
         the first half of the dimensions and True for the second half.
@@ -444,12 +480,14 @@ def get_rand_u1u1array(
 
     return cls.random(
         indices=[
+            sr.BlockIndex(d, dual=f) if isinstance(d, dict) else
             rand_u1u1_index(d, f, subsizes=subsizes, seed=rng)
             for d, f in zip(shape, duals)
         ],
         charge=charge,
         seed=seed,
         dist=dist,
+        **kwargs,
     )
 
 
@@ -471,7 +509,8 @@ def get_rand(
     symmetry : str
         The symmetry of the array.
     shape : tuple of int
-        The desired overall effective shape of the array.
+        The desired overall effective shape of the array. Each element can be
+        an int or an explicit dict of charge sizes.
     duals : None, "equals", or Sequence[bool], optional
         The dualness of each index. If None, the dualnesses are chosen
         randomly. If "equal", they are chosen so the first half of the
