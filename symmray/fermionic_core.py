@@ -391,8 +391,9 @@ class FermionicArray(AbelianArray):
             The resolved array, which now has no lazy phases.
         """
         new = self if inplace else self.copy()
-        while new._phases:
-            sector, phase = new._phases.popitem()
+        phases = new.phases
+        while phases:
+            sector, phase = phases.popitem()
             if phase == -1:
                 try:
                     new._blocks[sector] = -new._blocks[sector]
@@ -436,7 +437,9 @@ class FermionicArray(AbelianArray):
         _conj = ar.get_lib_fn(new.backend, "conj")
 
         new._indices = tuple(ix.conj() for ix in new.indices)
-        axs_conj = tuple(ax for ax, ix in enumerate(new._indices) if ix.dual)
+        axs_conj = tuple(
+            ax for ax, ix in enumerate(new._indices) if not ix.dual
+        )
 
         for sector, array in new.blocks.items():
             # conjugate the actual array
@@ -762,6 +765,7 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
 
     if (c.ndim == 0) and (not preserve_array):
         try:
+            c.phase_sync(inplace=True)
             return c.blocks[()]
         except KeyError:
             # no aligned blocks, return zero

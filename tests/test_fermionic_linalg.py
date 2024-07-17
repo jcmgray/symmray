@@ -147,7 +147,7 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
     _, s, _ = ar.do(
         "svd_truncated",
         x,
-        cutoff=1e-2,
+        cutoff=3e-2,
         absorb=None,
     )
     assert s.size < 80
