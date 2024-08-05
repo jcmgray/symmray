@@ -20,6 +20,26 @@ def test_qr_basics(symmetry, d0, d1, f0, f1, c):
     assert sr.tensordot(q, r, 1).allclose(x)
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "U1U1", "Z2Z2"))
+@pytest.mark.parametrize("seed", range(5))
+def test_qr_with_expand_dims(symmetry, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        [4, 5, 6],
+        subsizes="maximal",
+        seed=seed,
+    )
+    y = x.reshape(
+        (
+            1,
+            4 * 5 * 6,
+        )
+    )
+    q, r = sr.linalg.qr(y)
+    z = (q @ r).reshape((4, 5, 6))
+    assert z.allclose(x)
+
+
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
 @pytest.mark.parametrize("d0", [3, 4])
 @pytest.mark.parametrize("d1", [2, 5])

@@ -73,17 +73,33 @@ def test_AbelianArray_fuse(symmetry, missing):
         ((3, 4, 5, 6), (3, 4, 5, 6)),
         ((3, 4, 5, 6), (12, 30)),
         ((3, 4, 5, 6), (3, 20, 6)),
+        ((2, 2, 2, 2, 2), (4, 2, 4)),
+        ((2, 2, 2, 1, 2, 2), (1, 4, 2, 4, 1)),
         ((1, 1, 1, 1), (1, 1)),
+        ((1, 1, 1), (1, 1, 1)),
+        ((1, 1), (1, 1, 1, 1)),
     ],
 )
-def test_AbelianArray_reshape(symmetry, shape0, shape1):
-    x = sr.utils.get_rand(symmetry, shape0)
+@pytest.mark.parametrize("seed", range(5))
+def test_AbelianArray_reshape(symmetry, shape0, shape1, seed):
+    x = sr.utils.get_rand(symmetry, shape0, seed=seed, subsizes="maximal")
     y = ar.do("reshape", x, shape1)
     assert all(da <= db for da, db in zip(y.shape, shape1))
     y.check()
     z = ar.do("reshape", y, shape0)
     z.check()
     assert x.allclose(z)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(5))
+def test_abelian_reshape_unfuse(symmetry, seed):
+    a = sr.utils.get_rand(
+        symmetry, (3, 4, 5, 6), seed=seed, subsizes="maximal"
+    )
+    b = a.fuse((0, 1), (2, 3))
+    c = b.reshape((12, 5, 6))
+    assert c.allclose(a.fuse((0, 1)))
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
