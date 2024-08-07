@@ -41,6 +41,10 @@ def binary_blockwise_op(fn, x, y, inplace=False):
     return z
 
 
+def _identity(x):
+    return x
+
+
 class BlockBase:
     """Mixin class for arrays consisting of dicts of blocks."""
 
@@ -63,6 +67,19 @@ class BlockBase:
     def blocks(self):
         """The blocks of the array."""
         return self._blocks
+
+    def _map_blocks(self, fn_block=None, fn_sector=None):
+        """Map the blocks and their keys (sectors) of the array inplace."""
+        if fn_block is None:
+            fn_block = _identity
+
+        if fn_sector is None:
+            fn_sector = _identity
+
+        self._blocks = {
+            fn_sector(sector): fn_block(block)
+            for sector, block in self._blocks.items()
+        }
 
     def get_any_array(self):
         """Get any array from the blocks, to check type and backend for

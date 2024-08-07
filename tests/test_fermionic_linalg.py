@@ -50,6 +50,27 @@ def test_qr_roundtrip(symmetry, seed):
     assert x.allclose(xr)
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "U1U1", "Z2Z2"))
+@pytest.mark.parametrize("seed", range(5))
+def test_qr_with_expand_dims(symmetry, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        [4, 5, 6],
+        subsizes="maximal",
+        seed=seed,
+        fermionic=True,
+    )
+    y = x.reshape(
+        (
+            1,
+            4 * 5 * 6,
+        )
+    )
+    q, r = sr.linalg.qr(y)
+    z = (q @ r).reshape((4, 5, 6))
+    assert z.allclose(x)
+
+
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("seed", range(10))
 def test_svd_roundtrip(symmetry, seed):

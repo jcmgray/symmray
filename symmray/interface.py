@@ -45,6 +45,16 @@ def abs(x):
     return x.abs()
 
 
+def squeeze(x, axis=None):
+    """Remove single-dimensional entries from the shape of a `symmray` array."""
+    return x.squeeze(axis)
+
+
+def expand_dims(x, axis):
+    """Expand the shape of a `symmray` array."""
+    return x.expand_dims(axis)
+
+
 def reshape(a, newshape, **kwargs):
     """Reshape a `symmray` array, via fusing or unfusing."""
     return a.reshape(newshape, **kwargs)
