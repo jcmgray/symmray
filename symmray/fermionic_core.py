@@ -214,6 +214,17 @@ class FermionicArray(AbelianArray):
 
         return new
 
+    def _binary_blockwise_op(self, other, fn, inplace=False):
+        """Need to sync phases before performing blockwise operations."""
+        xy = self if inplace else self.copy()
+        xy.phase_sync(inplace=True)
+
+        if isinstance(other, FermionicArray):
+            if other.phases:
+                other = other.phase_sync()
+
+        return super()._binary_blockwise_op(other, fn, inplace=True)
+
     def _map_blocks(self, fn_block=None, fn_sector=None):
         super()._map_blocks(fn_block, fn_sector)
         if fn_sector is not None:

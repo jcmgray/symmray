@@ -6,41 +6,6 @@ import operator
 import autoray as ar
 
 
-def binary_blockwise_op(fn, x, y, inplace=False):
-    """Apply a binary blockwise operation to two block arrays, which must have
-    exactly the same sectors/keys.
-
-    Parameters
-    ----------
-    fn : callable
-        Function to apply to the blocks of the arrays, with signature
-        ``fn(x_block, y_block) -> result_block``.
-    x : BlockBase
-        First block array.
-    y : BlockBase
-        Second block array.
-    inplace : bool, optional
-        Whether to modify the first array in place. Default is False.
-
-    Returns
-    -------
-    BlockBase
-    """
-    z = x if inplace else x.copy()
-
-    z_blocks = z.blocks
-    y_blocks = y.blocks.copy()
-
-    for sector, x_block in z_blocks.items():
-        y_block = y_blocks.pop(sector)
-        z_blocks[sector] = fn(x_block, y_block)
-
-    if y_blocks:
-        raise ValueError(f"y has blocks not present in x: {y_block.keys()}")
-
-    return z
-
-
 def _identity(x):
     return x
 
@@ -147,9 +112,45 @@ class BlockBase:
     def __bool__(self):
         return bool(self.item())
 
+    def _binary_blockwise_op(self, other, fn, inplace=False):
+        """Apply a binary blockwise operation to two block arrays, which must
+        have exactly the same sectors/keys.
+
+        Parameters
+        ----------
+        fn : callable
+            Function to apply to the blocks of the arrays, with signature
+            ``fn(x_block, y_block) -> result_block``.
+        x : BlockBase
+            First block array.
+        y : BlockBase
+            Second block array.
+        inplace : bool, optional
+            Whether to modify the first array in place. Default is False.
+
+        Returns
+        -------
+        BlockBase
+        """
+        xy = self if inplace else self.copy()
+
+        xy_blocks = xy.blocks
+        other_blocks = other.blocks.copy()
+
+        for sector, x_block in xy_blocks.items():
+            other_block = other_blocks.pop(sector)
+            xy_blocks[sector] = fn(x_block, other_block)
+
+        if other_blocks:
+            raise ValueError(
+                f"other has blocks not present in x: {other_blocks.keys()}"
+            )
+
+        return xy
+
     def __add__(self, other):
         if isinstance(other, BlockBase):
-            return binary_blockwise_op(operator.add, self, other)
+            return self._binary_blockwise_op(other, fn=operator.add)
 
         # addition with non-matching block array breaks sparsity
         raise NotImplementedError(
@@ -158,23 +159,47 @@ class BlockBase:
 
     def __iadd__(self, other):
         if isinstance(other, BlockBase):
-            return binary_blockwise_op(operator.add, self, other, inplace=True)
+            return self._binary_blockwise_op(
+                other, fn=operator.add, inplace=True
+            )
 
         # addition with non-matching block array breaks sparsity
         raise NotImplementedError(
             f"Addition with {type(other)} not implemented."
         )
 
+    def __sub__(self, other):
+        if isinstance(other, BlockBase):
+            return self._binary_blockwise_op(other, fn=operator.sub)
+
+        # subtraction with non-matching block array breaks sparsity
+        raise NotImplementedError(
+            f"Subtraction with {type(other)} not implemented."
+        )
+
+    def __isub__(self, other):
+        if isinstance(other, BlockBase):
+            return self._binary_blockwise_op(
+                other, fn=operator.sub, inplace=True
+            )
+
+        # subtraction with non-matching block array breaks sparsity
+        raise NotImplementedError(
+            f"Subtraction with {type(other)} not implemented."
+        )
+
     def __mul__(self, other):
         if isinstance(other, BlockBase):
-            return binary_blockwise_op(operator.mul, self, other)
+            return self._binary_blockwise_op(other, fn=operator.mul)
         new = self.copy()
         new.apply_to_arrays(lambda x: x * other)
         return new
 
     def __imul__(self, other):
         if isinstance(other, BlockBase):
-            return binary_blockwise_op(operator.mul, self, other, inplace=True)
+            return self._binary_blockwise_op(
+                other, fn=operator.mul, inplace=True
+            )
         self.apply_to_arrays(lambda x: x * other)
         return self
 
@@ -184,7 +209,7 @@ class BlockBase:
     def __truediv__(self, other):
         if isinstance(other, BlockBase):
             if self.shape == other.shape and all(d == 1 for d in self.shape):
-                return binary_blockwise_op(operator.truediv, self, other)
+                return self._binary_blockwise_op(other, fn=operator.truediv)
             # deviding by implicit zeros not defined
             return NotImplemented
 
@@ -294,7 +319,7 @@ class BlockVector(BlockBase):
 
     def __add__(self, other):
         if isinstance(other, BlockVector):
-            return binary_blockwise_op(operator.add, self, other)
+            return self._binary_blockwise_op(other, fn=operator.add)
 
         if isinstance(other, BlockBase):
             # block structure not preserved
@@ -307,7 +332,9 @@ class BlockVector(BlockBase):
 
     def __iadd__(self, other):
         if isinstance(other, BlockVector):
-            return binary_blockwise_op(operator.add, self, other, inplace=True)
+            return self._binary_blockwise_op(
+                other, fn=operator.add, inplace=True
+            )
 
         if isinstance(other, BlockBase):
             # block structure not preserved
@@ -325,7 +352,7 @@ class BlockVector(BlockBase):
 
     def __sub__(self, other):
         if isinstance(other, BlockVector):
-            return binary_blockwise_op(operator.sub, self, other)
+            return self._binary_blockwise_op(other, fn=operator.sub)
 
         if isinstance(other, BlockBase):
             # block structure not preserved
@@ -338,7 +365,9 @@ class BlockVector(BlockBase):
 
     def __isub__(self, other):
         if isinstance(other, BlockVector):
-            return binary_blockwise_op(operator.sub, self, other, inplace=True)
+            return self._binary_blockwise_op(
+                other, fn=operator.sub, inplace=True
+            )
 
         if isinstance(other, BlockBase):
             # block structure not preserved
@@ -356,7 +385,7 @@ class BlockVector(BlockBase):
 
     def __truediv__(self, other):
         if isinstance(other, BlockVector):
-            return binary_blockwise_op(operator.truediv, self, other)
+            return self._binary_blockwise_op(other, fn=operator.truediv)
 
         if isinstance(other, BlockBase):
             # deviding by implicit zeros not defined
@@ -369,8 +398,8 @@ class BlockVector(BlockBase):
 
     def __itruediv__(self, other):
         if isinstance(other, BlockVector):
-            return binary_blockwise_op(
-                operator.truediv, self, other, inplace=True
+            return self._binary_blockwise_op(
+                other, fn=operator.truediv, inplace=True
             )
 
         if isinstance(other, BlockBase):
@@ -389,7 +418,7 @@ class BlockVector(BlockBase):
 
     def __pow__(self, other):
         if isinstance(other, BlockBase):
-            return binary_blockwise_op(operator.pow, self, other)
+            return self._binary_blockwise_op(other, fn=operator.pow)
 
         # assume scalar
         new = self.copy()
@@ -398,7 +427,9 @@ class BlockVector(BlockBase):
 
     def __ipow__(self, other):
         if isinstance(other, BlockBase):
-            return binary_blockwise_op(operator.pow, self, other, inplace=True)
+            return self._binary_blockwise_op(
+                other, fn=operator.pow, inplace=True
+            )
 
         # assume scalar
         self.apply_to_arrays(lambda x: x**other)
