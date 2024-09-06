@@ -208,12 +208,12 @@ And inserted when needed using:
 #### Multiple odd-parity fermionic arrays - `oddpos`
 
 If you want to work with networks involving multiple odd-parity tensors then
-you must supply a non-zero integer index `oddpos` to the `FermionicArray`
+you must supply any *sortable* label `oddpos` to the `FermionicArray`
 constructor, which acts like a sequence of dummy indices with odd-parity.
 Whenever two arrays with `oddpos` are contracted, a global phase
 is possibly inserted coming from sorting these dummy odd-parity indices.
 
-An initial integer value of ``oddpos`` is converted into a length 1 tuple, and
+An initial single value of ``oddpos`` is converted into a length 1 tuple, and
 these are then concatenated and sorted when two arrays are contracted. For
 example, if `a` and `b` have accrued the following `oddpos` values:
 ```
@@ -232,6 +232,9 @@ oddpos_new = (6,)
 This gives a canonical sign to the overall network that is handled
 automatically and locally (once the initial `oddpos` values are chosen.)
 The phase is tracked lazily via `FermionicArray.phase_global`.
+
+If for some reason you would like to create a `FermionicArray` with multiple
+labels then you should supply a **list** of labels.
 
 
 #### Conjugation and tensor networks
