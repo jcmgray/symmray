@@ -74,6 +74,10 @@ def tensordot(a, b, axes=2, **kwargs):
         If an integer, the number of axes to contract. If a tuple, the axes
         to contract. Default is 2.
     """
+    if getattr(a, "ndim", 0) == 0:
+        # likely called as effective scalar multiplication of block array
+        return a * b
+
     raise NotImplementedError(
         f"Not implemented for types {type(a)} and {type(b)}."
     )

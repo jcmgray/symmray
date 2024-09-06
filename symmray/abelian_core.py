@@ -1988,6 +1988,13 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     preserve_array : bool, optional
         Whether to return a scalar if the result is a scalar.
     """
+    if not isinstance(b, AbelianArray):
+        if getattr(b, "ndim", 0) == 0:
+            # assume scalar
+            return a * b
+        else:
+            raise TypeError(f"Expected AbelianArray, got {type(b)}.")
+
     if DEBUG:
         a.check()
         b.check()

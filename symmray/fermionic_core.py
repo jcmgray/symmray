@@ -712,6 +712,13 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
     axes : int or (tuple[int], tuple[int]), optional
         The axes to contract over, by default 2.
     """
+    if not isinstance(b, FermionicArray):
+        if getattr(b, "ndim", 0) == 0:
+            # assume scalar
+            return a * b
+        else:
+            raise TypeError(f"Expected FermionicArray, got {type(b)}.")
+
     ndim_a = a.ndim
     ndim_b = b.ndim
 
