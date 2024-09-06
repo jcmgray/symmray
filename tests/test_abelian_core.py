@@ -151,7 +151,7 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 def test_AbelianArray_reductions(symmetry):
-    x = sr.utils.get_rand(symmetry, (3, 4, 5, 6), dist="uniform")
+    x = sr.utils.get_rand(symmetry, (3, 4, 5, 6), dist="uniform", seed=42)
     assert ar.do("min", x) < ar.do("max", x) < ar.do("sum", x)
 
 
