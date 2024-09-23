@@ -68,38 +68,37 @@ def resolve_combined_oddpos(left, right, new):
     else:
         phase = 1
 
-    if l_oddpos and r_oddpos and (l_oddpos[-1] > r_oddpos[0]):
-        # overlapping -> compute the phase of sorting the oddposs
-        perm = tuple(argsort(oddpos))
-        phase *= calc_phase_permutation((1,) * len(oddpos), perm)
-        # -> [1, 2, 3, 4, 5, 6, 7]
-        oddpos = [oddpos[i] for i in perm]
-
-    if phase == -1:
-        new.phase_global(inplace=True)
-
-    # trim adjacent conjugate pairs of oddposs
-    # e.g. [4+, 3+, 3-, 4-, 5-] -> [4+, 4-, 5-] -> [5-]
-    #           ......              ......
+    # do a phased sort and annihilation of conjugate pairs
     i = 0
     while i < len(oddpos) - 1:
-        rl = oddpos[i]
-        rr = oddpos[i + 1]
-        if rl.label == rr.label:
-            # labels match ...
-            if rl.dual != rr.dual:
-                # ... and are a conjugate pair
+        a = oddpos[i]
+        b = oddpos[i + 1]
+        if a.label == b.label:
+            # 'trace' out the pair
+            if a.dual != b.dual:
+                if b.dual:
+                    # |x><x|, ket-bra contraction
+                    phase = -phase
                 oddpos.pop(i)
                 oddpos.pop(i)
-                if i > 0:
-                    # move back to check for more
-                    i -= 1
+                # check previous
+                i = max(0, i - 1)
             else:
                 # detect non conjugate duplicates here as well
                 raise ValueError("`oddpos` must be unique conjugate pairs.")
+        elif b < a:
+            # sort with phased swap
+            oddpos[i] = b
+            oddpos[i + 1] = a
+            # check previous
+            i = max(0, i - 1)
+            phase = -phase
         else:
-            # check next
+            # already sorted and not conjugate pair, move to next
             i += 1
+
+    if phase == -1:
+        new.phase_global(inplace=True)
 
     new._oddpos = tuple(oddpos)
 
