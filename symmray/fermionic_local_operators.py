@@ -247,6 +247,48 @@ def build_local_fermionic_array(
     )
 
 
+def get_spinless_indexmap(symmetry):
+    """Get a mapping of linear index to charge sector for a spinless
+    fermion model.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2" or "U1".
+
+    Returns
+    -------
+    list[hashable]
+    """
+    if symmetry in ("Z2", "U1"):
+        return [0, 1]
+    else:
+        raise ValueError(f"Invalid symmetry: {symmetry}")
+
+
+def get_spinful_indexmap(symmetry):
+    """Get a mapping of linear index to charge sector for a spinful
+    fermion model.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
+
+    Returns
+    -------
+    list[hashable]
+    """
+    if symmetry == "Z2":
+        return [0, 1, 1, 0]
+    elif symmetry == "U1":
+        return [0, 1, 1, 2]
+    elif symmetry in ("Z2Z2", "U1U1"):
+        return [(0, 0), (0, 1), (1, 0), (1, 1)]
+    else:
+        raise ValueError(f"Invalid symmetry: {symmetry}")
+
+
 def fermi_hubbard_spinless_local_array(
     symmetry,
     t=1.0,
@@ -298,11 +340,7 @@ def fermi_hubbard_spinless_local_array(
     basis_a = ((), (a.dag,))
     basis_b = ((), (b.dag,))
     bases = (basis_a, basis_b)
-
-    if symmetry == "Z2" or symmetry == "U1":
-        indexmap = (0, 1)
-    else:
-        raise ValueError(f"Invalid symmetry: {symmetry}")
+    indexmap = get_spinless_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,
@@ -338,6 +376,11 @@ def fermi_hubbard_local_array(
         The chemical potential, by default 0.0.
     like : str, optional
         The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array : FermionicArray
+        The local operator in fermionic array form.
     """
     au = FermionicOperator("au")
     ad = FermionicOperator("ad")
@@ -361,22 +404,115 @@ def fermi_hubbard_local_array(
     basis_a = ((), (ad.dag,), (au.dag,), (au.dag, ad.dag))
     basis_b = ((), (bd.dag,), (bu.dag,), (bu.dag, bd.dag))
     bases = [basis_a, basis_b]
-
-    if symmetry == "Z2":
-        indexmap = [0, 1, 1, 0]
-    elif symmetry == "Z2Z2":
-        indexmap = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    elif symmetry == "U1":
-        indexmap = [0, 1, 1, 2]
-    elif symmetry == "U1U1":
-        indexmap = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    else:
-        raise ValueError(f"Invalid symmetry: {symmetry}")
+    indexmap = get_spinful_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,
         bases,
         symmetry,
         index_maps=[indexmap, indexmap],
+        like=like,
+    )
+
+
+def fermi_number_operator_spinless_local_array(symmetry, like="numpy"):
+    """Construct the fermionic number operator for the spinless Fermi-Hubbard
+    model. The indices are ordered as (a, a'). The local basis is like
+    (|0>, a+|0>) for single site a.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2" or "U1".
+    like : str, optional
+
+    Returns
+    -------
+    array : FermionicArray
+        The local operator in fermionic array form.
+    """
+    a = FermionicOperator("a")
+
+    terms = [(1, (a.dag, a))]
+    bases = [((), (a.dag,))]
+    indexmap = get_spinless_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+    )
+
+
+def fermi_number_operator_spinful_local_array(symmetry, like="numpy"):
+    """Construct the fermionic number operator for the Fermi-Hubbard model. The
+    indices are ordered as (a, a'), with the local basis like
+    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
+    spin respectively for single site `a`.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array : FermionicArray
+        The local operator in fermionic array form.
+    """
+    au = FermionicOperator("au")
+    ad = FermionicOperator("ad")
+
+    # nup + ndown
+    terms = [(1, (au.dag, au)), (1, (ad.dag, ad))]
+    # |00>, |01>, |10>, |11>
+    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    indexmap = get_spinful_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+    )
+
+
+def fermi_spin_operator_local_array(symmetry, like="numpy"):
+    """Construct the fermionic spin operator for the Fermi-Hubbard model. The
+    indices are ordered as (a, a'), with the local basis like
+    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
+    spin respectively for single site `a`.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array : FermionicArray
+        The local operator in fermionic array form.
+    """
+    au = FermionicOperator("au")
+    ad = FermionicOperator("ad")
+
+    # S^z = 1/2 (nup - ndown)
+    terms = [(0.5, (au.dag, au)), (-0.5, (ad.dag, ad))]
+    # |00>, |01>, |10>, |11>
+    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    indexmap = get_spinful_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
         like=like,
     )
