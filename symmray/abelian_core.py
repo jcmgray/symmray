@@ -1724,21 +1724,44 @@ class AbelianArray(BlockBase):
     def multiply_diagonal(self, v, axis, inplace=False):
         """Multiply this block array by a vector as if contracting a diagonal
         matrix along the given axis.
+
+        Parameters
+        ----------
+        v : BlockVector
+            The vector to contract with.
+        axis : int
+            The axis along which to contract.
+        inplace : bool, optional
+            Whether to perform the operation inplace.
+
+        Returns
+        -------
+        AbelianArray
         """
         x = self if inplace else self.copy()
 
         _reshape = ar.get_lib_fn(v.backend, "reshape")
         new_shape = tuple(-1 if i == axis else 1 for i in range(x.ndim))
 
-        for sector in tuple(x.blocks):
+        # sort by axis charge to group vector blocks
+        sectors = sorted(x.sectors, key=lambda s: s[axis])
+        v_charge = None
+
+        for sector in sectors:
             charge = sector[axis]
-            v_sector = v.blocks.get(charge, None)
-            if v_sector is not None:
+
+            # only compute reshaped vector block when charge changes
+            if charge != v_charge:
+                v_block = v.blocks.get(charge, None)
+                if v_block is not None:
+                    v_block = _reshape(v_block, new_shape)
+                v_charge = charge
+
+            if v_block is not None:
                 # use broadcasting to perform "ab...X...c,X-> ab...X...c"
-                x.blocks[sector] = x.blocks[sector] * _reshape(
-                    v_sector, new_shape
-                )
+                x.blocks[sector] = x.blocks[sector] * v_block
             else:
+                # block isn't present -> like multiplying by zero
                 del x.blocks[sector]
 
         if DEBUG:
