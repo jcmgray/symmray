@@ -1,12 +1,11 @@
 # symmray
 
 A minimal library for block sparse, abelian symetric and fermionic arrays,
-designed to look as much as possible like standard ndarrays, backed by
-`numpy`, `torch` or any other `autoray` compatible library.
+designed to look as much as possible like standard ndarrays, whose blocks can
+be backed by `numpy`, `torch` or any other `autoray` compatible library.
 
 
 ## Installation
-
 
 **Installing the latest version directly from github:**
 
@@ -57,6 +56,7 @@ do have a `.shape` attribute which is the shape of the dense array that would
 be returned by calling `to_dense` on the array, and a similarly defined
 `.size`. Likewise, `symmray` supports fusing and unfusing of indices via
 `reshape` (as long as it is clear what is meant by the new shape).
+
 
 ### Block sparse abelian symmetric arrays
 
@@ -205,6 +205,7 @@ And inserted when needed using:
 
 - `FermionicArray.phase_sync`: actually multiply the blocks by the phases.
 
+
 #### Multiple odd-parity fermionic arrays - `oddpos`
 
 If you want to work with networks involving multiple odd-parity tensors then
@@ -272,8 +273,26 @@ the wavefunction. Such local operators need to be expressed in a local basis
 with a particular ordering and resulting phases. `symmray` provides several
 common operators:
 
-- `fermi_hubbard_local_array`
-- `fermi_hubbard_spinless_local_array`
+- `fermi_hubbard_local_array`:
+  $$
+  -t (a_\uparrow^\dagger b_\uparrow + b_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger b_\downarrow + b_\downarrow^\dagger a_\downarrow) + U(a_\uparrow^\dagger a_\uparrow a_\downarrow^\dagger a_\downarrow + b_\uparrow^\dagger b_\uparrow b_\downarrow^\dagger b_\downarrow) - \mu (a_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger a_\downarrow + b_\uparrow^\dagger b_\uparrow + b_\downarrow^\dagger b_\downarrow)
+  $$
+- `fermi_hubbard_spinless_local_array`:
+  $$
+  -t(a^\dagger b + b^\dagger a) + V a^\dagger a b^\dagger b - \mu(a^\dagger a + b^\dagger b)
+  $$
+- `fermi_number_operator_spinful_local_array`:
+  $$
+  a_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger a_\downarrow
+  $$
+- `fermi_number_operator_spinless_local_array`
+  $$
+  a^\dagger a
+  $$
+- `fermi_spin_operator_local_array`:
+  $$
+  \frac{1}{2}(a_\uparrow^\dagger a_\uparrow - a_\downarrow^\dagger a_\downarrow)
+  $$
 
  plus lower level functions for building custom ones:
 
@@ -393,36 +412,89 @@ Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array` also t
 
 ### Linear Algebra
 
+`symmray` supports abelian and fermionic versions of the following functions:
 
-Standard functions:
-
-- `svd`
-- `qr`
+- `norm`: frobenius norm
+- `svd`: singular value decomposition
+- `qr`: QR decomposition
+- `eigh`: hermitian eigendecomposition
+- `expm`: matrix exponential
 
 Tensor network specific functions as used by `quimb`:
 
-- `svd_truncated`
-- `qr_stabilized`
+- `svd_truncated`: svd with truncation based on maximum bond dimension and/or
+  a cutoff threshold with various modes.
+- `qr_stabilized`: qr decomposition with sign stabilization of the R matrix
+  diagonal, which is beneficial for gradient based optimization.
 
 
-### Diagonal matrices and vectors: ``BlockVector``
+#### Diagonal matrices and vectors: ``BlockVector``
 
-- special approach to vectors / diagonal matrices, as returned from SVD
+Decompositions such as SVD and eigendecomposition return singular and eigen
+values as a special type of block sparse array, a `BlockVector`. These are
+essentially just a dict of single charges to blocks, and don't contain any
+dualness information. Simple math operations are supported, as well as
+multiplying them into a tensor with the function `multiply_diagonal`.
 
 
 ### Symmetries
 
-- builtin symmetries
-- implementing custom symmetries
+`symmray` has the following symmetries built in:
+
+- `Z2`: parity symmetry
+- `U1`: abelian charge symmetry
+- `Z2Z2`: two parity symmetries
+- `U1U1`: two abelian charge symmetries
+
+These are encasuplated in classes which describe:
+
+- the zero charge and valid charges
+- how to combine charges
+- how to negate charges
+- ...
+
+See the `symmray.symmetries` module for how to define your own symmetries. You
+can supply these directly to `AbelianArray` and `FermionicArray` constructors
+(dynamic symmetry), or you can create your own specific subclasses of these
+classes (static symmetry), such as ``U1U1FermionicArray``.
 
 
 ## Other libraries
 
-- abeliantensors
-- yastn
-- pyblock3
-- tensornetwork
-- grassmanntn
+Some notable other libraries with overlapping functionality:
+
+- `abeliantensors`: https://github.com/mhauru/abeliantensors
+- `yastn`: https://github.com/yastn/yastn
+- `pyblock3`: https://github.com/block-hczhai/pyblock3-preview
+- `tensornetwork`: https://github.com/google/TensorNetwork
+- `grassmanntn`: https://github.com/ayosprakob/grassmanntn
+- `TensorKit.jl`: https://github.com/Jutho/TensorKit.jl
 
 
 ## References
+
+An incomplete but helpful list:
+
+**Abelian symmetries**:
+
+- "Tensor network decompositions in the presence of a global symmetry" - *Sukhwinder Singh, Robert N. C. Pfeifer, Guifre Vidal* - https://arxiv.org/abs/0907.2994
+
+- "Implementing global Abelian symmetries in projected entangled-pair state algorithms" - *B. Bauer, P. Corboz, R. Orus, M. Troyer* - https://arxiv.org/abs/1010.3595
+
+- "Advances on Tensor Network Theory: Symmetries, Fermions, Entanglement, and Holography" - *Roman Orus* - https://arxiv.org/abs/1407.6552
+
+**Fermionic Tensor Networks**
+
+- "Fermionic Projected Entangled Pair States" - *Christina V. Kraus, Norbert Schuch, Frank Verstraete, J. Ignacio Cirac* - https://arxiv.org/abs/0904.4667
+
+- "Fermionic multi-scale entanglement renormalization ansatz" - *Philippe Corboz, Guifre Vidal* - https://arxiv.org/abs/0907.3184
+
+- "Simulation of strongly correlated fermions in two spatial dimensions with fermionic Projected Entangled-Pair States" - *Philippe Corboz, Roman Orus, Bela Bauer, Guifre Vidal* - https://arxiv.org/abs/0912.0646
+
+- "Fermionic Implementation of Projected Entangled Pair States Algorithm" - *Iztok Pizorn, Frank Verstraete* - https://arxiv.org/abs/1003.2743
+
+`symmray` is most closely related to the following **'local' approaches**:
+
+- "Grassmann tensor network states and its renormalization for strongly correlated fermionic and bosonic states" - *Zheng-Cheng Gu, Frank Verstraete, Xiao-Gang Wen* - https://arxiv.org/abs/1004.2563
+
+- "Fermionic tensor network methods" - *Quinten Mortier, Lukas Devos, Lander Burgelman, Bram Vanhecke, Nick Bultinck, Frank Verstraete, Jutho Haegeman, Laurens Vanderstraeten* - https://arxiv.org/abs/2404.14611
