@@ -274,25 +274,34 @@ with a particular ordering and resulting phases. `symmray` provides several
 common operators:
 
 - `fermi_hubbard_local_array`:
-  $$
-  -t (a_\uparrow^\dagger b_\uparrow + b_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger b_\downarrow + b_\downarrow^\dagger a_\downarrow) + U(a_\uparrow^\dagger a_\uparrow a_\downarrow^\dagger a_\downarrow + b_\uparrow^\dagger b_\uparrow b_\downarrow^\dagger b_\downarrow) - \mu (a_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger a_\downarrow + b_\uparrow^\dagger b_\uparrow + b_\downarrow^\dagger b_\downarrow)
-  $$
+
+$$
+-t (a_\uparrow^\dagger b_\uparrow + b_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger b_\downarrow + b_\downarrow^\dagger a_\downarrow) + U(a_\uparrow^\dagger a_\uparrow a_\downarrow^\dagger a_\downarrow + b_\uparrow^\dagger b_\uparrow b_\downarrow^\dagger b_\downarrow) - \mu (a_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger a_\downarrow + b_\uparrow^\dagger b_\uparrow + b_\downarrow^\dagger b_\downarrow)
+$$
+
 - `fermi_hubbard_spinless_local_array`:
-  $$
-  -t(a^\dagger b + b^\dagger a) + V a^\dagger a b^\dagger b - \mu(a^\dagger a + b^\dagger b)
-  $$
+
+$$
+-t(a^\dagger b + b^\dagger a) + V a^\dagger a b^\dagger b - \mu(a^\dagger a + b^\dagger b)
+$$
+
 - `fermi_number_operator_spinful_local_array`:
-  $$
-  a_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger a_\downarrow
-  $$
-- `fermi_number_operator_spinless_local_array`
-  $$
-  a^\dagger a
-  $$
+
+$$
+a_\uparrow^\dagger a_\uparrow + a_\downarrow^\dagger a_\downarrow
+$$
+
+- `fermi_number_operator_spinless_local_array`:
+
+$$
+a^\dagger a
+$$
+
 - `fermi_spin_operator_local_array`:
-  $$
-  \frac{1}{2}(a_\uparrow^\dagger a_\uparrow - a_\downarrow^\dagger a_\downarrow)
-  $$
+
+$$
+\frac{1}{2}(a_\uparrow^\dagger a_\uparrow - a_\downarrow^\dagger a_\downarrow)
+$$
 
  plus lower level functions for building custom ones:
 
