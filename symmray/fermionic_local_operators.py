@@ -34,6 +34,10 @@ class FermionicOperator:
         return (self._dual, self._label) == (other._dual, other._label)
 
     def __lt__(self, other):
+        # # XXX: another potential ordering? :
+        # return (
+        #     (self._label, not self._dual) < (other._label, not other._dual)
+        # )
         if self.dual:
             if other.dual:
                 # dual operator are reflected
