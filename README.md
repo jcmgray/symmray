@@ -506,4 +506,6 @@ An incomplete but helpful list:
 
 - "Grassmann tensor network states and its renormalization for strongly correlated fermionic and bosonic states" - *Zheng-Cheng Gu, Frank Verstraete, Xiao-Gang Wen* - https://arxiv.org/abs/1004.2563
 
+- "Gradient optimization of fermionic projected entangled pair states on directed lattices" - *Shao-Jun Dong, Chao Wang, Yongjian Han, Guang-can Guo, Lixin He* - https://arxiv.org/abs/1812.03657
+
 - "Fermionic tensor network methods" - *Quinten Mortier, Lukas Devos, Lander Burgelman, Bram Vanhecke, Nick Bultinck, Frank Verstraete, Jutho Haegeman, Laurens Vanderstraeten* - https://arxiv.org/abs/2404.14611
