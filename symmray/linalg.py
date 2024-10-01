@@ -134,7 +134,7 @@ def svd(x):
     s_store = {}
     v_blocks = {}
     new_chargemap = {}
-
+    
     for sector, array in x.blocks.items():
         u, s, v = _svd(array)
         u_blocks[sector] = u
@@ -332,13 +332,13 @@ def svd_truncated(
     # absorb the singular values block by block
     for c0, c1 in U.sectors:
         if absorb == -1:
-            U.blocks[(c0, c1)] *= s.blocks[c1].reshape((1, -1))
+            U.blocks[(c0, c1)] = U.blocks[(c0, c1)] * s.blocks[c1].reshape((1, -1))
         elif absorb == 1:
-            VH.blocks[(c1, c1)] *= s.blocks[c1].reshape((-1, 1))
+            VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)] * s.blocks[c1].reshape((-1, 1))
         elif absorb == 0:
             s_sqrt = ar.do("sqrt", s.blocks[c1], like=backend)
-            U.blocks[(c0, c1)] *= s_sqrt.reshape((1, -1))
-            VH.blocks[(c1, c1)] *= s_sqrt.reshape((-1, 1))
+            U.blocks[(c0, c1)] = U.blocks[(c0, c1)] * s_sqrt.reshape((1, -1))
+            VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)] * s_sqrt.reshape((-1, 1))
 
     if DEBUG:
         U.check()
