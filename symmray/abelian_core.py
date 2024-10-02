@@ -308,7 +308,30 @@ def accum_for_split(sizes):
 
 
 @functools.lru_cache(maxsize=2**15)
-def calc_reshape_args(shape, newshape, subsizes, squeeze=True):
+def calc_reshape_args(shape, newshape, subsizes):
+    """Given a current block sparse shape ``shape`` a target shape ``newshape``
+    and current sub index sizes ``subsizes`` (i.e. previously fused dimensions)
+    compute the sequence of axes to unfuse, fuse and expand to reshape the
+    array.
+
+    Parameters
+    ----------
+    shape : tuple[int]
+        The current shape of the array.
+    newshape : tuple[int]
+        The target shape of the array.
+    subsizes : tuple[None or tuple[int]]
+        The sizes of the subindices that were previously fused.
+
+    Returns
+    -------
+    axs_unfuse : tuple[int]
+        The axes to unfuse.
+    axs_fuse : tuple[tuple[tuple[int]]]
+        The axes (after unfusing) to fuse, grouped by contiguous groups.
+    axs_expand : tuple[int]
+        The axes (after unfusing and fusing) to expand.
+    """
     # tracks position in input shape
     i = 0
     # tracks position in output shape
@@ -331,7 +354,9 @@ def calc_reshape_args(shape, newshape, subsizes, squeeze=True):
         di = shape[i]
         dj = newshape[j]
 
-        if subsizes[i] is not None and subsizes[i][0] == dj:
+        if (subsizes[i] is not None) and (
+            subsizes[i] == newshape[j : j + len(subsizes[i])]
+        ):
             # unfuse, check first
             label = f"u{len(unfuse_sizes)}"
             s = 0
