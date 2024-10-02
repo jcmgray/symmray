@@ -120,6 +120,20 @@ def qr_stabilized(x):
     return q, None, r
 
 
+def get_numpy_svd_with_fallback(x):
+    import numpy as np
+
+    def svd_with_fallback(x):
+        try:
+            return np.linalg.svd(x, full_matrices=False)
+        except np.LinAlgError:
+            import scipy.linalg as sla
+
+            return sla.svd(x, full_matrices=False, lapack_driver="gesvd")
+
+    return svd_with_fallback
+
+
 @functools.singledispatch
 def svd(x):
     if x.ndim != 2:
@@ -128,7 +142,10 @@ def svd(x):
             f" got {x.ndim}D. Consider fusing first."
         )
 
-    _svd = ar.get_lib_fn(x.backend, "linalg.svd")
+    if x.backend == "numpy":
+        _svd = get_numpy_svd_with_fallback(x)
+    else:
+        _svd = ar.get_lib_fn(x.backend, "linalg.svd")
 
     u_blocks = {}
     s_store = {}
