@@ -136,8 +136,8 @@ def test_fuse_with_tensordot(seed):
 
     # fused-explicit then blockwise
     z_efb = sr.tensordot(
-        x.fuse(axes_x),
-        y.fuse(axes_y),
+        x.fuse(axes_x, expand_empty=False),
+        y.fuse(axes_y, expand_empty=False),
         [faxes_a, faxes_b],
         mode="blockwise",
         preserve_array=True,
@@ -146,8 +146,8 @@ def test_fuse_with_tensordot(seed):
 
     # fused-explicit then fused contraction
     z_eff = sr.tensordot(
-        x.fuse(axes_x),
-        y.fuse(axes_y),
+        x.fuse(axes_x, expand_empty=False),
+        y.fuse(axes_y, expand_empty=False),
         [faxes_a, faxes_b],
         mode="fused",
         preserve_array=True,
@@ -156,8 +156,8 @@ def test_fuse_with_tensordot(seed):
 
     # reverse fused-explicit then blockwise
     z_refb = sr.tensordot(
-        y.fuse(axes_y),
-        x.fuse(axes_x),
+        y.fuse(axes_y, expand_empty=False),
+        x.fuse(axes_x, expand_empty=False),
         [faxes_b, faxes_a],
         mode="blockwise",
         preserve_array=True,
@@ -166,8 +166,8 @@ def test_fuse_with_tensordot(seed):
 
     # reverse fused-explicit then fused contraction
     z_reff = sr.tensordot(
-        y.fuse(axes_y),
-        x.fuse(axes_x),
+        y.fuse(axes_y, expand_empty=False),
+        x.fuse(axes_x, expand_empty=False),
         [faxes_b, faxes_a],
         mode="fused",
         preserve_array=True,

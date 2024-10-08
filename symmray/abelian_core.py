@@ -1440,35 +1440,7 @@ class AbelianArray(BlockBase):
         x._charge = new_charge
         return x
 
-    def fuse(self, *axes_groups, inplace=False):
-        """Fuse the give group or groups of axes. The new fused axes will be
-        inserted at the minimum index of any fused axis (even if it is not in
-        the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
-        produce an array with axes like::
-
-            groups inserted at axis 2, removed beyond that.
-                   ......<--
-            (0, 1, g0, g1, 4, 8, ...)
-                   |   |
-                   |   g1=(7, 2, 6)
-                   g0=(5, 3)
-
-        The fused axes will carry subindex information, which can be used to
-        automatically unfuse them back into their original components.
-
-        Parameters
-        ----------
-        axes_groups : sequence of sequences of int
-            The axes to fuse. Each group of axes will be fused into a single
-            axis.
-        """
-        # handle empty groups and ensure hashable
-        # XXX: error or warn about empty groups?
-        axes_groups = tuple(tuple(group) for group in axes_groups if group)
-        if not axes_groups:
-            # ... and no groups -> nothing to do
-            return self.copy()
-
+    def _fuse_core(self, *axes_groups, inplace=False):
         (
             num_groups,
             perm,
@@ -1557,6 +1529,60 @@ class AbelianArray(BlockBase):
             return self
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
+
+    def fuse(self, *axes_groups, expand_empty=True, inplace=False):
+        """Fuse the given group or groups of axes. The new fused axes will be
+        inserted at the minimum index of any fused axis (even if it is not in
+        the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
+        produce an array with axes like::
+
+            groups inserted at axis 2, removed beyond that.
+                   ......<--
+            (0, 1, g0, g1, 4, 8, ...)
+                   |   |
+                   |   g1=(7, 2, 6)
+                   g0=(5, 3)
+
+        The fused axes will carry subindex information, which can be used to
+        automatically unfuse them back into their original components.
+        Depending on `expand_empty`, any empty groups can be expanded to new
+        singlet dimensions, or simply ignored.
+
+        Parameters
+        ----------
+        axes_groups : Sequence[Sequence[int]]
+            The axes to fuse. Each group of axes will be fused into a single
+            axis.
+        expand_empty : bool, optional
+            Whether to expand empty groups into new axes.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+        """
+        # handle empty groups and ensure hashable
+        _axes_groups = []
+        axes_expand = []
+        for ax, group in enumerate(axes_groups):
+            if group:
+                _axes_groups.append(tuple(group))
+            else:
+                axes_expand.append(ax)
+        axes_groups = tuple(_axes_groups)
+
+        if axes_groups:
+            xf = self._fuse_core(*axes_groups, inplace=inplace)
+        else:
+            xf = self if inplace else self.copy()
+
+        if expand_empty and axes_expand:
+            g0 = min(g for groups in axes_groups for g in groups)
+            for ax in axes_expand:
+                xf.expand_dims(g0 + ax, inplace=True)
+
+        return xf
 
     def unfuse(self, axis, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
@@ -1989,8 +2015,8 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
         )
 
     # fuse into matrices or maybe vectors
-    af = AbelianArray.fuse(a, left_axes, axes_a)
-    bf = AbelianArray.fuse(b, axes_b, right_axes)
+    af = AbelianArray.fuse(a, left_axes, axes_a, expand_empty=False)
+    bf = AbelianArray.fuse(b, axes_b, right_axes, expand_empty=False)
 
     # handle potential vector and scalar cases
     left_axes, axes_a = {
