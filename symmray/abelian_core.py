@@ -1502,25 +1502,7 @@ class AbelianArray(BlockBase):
             try:
                 new_shape, new_sector, subsectors = blockmap[sector]
             except KeyError:
-                # print('Cached blockmap:',blockmap)
-                # print(
-                #         hash((tuple(
-                #             (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
-                #         ),
-                #         tuple(self.blocks),
-                #         self.symmetry,
-                #         axes_groups,
-                #     )) in list(_fuseinfos.keys())
-                # )
-                # print(
-                #     (tuple(
-                #             (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
-                #         ),
-                #         tuple(self.blocks),
-                #         self.symmetry,
-                #         axes_groups,
-                #     ) in list(_fuseinfos_no_hashing.keys())
-                # )
+                # might get KeyError due to Hash collision in using cached_fuse_block_info
                 (
                     num_groups,
                     perm,
