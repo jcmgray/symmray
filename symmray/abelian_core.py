@@ -689,7 +689,7 @@ def calc_fuse_block_info(self, axes_groups):
 
 
 _fuseinfos = {}
-
+_fuseinfos_no_hashing = {}
 
 def cached_fuse_block_info(self, axes_groups):
     """Calculating fusing block information is expensive, so cache the results."""
@@ -703,10 +703,20 @@ def cached_fuse_block_info(self, axes_groups):
             axes_groups,
         )
     )
+    key_nohashing = (
+            tuple(
+                (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
+            ),
+            tuple(self.blocks),
+            self.symmetry,
+            axes_groups,
+        )
+
     try:
         res = _fuseinfos[key]
     except KeyError:
         res = _fuseinfos[key] = calc_fuse_block_info(self, axes_groups)
+        _fuseinfos_no_hashing[key_nohashing] = 1
 
     return res
 
@@ -1489,7 +1499,39 @@ class AbelianArray(BlockBase):
 
         new_blocks = {}
         for sector, array in self.blocks.items():
-            new_shape, new_sector, subsectors = blockmap[sector]
+            try:
+                new_shape, new_sector, subsectors = blockmap[sector]
+            except KeyError:
+                # print('Cached blockmap:',blockmap)
+                # print(
+                #         hash((tuple(
+                #             (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
+                #         ),
+                #         tuple(self.blocks),
+                #         self.symmetry,
+                #         axes_groups,
+                #     )) in list(_fuseinfos.keys())
+                # )
+                # print(
+                #     (tuple(
+                #             (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
+                #         ),
+                #         tuple(self.blocks),
+                #         self.symmetry,
+                #         axes_groups,
+                #     ) in list(_fuseinfos_no_hashing.keys())
+                # )
+                (
+                    num_groups,
+                    perm,
+                    position,
+                    axes_before,
+                    axes_after,
+                    new_axes,
+                    new_indices,
+                    blockmap,
+                ) = calc_fuse_block_info(self, axes_groups)
+                new_shape, new_sector, subsectors = blockmap[sector]
             # fuse (via transpose+reshape) the actual array, to concat later
             new_array = _transpose(array, perm)
             new_array = _reshape(new_array, new_shape)
@@ -1982,7 +2024,8 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
     if not a.blocks or not b.blocks:
         # no aligned sectors, return empty array
-        return a.copy_with(
+        ts = a if a.parity else b
+        return ts.copy_with(
             indices=without(a.indices, axes_a) + without(b.indices, axes_b),
             charge=a.symmetry.combine(a.charge, b.charge),
             blocks={},
