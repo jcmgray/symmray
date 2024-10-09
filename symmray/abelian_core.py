@@ -2022,7 +2022,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
     if not a.blocks or not b.blocks:
         # no aligned sectors, return empty array
-        ts = a if a.parity else b
+        ts = a if a.charge != 0 else b
         return ts.copy_with(
             indices=without(a.indices, axes_a) + without(b.indices, axes_b),
             charge=a.symmetry.combine(a.charge, b.charge),
