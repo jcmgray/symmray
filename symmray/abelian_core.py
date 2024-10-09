@@ -689,7 +689,6 @@ def calc_fuse_block_info(self, axes_groups):
 
 
 _fuseinfos = {}
-_fuseinfos_no_hashing = {}
 
 def cached_fuse_block_info(self, axes_groups):
     """Calculating fusing block information is expensive, so cache the results."""
@@ -703,20 +702,11 @@ def cached_fuse_block_info(self, axes_groups):
             axes_groups,
         )
     )
-    key_nohashing = (
-            tuple(
-                (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
-            ),
-            tuple(self.blocks),
-            self.symmetry,
-            axes_groups,
-        )
 
     try:
         res = _fuseinfos[key]
     except KeyError:
         res = _fuseinfos[key] = calc_fuse_block_info(self, axes_groups)
-        _fuseinfos_no_hashing[key_nohashing] = 1
 
     return res
 
