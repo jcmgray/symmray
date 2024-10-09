@@ -94,7 +94,10 @@ class BlockIndex:
         return new
 
     def copy_with(self, chargemap=None, dual=None, subinfo=None):
-        """A copy of this index with some attributes replaced."""
+        """A copy of this index with some attributes replaced. Note that checks
+        are not performed on the new propoerties, this is intended for internal
+        use.
+        """
         new = self.__new__(self.__class__)
         new._chargemap = (
             self._chargemap.copy()
@@ -111,11 +114,9 @@ class BlockIndex:
 
     def conj(self):
         """A copy of this index with the dualness reversed."""
-        new = self.__new__(self.__class__)
-        new._chargemap = self._chargemap.copy()
-        new._dual = not self._dual
-        new._subinfo = None if self._subinfo is None else self._subinfo.conj()
-        return new
+        dual = not self.dual
+        subinfo = None if self.subinfo is None else self.subinfo.conj()
+        return self.copy_with(dual=dual, subinfo=subinfo)
 
     def size_of(self, c):
         """The size of the block with charge ``c``."""
@@ -1939,12 +1940,11 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
             ),
         )
 
-    new = a.__new__(a.__class__)
-    new._symmetry = a.symmetry
-    new._indices = without(a.indices, axes_a) + without(b.indices, axes_b)
-    new._charge = new.symmetry.combine(a.charge, b.charge)
-    new._blocks = new_blocks
-    return new
+    return a.copy_with(
+        indices=without(a.indices, axes_a) + without(b.indices, axes_b),
+        charge=a.symmetry.combine(a.charge, b.charge),
+        blocks=new_blocks,
+    )
 
 
 def drop_misaligned_sectors(a, b, axes_a, axes_b):
