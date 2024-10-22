@@ -2001,21 +2001,6 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b):
 
     return a.copy_with(blocks=new_blocks_a), b.copy_with(blocks=new_blocks_b)
 
-def drop_zero_blocks(a):
-    """Drop any blocks that are zero from the given AbelianArray.
-
-    Parameters
-    ----------
-    a : AbelianArray
-        The array to drop zero blocks from.
-
-    Returns
-    -------
-    AbelianArray
-    """
-    new_blocks = {sector: array for sector, array in a.blocks.items() if array.any()}
-    return a.copy_with(blocks=new_blocks)
-
 
 def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     """Perform a tensordot between two block arrays, by first fusing both into
@@ -2032,8 +2017,8 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     right_axes : tuple[int]
         The axes of ``b`` that will not be contracted.
     """
-    a = drop_zero_blocks(a)
-    b = drop_zero_blocks(b)
+    a.drop_missing_blocks()
+    b.drop_missing_blocks()
     a, b = drop_misaligned_sectors(a, b, axes_a, axes_b)
 
     if not a.blocks or not b.blocks:
