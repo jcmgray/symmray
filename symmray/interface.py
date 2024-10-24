@@ -45,6 +45,11 @@ def abs(x):
     return x.abs()
 
 
+def sqrt(x):
+    """Return the square root of a `symmray` array."""
+    return x.sqrt()
+
+
 def squeeze(x, axis=None):
     """Remove single-dimensional entries from the shape of a `symmray` array."""
     return x.squeeze(axis)

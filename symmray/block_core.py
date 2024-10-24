@@ -268,13 +268,17 @@ class BlockBase:
         new.apply_to_arrays(fn)
         return new
 
+    def abs(self):
+        """Get the absolute value of all elements in the array."""
+        return self._do_unary_op("abs")
+
     def isfinite(self):
         """Check if all elements in the array are finite."""
         return self._do_unary_op("isfinite")
 
-    def abs(self):
-        """Get the absolute value of all elements in the array."""
-        return self._do_unary_op("abs")
+    def sqrt(self):
+        """Get the square root of all elements in the array."""
+        return self._do_unary_op("sqrt")
 
     def norm(self):
         """Get the frobenius norm of the block array."""
