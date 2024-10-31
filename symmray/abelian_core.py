@@ -1783,18 +1783,34 @@ class AbelianArray(BlockBase):
         return x
 
     def __matmul__(self, other):
-        if self.ndim != 2 or other.ndim != 2:
-            raise ValueError("Matrix multiplication requires 2D arrays.")
+        if self.ndim > 2 or other.ndim > 2:
+            raise ValueError("Only 1D and 2D arrays supported.")
+
+        left_axes, axes_a, axes_b, right_axes = {
+            (1, 1): ((), (0,), (0,), ()),
+            (1, 2): ((), (0,), (0,), (1,)),
+            (2, 1): ((0,), (1,), (0,), ()),
+            (2, 2): ((0,), (1,), (0,), (1,)),
+        }[self.ndim, other.ndim]
 
         # block diagonal -> shortcut to tensordot
-        return _tensordot_blockwise(
+        c = _tensordot_blockwise(
             self,
             other,
-            left_axes=(0,),
-            axes_a=(1,),
-            axes_b=(0,),
-            right_axes=(1,),
+            left_axes=left_axes,
+            axes_a=axes_a,
+            axes_b=axes_b,
+            right_axes=right_axes,
         )
+
+        if c.ndim == 0:
+            try:
+                return c.blocks[()]
+            except KeyError:
+                # no aligned blocks, return zero
+                return 0.0
+
+        return c
 
     def trace(self):
         """Compute the trace of the block array, assuming it is a square
