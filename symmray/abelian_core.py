@@ -1082,6 +1082,9 @@ class AbelianArray(BlockBase):
         charge=None,
         seed=None,
         dist="normal",
+        dtype="float64",
+        scale=1.0,
+        loc=0.0,
         symmetry=None,
         **kwargs,
     ):
@@ -1107,12 +1110,15 @@ class AbelianArray(BlockBase):
         AbelianArray
         """
         import numpy as np
+        from .utils import get_random_fill_fn
 
-        rng = np.random.default_rng(seed)
-        rand_fn = getattr(rng, dist)
-
-        def fill_fn(shape):
-            return rand_fn(size=shape)
+        fill_fn = get_random_fill_fn(
+            dist=dist,
+            dtype=dtype,
+            loc=loc,
+            scale=scale,
+            seed=seed,
+        )
 
         return cls.from_fill_fn(
             fill_fn, indices, charge, symmetry=symmetry, **kwargs

@@ -13,6 +13,54 @@ def get_rng(seed=None):
     return np.random.default_rng(seed)
 
 
+def get_random_fill_fn(
+    seed=None,
+    dist="normal",
+    dtype="float64",
+    scale=1.0,
+    loc=0.0,
+):
+    """Get a function that produces numpy arrays of random numbers with the
+    specified distribution, dtype, loc, and scale.
+
+    Parameters
+    ----------
+    seed : None, int, or numpy.random.Generator, optional
+        The seed for the random number generator.
+    dist : str, optional
+        The distribution of the random numbers. Can be "normal" or "uniform" or
+        any other distribution supported by numpy.
+    dtype : str, optional
+        The data type of the random numbers. If "complex", the real and
+        imaginary parts are generated separately and added.
+    scale : float, optional
+        A multiplicative factor to the distribution.
+    loc : float, optional
+        An additive offset to the distribution.
+
+    Returns
+    -------
+    callable
+        A function with signature `fill_fn(shape) -> numpy.ndarray`.
+    """
+    rng = get_rng(seed)
+
+    def fill_fn(shape):
+        x = getattr(rng, dist)(size=shape)
+        if "complex" in dtype:
+            x = x + 1j * getattr(rng, dist)(size=shape)
+        if scale != 1.0:
+            x *= scale
+        if loc != 0.0:
+            x += loc
+        if x.dtype != dtype:
+            x = x.astype(dtype)
+
+        return x
+
+    return fill_fn
+
+
 def rand_z2_index(
     d,
     dual=None,
@@ -134,7 +182,7 @@ def rand_u1_index(
         The total size of the index.
     dual : bool, optional
         The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", or tuple of int, optional
+    subsizes : None, "equal", "maximal", or tuple of int, optional
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", there will be `d` charges of size 1.
@@ -407,7 +455,7 @@ def get_rand_u1array(
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
-    subsizes : None, "equals", or tuple of int, optional
+    subsizes : None, "equal", "maximal", or tuple of int, optional
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal.
 
@@ -469,7 +517,7 @@ def get_rand_u1u1array(
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
-    subsizes : None, "equals", or tuple of int, optional
+    subsizes : None, "equal", "maximal", or tuple of int, optional
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal.
 
@@ -521,7 +569,7 @@ def get_rand(
     ----------
     symmetry : str
         The symmetry of the array.
-    shape : tuple of int
+    shape : tuple[int | dict]
         The desired overall effective shape of the array. Each element can be
         an int or an explicit dict of charge sizes.
     duals : None, "equals", or Sequence[bool], optional
@@ -536,9 +584,10 @@ def get_rand(
         The distribution of the random numbers. Can be "normal" or "uniform".
     fermionic : bool, optional
         Whether to generate a fermionic array.
-    subsizes : None, "equal", or tuple of int, optional
+    subsizes : None, "equal", "maximal", or tuple of int, optional
         The sizes of the charge sectors. If None, the sizes are randomly
-        determined. If "equal", the sizes are equal (up to remainders).
+        determined. If "equal", the sizes are equal (up to remainders). If
+        "maximal", as many charges as possible will be chosen.
 
     Returns
     -------
@@ -634,81 +683,3 @@ def from_dense(
         duals=duals,
         charge=charge,
     )
-
-
-def parse_edges_to_site_info(
-    edges,
-    bond_dim,
-    phys_dim=2,
-    site_ind_id="k{}",
-    bond_ind_id="b{}-{}",
-    site_tag_id="I{}",
-):
-    """Given a list of edges, return a dictionary of site information, each
-    specifying the local shape, index identifiers, index dualnesses, and tags.
-    The dualnesses of the bonds are set in a canonical order corresponding to
-    sorting all the sites and the edges.
-
-    Parameters
-    ----------
-    edges : Sequence[Tuple[hashable, hashable]]
-        The edges of the graph.
-    bond_dim : int
-        The internal bond dimension.
-    phys_dim : int, optional
-        The physical dimension of the sites.
-    site_ind_id : str, optional
-        The identifier for the site indices.
-    bond_ind_id : str, optional
-        The identifier for the bond indices.
-    site_tag_id : str, optional
-        The identifier for the site tags.
-
-    Returns
-    -------
-    Dict[hashable, Dict[str, Any]]
-    """
-    sites = {}
-
-    starmap_ind = site_ind_id.count("{}") > 1
-    starmap_tag = site_tag_id.count("{}") > 1
-
-    # create bonds
-    for sitea, siteb in sorted(edges):
-        if sitea > siteb:
-            sitea, siteb = siteb, sitea
-
-        ind = bond_ind_id.format(sitea, siteb)
-        infoa = sites.setdefault(sitea, {})
-        infob = sites.setdefault(siteb, {})
-
-        infoa.setdefault("inds", []).append(ind)
-        infob.setdefault("inds", []).append(ind)
-
-        infoa.setdefault("duals", []).append(0)
-        infob.setdefault("duals", []).append(1)
-
-        infoa.setdefault("shape", []).append(bond_dim)
-        infob.setdefault("shape", []).append(bond_dim)
-
-    # create physical inds
-    for site in sites:
-        sites[site]["coordination"] = len(sites[site]["inds"])
-
-        if starmap_ind:
-            site_ind = site_ind_id.format(*site)
-        else:
-            site_ind = site_ind_id.format(site)
-
-        sites[site]["inds"].append(site_ind)
-        sites[site]["duals"].append(0)
-        sites[site]["shape"].append(phys_dim)
-
-        if starmap_tag:
-            site_tag = site_tag_id.format(*site)
-        else:
-            site_tag = site_tag_id.format(site)
-
-        sites[site]["tags"] = (site_tag,)
-
-    return sites

@@ -57,6 +57,23 @@ be returned by calling `to_dense` on the array, and a similarly defined
 `.size`. Likewise, `symmray` supports fusing and unfusing of indices via
 `reshape` (as long as it is clear what is meant by the new shape).
 
+### Quick-start tensor networks and Hamiltonians
+
+`symmray` provides constructors for various `quimb.tensor.TensorNetwork` networks:
+
+- `TN_abelian_from_edges_rand`
+- `TN_fermionic_from_edges_rand`
+- `PEPS_abelian_rand` (2D specific)
+- `PEPS_fermionic_rand` (2D specific)
+
+Along with constructors for common hamiltonians:
+
+- `ham_fermi_hubbard_from_edges`
+- `ham_heisenberg_from_edges`
+
+These constructors automatically chooose various defaults. See the `examples`
+folder for usage.
+
 
 ### Block sparse abelian symmetric arrays
 
@@ -415,8 +432,7 @@ $$
 which has a U1 `index_map` of charges `[0, 1, 1, 2]` or a U1U1 `index_map` of
 charges `[(0, 0), (0, 1), (1, 0), (1, 1)]`.
 
-Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array` also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any *on-site* (i.e. 1-local) terms by inverse coordination, so that these terms can be included in the pairwise (i.e. 2-local) arrays without overcounting. For example in a 1D open chain the boundary `coordinations` would be `(1, 2)` and `(2, 1)`, whereas the bulk would be `(2, 2)`. The utility function
-`sr.utis.parse_edges_to_site_info` fills in coordination information.
+Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array` also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any *on-site* (i.e. 1-local) terms by inverse coordination, so that these terms can be included in the pairwise (i.e. 2-local) arrays without overcounting. For example in a 1D open chain the boundary `coordinations` would be `(1, 2)` and `(2, 1)`, whereas the bulk would be `(2, 2)`. The utility function `sr.parse_edges_to_site_info` fills in coordination information.
 
 
 ### Linear Algebra

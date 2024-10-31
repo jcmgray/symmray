@@ -27,6 +27,10 @@ from .fermionic_local_operators import (
     fermi_number_operator_spinless_local_array,
     fermi_spin_operator_local_array,
 )
+from .hamiltonians import (
+    ham_fermi_hubbard_from_edges,
+    ham_heisenberg_from_edges,
+)
 from .interface import (
     abs,
     align_axes,
@@ -45,6 +49,13 @@ from .interface import (
     tensordot,
     trace,
     transpose,
+)
+from .networks import (
+    PEPS_abelian_rand,
+    PEPS_fermionic_rand,
+    TN_abelian_from_edges_rand,
+    TN_fermionic_from_edges_rand,
+    parse_edges_to_site_info,
 )
 from .symmetries import U1, U1U1, Z2, Z2Z2, Symmetry, get_symmetry
 
@@ -69,17 +80,24 @@ __all__ = (
     "FermionicOperator",
     "fuse",
     "get_symmetry",
+    "ham_fermi_hubbard_from_edges",
+    "ham_heisenberg_from_edges",
     "isfinite",
     "linalg",
     "max",
     "min",
     "multiply_diagonal",
+    "parse_edges_to_site_info",
+    "PEPS_abelian_rand",
+    "PEPS_fermionic_rand",
     "reshape",
     "scipy",
     "squeeze",
     "sum",
     "Symmetry",
     "tensordot",
+    "TN_abelian_from_edges_rand",
+    "TN_fermionic_from_edges_rand",
     "trace",
     "transpose",
     "U1",
