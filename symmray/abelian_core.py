@@ -6,6 +6,7 @@ import itertools
 import math
 import operator
 import pickle
+import warnings
 from collections import defaultdict
 
 import autoray as ar
@@ -1180,7 +1181,14 @@ class AbelianArray(BlockBase):
 
     @classmethod
     def from_dense(
-        cls, array, index_maps, duals, charge=None, symmetry=symmetry, **kwargs
+        cls,
+        array,
+        index_maps,
+        duals,
+        charge=None,
+        symmetry=symmetry,
+        invalid_sectors="warn",
+        **kwargs,
     ):
         """Create a block array from a dense array by supplying a mapping for
         each axis that labels each linear index with a particular charge.
@@ -1200,6 +1208,12 @@ class AbelianArray(BlockBase):
             taken as the identity / zero element.
         symmetry : str or Symmetry, optional
             The symmetry of the array, if not using a specific symmetry class.
+        invalid_sectors : {"warn", "raise", "ignore"}, optional
+            How to handle invalid sectors that have non-zero entries.
+
+        Returns
+        -------
+        AbelianArray
         """
         # XXX: warn if invalid blocks are non-zero?
         symmetry = cls.get_class_symmetry()
@@ -1238,6 +1252,26 @@ class AbelianArray(BlockBase):
                 if symmetry.combine(*signed_sector) == charge:
                     # ... but only add valid ones:
                     blocks[sector] = ary
+
+                elif invalid_sectors != "ignore":
+                    # check for non zero entries
+                    has_nnz = ar.do("any", ar.do("abs", ary) > 1e-12)
+
+                    if has_nnz:
+                        base_msg = (
+                            f"Block with sector {sector} has non-zero elements"
+                            f" but does not match the total charge {charge}."
+                        )
+
+                        if invalid_sectors == "warn":
+                            warnings.warn(
+                                f"{base_msg} Ignoring them. Set "
+                                "`invalid_sectors` to 'ignore' to suppress "
+                                "this warning, or 'raise' to actively error.",
+                            )
+
+                        elif invalid_sectors == "raise":
+                            raise ValueError(base_msg)
 
         # generate the blocks
         _recurse(array)
@@ -1571,22 +1605,21 @@ class AbelianArray(BlockBase):
         """
         # handle empty groups and ensure hashable
         _axes_groups = []
-        axes_expand = []
+        _axes_expand = []
         for ax, group in enumerate(axes_groups):
             if group:
                 _axes_groups.append(tuple(group))
             else:
-                axes_expand.append(ax)
-        axes_groups = tuple(_axes_groups)
+                _axes_expand.append(ax)
 
-        if axes_groups:
-            xf = self._fuse_core(*axes_groups, inplace=inplace)
+        if _axes_groups:
+            xf = self._fuse_core(*_axes_groups, inplace=inplace)
         else:
             xf = self if inplace else self.copy()
 
-        if expand_empty and axes_expand:
-            g0 = min(g for groups in axes_groups for g in groups)
-            for ax in axes_expand:
+        if expand_empty and _axes_expand:
+            g0 = min(g for groups in _axes_groups for g in groups)
+            for ax in _axes_expand:
                 xf.expand_dims(g0 + ax, inplace=True)
 
         return xf
