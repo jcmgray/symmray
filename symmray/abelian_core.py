@@ -5,6 +5,7 @@ import hashlib
 import itertools
 import math
 import operator
+import pickle
 from collections import defaultdict
 
 import autoray as ar
