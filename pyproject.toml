@@ -1,12 +1,68 @@
-[build-system]
-build-backend = "setuptools.build_meta"
-requires = [
-    "setuptools>=45",
-    "setuptools_scm[toml]>=6.2"
+[project]
+name = "symmray"
+description = "A minimal block sparse symmetric and fermionic tensor python library"
+readme = { file = "README.md", content-type = "text/markdown" }
+dynamic = ["version"]
+authors = [{ name = "Johnnie Gray", email = "johnniemcgray@gmail.com" }]
+license = { text = "Apache-2.0" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = [
+    "quantum",
+    "physics",
+    "tensor",
+    "networks",
+    "tensors",
+    "dmrg",
+    "tebd",
+    "mera",
+    "peps",
+    "fermions",
+    "symmetry",
+    "block",
+    "sparse",
+    "autoray",
+]
+requires-python = ">=3.9"
+
+dependencies = ["autoray"]
+
+[project.optional-dependencies]
+tests = ["numpy", "coverage", "pytest", "pytest-cov"]
+docs = [
+    "sphinx>=2.0",
+    "sphinx-autoapi",
+    "astroid<3",
+    "sphinx-copybutton",
+    "myst-nb",
+    "furo",
+    "setuptools_scm",
+    "ipython!=8.7.0",
 ]
 
-[tool.setuptools_scm]
-write_to = "symmray/_version.py"
+[project.urls]
+"Documentation" = "https://symmray.readthedocs.io/"
+"Repository" = "https://github.com/jcmgray/symmray/"
+"Issues" = "https://github.com/jcmgray/symmray/issues"
+"Changelog" = "https://github.com/jcmgray/symmray/releases"
+
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "symmray/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = "tests"

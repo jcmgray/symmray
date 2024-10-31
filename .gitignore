@@ -132,3 +132,5 @@ dmypy.json
 .ruff_cache
 
 .vscode
+
+symmray/_version.py
