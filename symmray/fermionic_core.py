@@ -209,7 +209,7 @@ class FermionicArray(AbelianArray):
         new._oddpos = self.oddpos
         return new
 
-    def _binary_blockwise_op(self, other, fn, inplace=False):
+    def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations."""
         xy = self if inplace else self.copy()
         xy.phase_sync(inplace=True)
@@ -218,7 +218,7 @@ class FermionicArray(AbelianArray):
             if other.phases:
                 other = other.phase_sync()
 
-        return super()._binary_blockwise_op(other, fn, inplace=True)
+        return super()._binary_blockwise_op(other, fn, inplace=True, **kwargs)
 
     def _map_blocks(self, fn_block=None, fn_sector=None):
         super()._map_blocks(fn_block, fn_sector)
