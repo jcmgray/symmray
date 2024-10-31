@@ -1,6 +1,7 @@
 """Blocks arrays with an abelian symmetry constraint."""
 
 import functools
+import hashlib
 import itertools
 import math
 import operator
@@ -692,9 +693,13 @@ def calc_fuse_block_info(self, axes_groups):
 _fuseinfos = {}
 
 
+def hasher(k):
+    return hashlib.sha1(pickle.dumps(k)).hexdigest()
+
+
 def cached_fuse_block_info(self, axes_groups):
     """Calculating fusing block information is expensive, so cache the results."""
-    key = hash(
+    key = hasher(
         (
             tuple(
                 (tuple(ix.chargemap.items()), ix.dual) for ix in self.indices
