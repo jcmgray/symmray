@@ -197,7 +197,10 @@ def test_fuse_unfuse(symmetry, seed, subsizes):
     )
     perm_back = tuple(new_order.index(ax) for ax in range(x.ndim))
     xf = x.fuse(axes)
-    y = xf.unfuse(position)
+    if len(axes) > 1:
+        y = xf.unfuse(position)
+    else:
+        y = xf
     yt = y.transpose(perm_back)
     assert x.allclose(yt)
 

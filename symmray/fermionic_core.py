@@ -590,7 +590,7 @@ class FermionicArray(AbelianArray):
         if axes_groups:
             # first make groups into contiguous
             # blocks using fermionic transpose
-            perm = calc_fuse_group_info(axes_groups, x.duals)[2]
+            perm = calc_fuse_group_info(axes_groups, x.duals)[3]
             # this is the first step which introduces phases
             x.transpose(perm, inplace=True)
             # update groups to reflect new axes

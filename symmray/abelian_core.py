@@ -121,6 +121,30 @@ class BlockIndex:
         subinfo = None if self.subinfo is None else self.subinfo.conj()
         return self.copy_with(dual=dual, subinfo=subinfo)
 
+    def drop_charges(self, charges):
+        """Return a new index with all charges in ``charges`` removed.
+
+        Parameters
+        ----------
+        charges : Sequence[hashable]
+            The charges to remove.
+
+        Returns
+        -------
+        BlockIndex
+            A new index with the charges removed.
+        """
+        return self.copy_with(
+            chargemap={
+                c: d for c, d in self.chargemap.items() if c not in charges
+            },
+            subinfo=(
+                None
+                if self.subinfo is None
+                else self.subinfo.drop_charges(charges)
+            ),
+        )
+
     def size_of(self, c):
         """The size of the block with charge ``c``."""
         return self._chargemap[c]
@@ -236,14 +260,33 @@ class SubIndexInfo:
         self.indices = indices
         self.extents = extents
 
+    def copy_with(self, indices=None, extents=None):
+        """A copy of this subindex information with some attributes replaced.
+        Note that checks are not performed on the new propoerties, this is
+        intended for internal use.
+        """
+        new = self.__new__(self.__class__)
+        new.indices = self.indices if indices is None else indices
+        new.extents = self.extents if extents is None else extents
+        return new
+
     def conj(self):
         """A copy of this subindex information with the relevant dualnesses
         reversed.
         """
-        new = self.__new__(self.__class__)
-        new.indices = tuple(ix.conj() for ix in self.indices)
-        new.extents = self.extents
-        return new
+        self.copy_with(indices=tuple(ix.conj() for ix in self.indices))
+
+    def drop_charges(self, charges):
+        """Get a copy of this subindex information with the charges in
+        ``charges`` discarded.
+        """
+        return self.copy_with(
+            extents={
+                c: extent
+                for c, extent in self.extents.items()
+                if c not in charges
+            },
+        )
 
     def matches(self, other):
         """Whether this subindex information matches ``other`` subindex
@@ -600,7 +643,6 @@ def calc_fuse_block_info(self, axes_groups):
     grouped_charges = [[] for _ in range(num_groups)]
 
     for sector in self.blocks:
-
         # reset accumulated values
         for g in range(num_groups):
             new_shape[position + g] = 1
@@ -717,7 +759,8 @@ def calc_fuse_block_info(self, axes_groups):
 
 
 _fuseinfos = OrderedDict()
-_fuseinfo_maxsize = 2**10
+_fuseinfo_cache_maxsize = 2**12
+_fuseinfo_cache_maxsectors = 2**10
 
 
 def hasher(k):
@@ -726,6 +769,11 @@ def hasher(k):
 
 def cached_fuse_block_info(self, axes_groups):
     """Calculating fusing block information is expensive, so cache the results."""
+
+    if len(self.blocks) > _fuseinfo_cache_maxsectors:
+        # too many sectors to cache
+        return calc_fuse_block_info(self, axes_groups)
+
     key = hasher(
         (
             tuple(
@@ -745,7 +793,7 @@ def cached_fuse_block_info(self, axes_groups):
         # compute new info
         res = _fuseinfos[key] = calc_fuse_block_info(self, axes_groups)
         # possibly trim cache
-        if len(_fuseinfos) > _fuseinfo_maxsize:
+        if len(_fuseinfos) > _fuseinfo_cache_maxsize:
             # cache is full, remove the oldest entry
             _fuseinfos.popitem(last=False)
 
@@ -879,15 +927,24 @@ class AbelianArray(BlockBase):
         """The number of dimensions/indices."""
         return len(self._indices)
 
-    def sync_charges(self):
-        current_charges = [set(index.chargemap) for index in self.indices]
+    def sync_charges(self, inplace=False):
+        """Given the blocks currently present, adjust the index chargemaps to
+        match only those charges present in at least one sector.
+        """
+        charges_drop = [set(ix.charges) for ix in self.indices]
         for sector in self.blocks:
             for i, c in enumerate(sector):
-                current_charges[i].discard(c)
+                charges_drop[i].discard(c)
 
-        for i, charges in enumerate(current_charges):
-            for c in charges:
-                self._indices[i].chargemap.pop(c)
+        new_indices = tuple(
+            ix.drop_charges(cs_drop) if cs_drop else ix
+            for ix, cs_drop in zip(self.indices, charges_drop)
+        )
+
+        if inplace:
+            self._indices = new_indices
+        else:
+            return self.copy_with(indices=new_indices)
 
     def is_valid_sector(self, sector):
         """Check if a sector is valid for the block array, i.e., whether the
@@ -967,8 +1024,6 @@ class AbelianArray(BlockBase):
         for idx in self.indices:
             idx.check()
 
-        # actual_charges = [set() for _ in range(self.ndim)]
-
         for sector, array in self.blocks.items():
             if not self.is_valid_sector(sector):
                 raise ValueError(
@@ -988,17 +1043,25 @@ class AbelianArray(BlockBase):
                     f"for sector {sector}."
                 )
 
-        # XXX: check no empty charges?
-        #     for i, c in enumerate(sector):
-        #         actual_charges[i].add(c)
+    def check_chargemaps_aligned(self):
+        """Check that the chargemaps of the indices are consistent with the
+        block sectors.
+        """
+        actual_charges = [set() for _ in range(self.ndim)]
 
-        # for actual, index in zip(actual_charges, self.indices):
-        #     expected = set(index.chargemap)
-        #     if actual != expected:
-        #         raise ValueError(
-        #             f"Charges for index {index} are inconsistent: "
-        #             f"{actual} != {expected}."
-        #         )
+        for sector in self.blocks:
+            for i, c in enumerate(sector):
+                actual_charges[i].add(c)
+
+        if self.blocks:
+            # only check if we have filled anything
+            for actual, index in zip(actual_charges, self.indices):
+                expected = set(index.chargemap)
+                if actual != expected:
+                    raise ValueError(
+                        f"Charges for index {index} are inconsistent: "
+                        f"{actual} != {expected}."
+                    )
 
     def check_with(self, other, *args):
         """Check that this block array is compatible with another, that is,
@@ -1559,7 +1622,7 @@ class AbelianArray(BlockBase):
         old_indices = self._indices
 
         def _recurse_concat(new_sector, g=0, subkey=()):
-            if group_singlets[g]:
+            if g in group_singlets:
                 # singlet group, no need to concatenate
                 new_subkey = subkey + ((new_sector[position + g],),)
                 if g == num_groups - 1:
@@ -2034,6 +2097,10 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
     #             arrays_suba, arrays_subb, axes=stacked_axes
     #         )
 
+    new_indices = list(without(a.indices, axes_a) + without(b.indices, axes_b))
+    # track charges that are no longer present due to block alignment
+    charges_drop = [set(ix.charges) for ix in new_indices]
+
     for sector, (arrays_suba, arrays_subb) in new_blocks.items():
         new_blocks[sector] = functools.reduce(
             operator.add,
@@ -2042,15 +2109,22 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
                 for a, b in zip(arrays_suba, arrays_subb)
             ),
         )
+        # mark charges that are still present
+        for i, c in enumerate(sector):
+            charges_drop[i].discard(c)
+
+    for i, cs in enumerate(charges_drop):
+        if cs:
+            new_indices[i] = new_indices[i].drop_charges(cs)
 
     return a.copy_with(
-        indices=without(a.indices, axes_a) + without(b.indices, axes_b),
+        indices=tuple(new_indices),
         charge=a.symmetry.combine(a.charge, b.charge),
         blocks=new_blocks,
     )
 
 
-def drop_misaligned_sectors(a, b, axes_a, axes_b):
+def drop_misaligned_sectors(a, b, axes_a, axes_b, inplace=False):
     """Eagerly drop misaligned sectors of ``a`` and ``b`` so that they can be
     contracted via fusing.
 
@@ -2077,19 +2151,54 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b):
         sub_sectors_b.values()
     )
 
-    # filter out sectors of a and b that are not aligned
-    new_blocks_a = {
-        sector: array
-        for sector, array in a.blocks.items()
-        if sub_sectors_a[sector] in allowed_subsectors
-    }
-    new_blocks_b = {
-        sector: array
-        for sector, array in b.blocks.items()
-        if sub_sectors_b[sector] in allowed_subsectors
-    }
+    # filter out sectors of a that are not aligned with b
+    new_blocks_a = {}
+    charges_drop = [set(ix.charges) for ix in a.indices]
+    for sector, array in a.blocks.items():
+        if sub_sectors_a[sector] in allowed_subsectors:
+            # keep the block
+            new_blocks_a[sector] = array
+            for i, c in enumerate(sector):
+                # mark each charge as still present
+                charges_drop[i].discard(c)
 
-    return a.copy_with(blocks=new_blocks_a), b.copy_with(blocks=new_blocks_b)
+    # sync a index chargemaps with present sectors
+    new_indices_a = tuple(
+        ix.drop_charges(cs) if cs else ix
+        for ix, cs in zip(a.indices, charges_drop)
+    )
+
+    # filter out sectors of b that are not aligned with a
+    new_blocks_b = {}
+    charges_drop = [set(ix.charges) for ix in b.indices]
+    for sector, array in b.blocks.items():
+        if sub_sectors_b[sector] in allowed_subsectors:
+            # keep the block
+            new_blocks_b[sector] = array
+            for i, c in enumerate(sector):
+                # mark each charge as still present
+                charges_drop[i].discard(c)
+
+    # sync b index chargemaps with present sectors
+    new_indices_b = tuple(
+        ix.drop_charges(cs) if cs else ix
+        for ix, cs in zip(b.indices, charges_drop)
+    )
+
+    if inplace:
+        a._blocks = new_blocks_a
+        a._indices = new_indices_a
+        b._blocks = new_blocks_b
+        b._indices = new_indices_b
+    else:
+        a = a.copy_with(blocks=new_blocks_a, indices=new_indices_a)
+        b = b.copy_with(blocks=new_blocks_b, indices=new_indices_b)
+
+    if DEBUG:
+        a.check()
+        b.check()
+
+    return a, b
 
 
 def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
@@ -2214,6 +2323,7 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
 
     if DEBUG:
         c.check()
+        c.check_chargemaps_aligned()
     # cf = _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
     # cb = _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
     # if not cf.allclose(cb):
