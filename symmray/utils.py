@@ -147,7 +147,7 @@ def rand_z2z2_index(
             charges = rng.choice(possible, size=d, replace=False)
             chargemap = {tuple(c): 1 for c in charges}
         else:
-            subsizes = rand_partition(d, 4)
+            subsizes = rand_partition(d, 4, seed=rng)
             chargemap = dict(zip(possible, subsizes))
 
     elif subsizes in ("equal", "maximal"):
@@ -207,7 +207,7 @@ def rand_u1_index(
     if subsizes is None:
         # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
-        subsizes = rand_partition(d, ncharge)
+        subsizes = rand_partition(d, ncharge, seed=rng)
 
     elif subsizes == "equal":
         # 3 approx equal charges around the origin
@@ -273,7 +273,7 @@ def rand_u1u1_index(
     if subsizes is None:
         # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
-        subsizes = rand_partition(d, ncharge)
+        subsizes = rand_partition(d, ncharge, seed=rng)
 
     elif subsizes == "equal":
         # 9 approx equal charges around the origin
