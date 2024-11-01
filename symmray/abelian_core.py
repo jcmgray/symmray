@@ -7,7 +7,7 @@ import math
 import operator
 import pickle
 import warnings
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 
 import autoray as ar
 from autoray.lazy.core import find_full_reshape
@@ -514,11 +514,14 @@ def calc_fuse_group_info(axes_groups, duals):
     ax2group = {}
     # whether each group is overall dual
     group_duals = []
+    # whether the group has only a single axis
+    group_singlets = []
     for g, gaxes in enumerate(axes_groups):
         # take the dual-ness of the group to match the first axis
         group_duals.append(duals[gaxes[0]])
         for ax in gaxes:
             ax2group[ax] = g
+        group_singlets.append(len(gaxes) == 1)
     # assign `None` to ungrouped axes
     for i in range(ndim):
         ax2group.setdefault(i, None)
@@ -548,6 +551,7 @@ def calc_fuse_group_info(axes_groups, duals):
 
     return (
         num_groups,
+        group_singlets,
         new_ndim,
         perm,
         position,
@@ -563,6 +567,7 @@ def calc_fuse_block_info(self, axes_groups):
     # basic info that doesn't depend on sectors themselves
     (
         num_groups,
+        group_singlets,
         new_ndim,
         perm,
         position,
@@ -580,27 +585,33 @@ def calc_fuse_block_info(self, axes_groups):
     subinfos = [{} for _ in range(num_groups)]
     combine = self.symmetry.combine
     sign = self.symmetry.sign
-    empty_sector = (combine(),) * new_ndim
 
     # cache the results of each ax and charge lookup for speed
     lookup = {}
 
+    # keep track of a shape in order to fuse the actual array
+    new_shape = [None] * new_ndim
+    # the key of the new fused block to add this block to
+    new_sector = [None] * new_ndim
+    # only the parts of the sector that will be fused
+    subsectors = [[] for _ in range(num_groups)]
+    # the same but signed for combining into new charges
+    grouped_charges = [[] for _ in range(num_groups)]
+
     for sector in self.blocks:
-        # keep track of a shape in order to fuse the actual array
-        new_shape = [1] * new_ndim
-        # the key of the new fused block to add this block to
-        new_sector = list(empty_sector)
-        # only the parts of the sector that will be fused
-        subsectors = [[] for _ in range(num_groups)]
-        # the same but signed for combining into new charges
-        grouped_charges = [[] for _ in range(num_groups)]
+
+        # reset accumulated values
+        for g in range(num_groups):
+            new_shape[position + g] = 1
+            subsectors[g].clear()
+            grouped_charges[g].clear()
 
         # n.b. we have to use `perm` here, not `enumerate(sector)`, so
         # that subsectors are built in matching order for tensordot e.g.
         for ax in perm:
             c = sector[ax]
             try:
-                d, g, new_ax, signed_c = lookup[ax, c]
+                d, g, g_is_singlet, new_ax, signed_c = lookup[ax, c]
             except KeyError:
                 # the size of charge `c` along axis `ax`
                 ix = old_indices[ax]
@@ -608,65 +619,76 @@ def calc_fuse_block_info(self, axes_groups):
 
                 # which group is this axis in, if any, and where is it going
                 g = ax2group[ax]
+                g_is_singlet = group_singlets[g]
                 new_ax = new_axes[ax]
-                if g is not None:
+                if g is None or g_is_singlet:
+                    # not fusing
+                    signed_c = None
+                else:
                     # need to match current dualness to group dualness
                     signed_c = sign(c, group_duals[g] != ix.dual)
-                else:
-                    signed_c = None
 
-                lookup[ax, c] = d, g, new_ax, signed_c
+                lookup[ax, c] = d, g, g_is_singlet, new_ax, signed_c
 
-            if g is None:
+            if signed_c is None:
                 # not fusing, new value is just copied
                 new_sector[new_ax] = c
                 new_shape[new_ax] = d
+                if g is not None:
+                    subsectors[g].append(c)
             else:
                 # fusing: need to accumulate
                 new_shape[new_ax] *= d
                 subsectors[g].append(c)
                 grouped_charges[g].append(signed_c)
 
-        # make hashable
-        subsectors = tuple(map(tuple, subsectors))
+        # make hashable version
+        _subsectors = tuple(map(tuple, subsectors))
         # process grouped charges
         for g in range(num_groups):
-            # sum grouped charges
-            new_charge = combine(*grouped_charges[g])
-            new_sector[position + g] = new_charge
-            # keep track of the new blocksize of each fused
-            # index, for unfusing and also missing blocks
-            new_size = new_shape[position + g]
-            subinfos[g][subsectors[g]] = (new_charge, new_size)
+            if not group_singlets[g]:
+                # sum grouped charges
+                new_charge = combine(*grouped_charges[g])
+                new_sector[position + g] = new_charge
+                # keep track of the new blocksize of each fused
+                # index, for unfusing and also missing blocks
+                new_size = new_shape[position + g]
+                subsector = _subsectors[g]
+                subinfos[g][subsector] = (new_charge, new_size)
 
-        # make hashable
-        new_sector = tuple(new_sector)
-        new_shape = tuple(new_shape)
         # to fuse (via transpose+reshape) the actual array, and concat later
         # first group the subblock into the correct new fused block
-        blockmap[sector] = (new_shape, new_sector, subsectors)
+        blockmap[sector] = (tuple(new_shape), tuple(new_sector), _subsectors)
 
     # sort and accumulate subsectors into their new charges for each group
     chargemaps = []
     extents = []
     for g in range(num_groups):
-        chargemap = {}
-        extent = {}
-        for subsector, (new_charge, new_size) in sorted(subinfos[g].items()):
-            if new_charge not in chargemap:
-                chargemap[new_charge] = new_size
-                extent[new_charge] = {subsector: new_size}
-            else:
-                chargemap[new_charge] += new_size
-                extent[new_charge][subsector] = new_size
-        chargemaps.append(chargemap)
-        extents.append(extent)
+        if not group_singlets[g]:
+            chargemap = {}
+            extent = {}
+            for subsector, (new_c, new_d) in sorted(subinfos[g].items()):
+                if new_c not in chargemap:
+                    chargemap[new_c] = new_d
+                    extent[new_c] = {subsector: new_d}
+                else:
+                    chargemap[new_c] += new_d
+                    extent[new_c][subsector] = new_d
+            chargemaps.append(chargemap)
+            extents.append(extent)
+        else:
+            # singlet group, no fusing
+            chargemaps.append(None)
+            extents.append(None)
 
     new_indices = (
         *(old_indices[ax] for ax in axes_before),
         # the new fused indices
         *(
-            BlockIndex(
+            # don't need subinfo for size 1 groups
+            old_indices[axes_groups[g][0]]
+            if group_singlets[g]
+            else BlockIndex(
                 chargemap=chargemaps[g],
                 dual=group_duals[g],
                 # for unfusing
@@ -682,6 +704,7 @@ def calc_fuse_block_info(self, axes_groups):
 
     return (
         num_groups,
+        group_singlets,
         perm,
         position,
         axes_before,
@@ -692,7 +715,8 @@ def calc_fuse_block_info(self, axes_groups):
     )
 
 
-_fuseinfos = {}
+_fuseinfos = OrderedDict()
+_fuseinfo_maxsize = 2**10
 
 
 def hasher(k):
@@ -711,10 +735,18 @@ def cached_fuse_block_info(self, axes_groups):
             axes_groups,
         )
     )
+
     try:
         res = _fuseinfos[key]
+        # mark as most recently used
+        _fuseinfos.move_to_end(key)
     except KeyError:
+        # compute new info
         res = _fuseinfos[key] = calc_fuse_block_info(self, axes_groups)
+        # possibly trim cache
+        if len(_fuseinfos) > _fuseinfo_maxsize:
+            # cache is full, remove the oldest entry
+            _fuseinfos.popitem(last=False)
 
     return res
 
@@ -1109,7 +1141,6 @@ class AbelianArray(BlockBase):
         -------
         AbelianArray
         """
-        import numpy as np
         from .utils import get_random_fill_fn
 
         fill_fn = get_random_fill_fn(
@@ -1490,6 +1521,7 @@ class AbelianArray(BlockBase):
     def _fuse_core(self, *axes_groups, inplace=False):
         (
             num_groups,
+            group_singlets,
             perm,
             position,
             axes_before,
@@ -1526,6 +1558,15 @@ class AbelianArray(BlockBase):
         old_indices = self._indices
 
         def _recurse_concat(new_sector, g=0, subkey=()):
+            if group_singlets[g]:
+                # singlet group, no need to concatenate
+                new_subkey = subkey + ((new_sector[position + g],),)
+                if g == num_groups - 1:
+                    return new_blocks[new_sector][new_subkey]
+                else:
+                    return _recurse_concat(new_sector, g + 1, new_subkey)
+
+            # else fused group of multiple axes
             new_charge = new_sector[position + g]
             extent = new_indices[position + g].subinfo.extents[new_charge]
             # given the current partial sector, get each next possible charge
