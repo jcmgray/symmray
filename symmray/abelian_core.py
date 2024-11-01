@@ -521,7 +521,8 @@ def calc_fuse_group_info(axes_groups, duals):
         group_duals.append(duals[gaxes[0]])
         for ax in gaxes:
             ax2group[ax] = g
-        group_singlets.append(len(gaxes) == 1)
+        if len(gaxes) == 1:
+            group_singlets.append(g)
     # assign `None` to ungrouped axes
     for i in range(ndim):
         ax2group.setdefault(i, None)
@@ -619,7 +620,7 @@ def calc_fuse_block_info(self, axes_groups):
 
                 # which group is this axis in, if any, and where is it going
                 g = ax2group[ax]
-                g_is_singlet = group_singlets[g]
+                g_is_singlet = g in group_singlets
                 new_ax = new_axes[ax]
                 if g is None or g_is_singlet:
                     # not fusing
@@ -646,7 +647,7 @@ def calc_fuse_block_info(self, axes_groups):
         _subsectors = tuple(map(tuple, subsectors))
         # process grouped charges
         for g in range(num_groups):
-            if not group_singlets[g]:
+            if g not in group_singlets:
                 # sum grouped charges
                 new_charge = combine(*grouped_charges[g])
                 new_sector[position + g] = new_charge
@@ -664,7 +665,7 @@ def calc_fuse_block_info(self, axes_groups):
     chargemaps = []
     extents = []
     for g in range(num_groups):
-        if not group_singlets[g]:
+        if g not in group_singlets:
             chargemap = {}
             extent = {}
             for subsector, (new_c, new_d) in sorted(subinfos[g].items()):
@@ -687,7 +688,7 @@ def calc_fuse_block_info(self, axes_groups):
         *(
             # don't need subinfo for size 1 groups
             old_indices[axes_groups[g][0]]
-            if group_singlets[g]
+            if g in group_singlets
             else BlockIndex(
                 chargemap=chargemaps[g],
                 dual=group_duals[g],
