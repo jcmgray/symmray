@@ -97,7 +97,10 @@ def rand_z2_index(
         return sr.BlockIndex(chargemap=d, dual=dual)
 
     if d == 1:
-        charge = int(rng.choice([0, 1]))
+        if subsizes is None:
+            charge = int(rng.choice([0, 1]))
+        else:
+            charge = 0
         return sr.BlockIndex(chargemap={charge: 1}, dual=dual)
 
     if subsizes is None:
