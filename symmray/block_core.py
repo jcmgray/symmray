@@ -147,12 +147,17 @@ class BlockBase:
             # by default require 1:1 matching blocks
 
             for sector, x_block in xy_blocks.items():
-                other_block = other_blocks.pop(sector)
+                try:
+                    other_block = other_blocks.pop(sector)
+                except KeyError:
+                    raise ValueError(
+                        f"Not all left blocks present in right: {sector}"
+                    )
                 xy_blocks[sector] = fn(x_block, other_block)
 
             if other_blocks:
                 raise ValueError(
-                    f"other has blocks not present in x: {other_blocks.keys()}"
+                    f"Not all right blocks present in left: {other_blocks}."
                 )
 
         elif missing == "outer":
