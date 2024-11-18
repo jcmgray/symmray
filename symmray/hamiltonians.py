@@ -70,6 +70,6 @@ def ham_fermi_hubbard_from_edges(
             mu=mu,
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
-        ).fuse((0, 1), (2, 3))
+        )
         for cooa, coob in edges
     }
