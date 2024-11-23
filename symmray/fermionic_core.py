@@ -209,6 +209,36 @@ class FermionicArray(AbelianArray):
         new._oddpos = self.oddpos
         return new
 
+    def modify(
+        self,
+        indices=None,
+        blocks=None,
+        charge=None,
+        phases=None,
+        oddpos=None,
+    ):
+        """Modify this fermionic array inplace. This is for internal use, and
+        does not perform any checks on the updated attributes.
+
+        Parameters
+        ----------
+        indices : tuple of Index, optional
+            The new indices, if None, the original indices are used.
+        blocks : dict, optional
+            The new blocks, if None, the original blocks are used.
+        charge : int, optional
+            The new total charge, if None, the original charge is used.
+        phases : dict, optional
+            The new phases, if None, the original phases are used.
+        oddpos : int or tuple of int, optional
+            The new oddpos, if None, the original oddpos is used.
+        """
+        if phases is not None:
+            self._phases = phases
+        if oddpos is not None:
+            self._oddpos = oddpos
+        return super().modify(indices=indices, blocks=blocks, charge=charge)
+
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations."""
         xy = self if inplace else self.copy()
@@ -223,7 +253,10 @@ class FermionicArray(AbelianArray):
     def _map_blocks(self, fn_block=None, fn_sector=None):
         super()._map_blocks(fn_block, fn_sector)
         if fn_sector is not None:
-            self._phases = {fn_sector(s): p for s, p in self._phases.items()}
+            # need to update phase keys as well
+            self.modify(
+                phases={fn_sector(s): p for s, p in self._phases.items()}
+            )
 
     def transpose(self, axes=None, phase=True, inplace=False):
         """Transpose the fermionic array, by default accounting for the phases
@@ -268,7 +301,7 @@ class FermionicArray(AbelianArray):
                 for sector, phase in old_phases.items()
             }
 
-        new._phases = new_phases
+        new.modify(phases=new_phases)
 
         # transpose block arrays
         AbelianArray.transpose(new, axes, inplace=True)
@@ -309,9 +342,7 @@ class FermionicArray(AbelianArray):
                     # only keep non-trivial phases
                     new_phases[sector] = new_phase
 
-        new._phases = new_phases
-
-        return new
+        return new.modify(phases=new_phases)
 
     def phase_transpose(self, axes=None, inplace=False):
         """Phase this fermionic array as if it were transposed virtually, i.e.
@@ -447,9 +478,10 @@ class FermionicArray(AbelianArray):
 
         _conj = ar.get_lib_fn(new.backend, "conj")
 
-        new._indices = tuple(ix.conj() for ix in new.indices)
+        new_indices = tuple(ix.conj() for ix in new.indices)
+
         axs_conj = tuple(
-            ax for ax, ix in enumerate(new._indices) if not ix.dual
+            ax for ax, ix in enumerate(new_indices) if not ix.dual
         )
 
         for sector, array in new.blocks.items():
@@ -478,8 +510,11 @@ class FermionicArray(AbelianArray):
                 else:
                     new._phases[sector] = phase_new
 
-        new._charge = new.symmetry.sign(new._charge)
-        new._oddpos = oddpos_dag(new._oddpos)
+        new.modify(
+            indices=new_indices,
+            charge=new.symmetry.sign(new._charge),
+            oddpos=oddpos_dag(new._oddpos),
+        )
 
         if phase_permutation and new.parity and (len(new._oddpos) % 2 == 1):
             # moving oddpos charges back to left
@@ -525,11 +560,13 @@ class FermionicArray(AbelianArray):
 
             new_blocks[new_sector] = _transpose(_conj(array))
 
-        new._indices = new_indices
-        new._blocks = new_blocks
-        new._phases = new_phases
-        new._charge = new.symmetry.sign(new._charge)
-        new._oddpos = oddpos_dag(new._oddpos)
+        new.modify(
+            indices=new_indices,
+            charge=new.symmetry.sign(new._charge),
+            blocks=new_blocks,
+            phases=new_phases,
+            oddpos=oddpos_dag(new._oddpos),
+        )
 
         if new.parity and (len(new._oddpos) % 2 == 1):
             # moving oddpos charges back to left

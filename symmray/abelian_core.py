@@ -94,15 +94,6 @@ class BlockIndex:
         """The number of charges."""
         return len(self._chargemap)
 
-    def copy(self):
-        """A copy of this index."""
-        new = self.__new__(self.__class__)
-        new._chargemap = self._chargemap.copy()
-        new._dual = self._dual
-        new._subinfo = self._subinfo
-        new._hashkey = self._hashkey
-        return new
-
     def copy_with(self, chargemap=None, dual=None, subinfo=None):
         """A copy of this index with some attributes replaced. Note that checks
         are not performed on the new propoerties, this is intended for internal
@@ -197,7 +188,7 @@ class BlockIndex:
 
     def hashkey(self):
         """Get a hash key for this index."""
-        if self._hashkey is None:
+        if getattr(self, "_hashkey", None) is None:
             self._hashkey = hasher(
                 (
                     tuple(self._chargemap.items()),
@@ -331,7 +322,7 @@ class SubIndexInfo:
         """Get a string hash key for this subindex information. This is cached
         after the first call.
         """
-        if self._hashkey is None:
+        if getattr(self, "_hashkey", None) is None:
             self._hashkey = hasher(
                 (
                     tuple(ix.hashkey for ix in self._indices),
@@ -953,6 +944,23 @@ class AbelianArray(BlockBase):
 
         return new
 
+    def modify(self, indices=None, charge=None, blocks=None):
+        """Modify this block array in place with some attributes replaced. Note
+        that checks are not performed on the new properties, this is intended
+        for internal use.
+        """
+        if indices is not None:
+            self._indices = indices
+        if charge is not None:
+            self._charge = charge
+        if blocks is not None:
+            self._blocks = blocks
+
+        if DEBUG:
+            self.check()
+
+        return self
+
     @property
     def symmetry(self):
         """The symmetry object of the array."""
@@ -1013,7 +1021,7 @@ class AbelianArray(BlockBase):
         )
 
         if inplace:
-            self._indices = new_indices
+            return self.modify(indices=new_indices)
         else:
             return self.copy_with(indices=new_indices)
 
@@ -1497,8 +1505,11 @@ class AbelianArray(BlockBase):
         new = self if inplace else self.copy()
         _conj = ar.get_lib_fn(new.backend, "conj")
         new.apply_to_arrays(_conj)
-        new._indices = tuple(ix.conj() for ix in self._indices)
-        new._charge = self.symmetry.sign(self._charge)
+
+        new.modify(
+            indices=tuple(ix.conj() for ix in self._indices),
+            charge=self.symmetry.sign(self._charge),
+        )
 
         if DEBUG:
             new.check()
@@ -1515,12 +1526,13 @@ class AbelianArray(BlockBase):
             # reverse the axes
             axes = tuple(range(new.ndim - 1, -1, -1))
 
-        new._indices = permuted(new._indices, axes)
-        new._blocks = {
-            permuted(sector, axes): _transpose(array, axes)
-            for sector, array in new.blocks.items()
-        }
-        return new
+        return new.modify(
+            indices=permuted(new._indices, axes),
+            blocks = {
+                permuted(sector, axes): _transpose(array, axes)
+                for sector, array in new.blocks.items()
+            }
+        )
 
     @property
     def T(self):
@@ -1584,9 +1596,7 @@ class AbelianArray(BlockBase):
             fn_sector=lambda sector: tuple(sector[ax] for ax in keep),
             fn_block=lambda block: block[selector],
         )
-        x._indices = tuple(new_indices)
-
-        return x
+        return x.modify(indices=tuple(new_indices))
 
     def expand_dims(self, axis, c=None, dual=None, inplace=False):
         """Expand the shape of an abelian array.
@@ -1649,9 +1659,7 @@ class AbelianArray(BlockBase):
             *x.indices[axis:],
         )
 
-        x._indices = new_indices
-        x._charge = new_charge
-        return x
+        return x.modify(indices=new_indices, charge=new_charge)
 
     def _fuse_core(self, *axes_groups, inplace=False):
         (
@@ -1747,9 +1755,7 @@ class AbelianArray(BlockBase):
         }
 
         if inplace:
-            self._indices = new_indices
-            self._blocks = new_blocks
-            return self
+            return self.modify(indices=new_indices, blocks=new_blocks)
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
 
@@ -1864,9 +1870,7 @@ class AbelianArray(BlockBase):
         new_blocks = new_blocks
 
         if inplace:
-            self._indices = new_indices
-            self._blocks = new_blocks
-            return self
+            return self.modify(indices=new_indices, blocks=new_blocks)
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
 
@@ -2257,10 +2261,8 @@ def drop_misaligned_sectors(a, b, axes_a, axes_b, inplace=False):
     )
 
     if inplace:
-        a._blocks = new_blocks_a
-        a._indices = new_indices_a
-        b._blocks = new_blocks_b
-        b._indices = new_indices_b
+        a.modify(blocks=new_blocks_a, indices=new_indices_a)
+        b.modify(blocks=new_blocks_b, indices=new_indices_b)
     else:
         a = a.copy_with(blocks=new_blocks_a, indices=new_indices_a)
         b = b.copy_with(blocks=new_blocks_b, indices=new_indices_b)

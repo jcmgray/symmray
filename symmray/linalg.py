@@ -86,11 +86,12 @@ def qr(x, stabilized=False):
     bond_index = BlockIndex(new_chargemap, dual=x.indices[1].dual)
 
     q = x.copy_with(
-        indices=(x.indices[0].copy(), bond_index),
+        indices=(x.indices[0], bond_index),
         blocks=q_blocks,
     )
+    # XXX: use copy_with here?
     r = x.__class__(
-        indices=(bond_index.conj(), x.indices[1].copy()),
+        indices=(bond_index.conj(), x.indices[1]),
         charge=x.symmetry.combine(),
         blocks=r_blocks,
         symmetry=x.symmetry,
@@ -126,7 +127,7 @@ def get_numpy_svd_with_fallback(x):
     def svd_with_fallback(x):
         try:
             return np.linalg.svd(x, full_matrices=False)
-        except np.LinAlgError:
+        except np.linalg.LinAlgError:
             import scipy.linalg as sla
 
             return sla.svd(x, full_matrices=False, lapack_driver="gesvd")
@@ -169,6 +170,7 @@ def svd(x):
         blocks=u_blocks,
     )
     s = BlockVector(s_store)
+    # XXX: use copy_with here?
     v = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
         charge=x.symmetry.combine(),
@@ -329,11 +331,20 @@ def svd_truncated(
         # make sure the index chargemaps are updated too
         new_inner_chargemap[c1] = n_chi
 
-    new_inner_chargemap = {
-        k: new_inner_chargemap[k] for k in sorted(new_inner_chargemap)
-    }
-    U.indices[1]._chargemap = new_inner_chargemap
-    VH.indices[0]._chargemap = new_inner_chargemap.copy()
+    new_inner_chargemap = dict(sorted(new_inner_chargemap.items()))
+
+    U.modify(
+        indices=(
+            U.indices[0],
+            U.indices[1].copy_with(chargemap=new_inner_chargemap),
+        )
+    )
+    VH.modify(
+        indices=(
+            VH.indices[0].copy_with(chargemap=new_inner_chargemap),
+            VH.indices[1],
+        )
+    )
 
     if absorb is None:
         if DEBUG:

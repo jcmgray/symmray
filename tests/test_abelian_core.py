@@ -18,7 +18,6 @@ def test_block_index_basics(dual):
     ix.check()
     assert ix.size_total == 6
     assert ix.num_charges == 3
-    assert ix.copy().chargemap is not ix.chargemap
     assert ix.size_of(-2) == 3
     assert ix.matches(ix.conj())
     assert repr(ix)
