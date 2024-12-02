@@ -896,6 +896,8 @@ class AbelianArray(BlockBase):
     ):
         self._indices = tuple(indices)
         self._blocks = dict(blocks)
+        
+        self._symmetry = self.get_class_symmetry(symmetry)
 
         if charge is None:
             if self._blocks:
@@ -907,8 +909,6 @@ class AbelianArray(BlockBase):
                 self._charge = self.symmetry.combine()
         else:
             self._charge = charge
-
-        self._symmetry = self.get_class_symmetry(symmetry)
 
         if DEBUG:
             self.check()
