@@ -50,14 +50,15 @@ def test_AbelianArray_to_dense(symmetry):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("missing", (False, True))
-def test_AbelianArray_fuse(symmetry, missing):
+@pytest.mark.parametrize("mode", ["insert", "concat"])
+def test_AbelianArray_fuse(symmetry, missing, mode):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
 
     if missing:
         sector_to_drop = list(x.sectors)[len(x.sectors) // 2]
         x.blocks.pop(sector_to_drop)
 
-    xf = x.fuse((0, 2), (1, 3))
+    xf = x.fuse((0, 2), (1, 3), mode=mode)
     if symmetry == "Z2":
         assert xf.shape == (15, 24)
         assert xf.num_blocks == 2
@@ -92,13 +93,14 @@ def test_AbelianArray_reshape(symmetry, shape0, shape1, seed):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("seed", range(5))
-def test_abelian_reshape_unfuse(symmetry, seed):
+@pytest.mark.parametrize("mode", ["insert", "concat"])
+def test_abelian_reshape_unfuse(symmetry, seed, mode):
     a = sr.utils.get_rand(
         symmetry, (3, 4, 5, 6), seed=seed, subsizes="maximal"
     )
-    b = a.fuse((0, 1), (2, 3))
+    b = a.fuse((0, 1), (2, 3), mode=mode)
     c = b.reshape((12, 5, 6))
-    assert c.allclose(a.fuse((0, 1)))
+    assert c.allclose(a.fuse((0, 1), mode=mode))
 
 
 def test_calc_reshape_args_edgecase():
@@ -114,6 +116,7 @@ def test_calc_reshape_args_edgecase():
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("subsizes", ("maximal", "equal"))
+@pytest.mark.parametrize("mode", ("fused", "blockwise"))
 @pytest.mark.parametrize(
     "shape1,shape2,axes",
     [
@@ -122,7 +125,7 @@ def test_calc_reshape_args_edgecase():
         ((4,), (5,), 0),
     ],
 )
-def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
+def test_tensordot(symmetry, shape1, shape2, axes, subsizes, mode):
     if symmetry in ("Z2", "U1"):
         charge = 1
     else:
@@ -142,7 +145,12 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes):
         charge=charge,
         subsizes=subsizes,
     )
-    c = ar.do("tensordot", a, b, axes=axes)
+
+    with sr.default_tensordot_mode(mode):
+        c = ar.do("tensordot", a, b, axes=axes)
+        assert sr.get_default_tensordot_mode() == mode
+    assert sr.get_default_tensordot_mode() == "auto"
+
     d = ar.do("tensordot", a.to_dense(), b.to_dense(), axes=axes)
 
     if isinstance(c, sr.AbelianArray):

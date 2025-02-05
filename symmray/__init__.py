@@ -6,6 +6,9 @@ from .abelian_core import (
     U1U1Array,
     Z2Array,
     Z2Z2Array,
+    default_tensordot_mode,
+    get_default_tensordot_mode,
+    set_default_tensordot_mode,
 )
 from .block_core import (
     BlockVector,
@@ -70,6 +73,7 @@ __all__ = (
     "build_local_fermionic_array",
     "build_local_fermionic_elements",
     "conj",
+    "default_tensordot_mode",
     "expand_dims",
     "fermi_hubbard_local_array",
     "fermi_hubbard_spinless_local_array",
@@ -79,6 +83,7 @@ __all__ = (
     "FermionicArray",
     "FermionicOperator",
     "fuse",
+    "get_default_tensordot_mode",
     "get_symmetry",
     "ham_fermi_hubbard_from_edges",
     "ham_heisenberg_from_edges",
@@ -92,6 +97,7 @@ __all__ = (
     "PEPS_fermionic_rand",
     "reshape",
     "scipy",
+    "set_default_tensordot_mode",
     "squeeze",
     "sum",
     "Symmetry",

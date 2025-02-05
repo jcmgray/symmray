@@ -1,5 +1,6 @@
 """Blocks arrays with an abelian symmetry constraint."""
 
+import contextlib
 import functools
 import hashlib
 import itertools
@@ -858,6 +859,159 @@ def cached_fuse_block_info(self, axes_groups):
     return res
 
 
+def _fuse_blocks_via_insert(
+    blocks,
+    num_groups,
+    group_singlets,
+    perm,
+    position,
+    new_indices,
+    blockmap,
+    _transpose,
+    _reshape,
+    _zeros,
+    zeros_kwargs,
+):
+    """Perform the actual block fusing by inserting blocks into a new array."""
+    new_blocks = {}
+
+    # for each group, map each subsector to a range in the new charge
+    slice_lookup = [
+        {
+            k: dict(zip(v, accum_for_split(v.values())))
+            for k, v in new_indices[position + g].subinfo.extents.items()
+        }
+        if g not in group_singlets
+        else None
+        for g in range(num_groups)
+    ]
+    selector = [slice(None)] * len(new_indices)
+
+    for sector, array in blocks.items():
+        new_shape, new_sector, subsectors = blockmap[sector]
+        # fuse (via transpose+reshape) actual array, to insert now
+        new_array = _transpose(array, perm)
+        new_array = _reshape(new_array, new_shape)
+
+        # get subslice this block fits into within fused block
+        for g, subsector in enumerate(subsectors):
+            if g not in group_singlets:
+                ax = position + g
+                new_charge = new_sector[ax]
+                selector[ax] = slice_lookup[g][new_charge][subsector]
+
+        # get the target new fused block
+        try:
+            new_fused_array = new_blocks[new_sector]
+        except KeyError:
+            # create if it doesn't exist yet
+            fused_shape = tuple(
+                ix.size_of(c) for ix, c in zip(new_indices, new_sector)
+            )
+            new_fused_array = new_blocks[new_sector] = _zeros(
+                fused_shape, **zeros_kwargs
+            )
+
+        # insert the block into the fused block
+        new_fused_array[tuple(selector)] = new_array
+
+    return new_blocks
+
+
+def _fuse_blocks_via_concat(
+    old_indices,
+    blocks,
+    num_groups,
+    group_singlets,
+    perm,
+    position,
+    axes_before,
+    axes_after,
+    new_axes,
+    new_indices,
+    blockmap,
+    backend,
+    _transpose,
+    _reshape,
+    _zeros,
+    zeros_kwargs,
+):
+    """Perform the actual block fusing, by recusively concatenating blocks
+    (more compatible with e.g. autodiff since requires no inplace updates).
+    """
+    _concatenate = ar.get_lib_fn(backend, "concatenate")
+
+    new_blocks = {}
+
+    # first we group subsectors into their new fused blocks
+    for sector, array in blocks.items():
+        new_shape, new_sector, subsectors = blockmap[sector]
+        # fuse (via transpose+reshape) actual array, to concat later
+        new_array = _transpose(array, perm)
+        new_array = _reshape(new_array, new_shape)
+        # group the subblock into the correct new fused block
+        new_blocks.setdefault(new_sector, {})[subsectors] = new_array
+
+    # then we actually have to combine the groups of subsectors
+
+    def _recurse_concat(new_sector, g=0, subkey=()):
+        if g in group_singlets:
+            # singlet group, no need to concatenate
+            new_subkey = subkey + ((new_sector[position + g],),)
+            if g == num_groups - 1:
+                return new_blocks[new_sector][new_subkey]
+            else:
+                return _recurse_concat(new_sector, g + 1, new_subkey)
+
+        # else fused group of multiple axes
+        new_charge = new_sector[position + g]
+        extent = new_indices[position + g].subinfo.extents[new_charge]
+        # given the current partial sector, get next possible charges
+        next_subkeys = [(*subkey, subsector) for subsector in extent]
+
+        if g == num_groups - 1:
+            # final group (/level of recursion), get actual arrays
+            arrays = []
+            for new_subkey in next_subkeys:
+                try:
+                    array = new_blocks[new_sector][new_subkey]
+                except KeyError:
+                    # subsector is missing - need to create zeros
+                    shape_before = (
+                        old_indices[ax].size_of(new_sector[new_axes[ax]])
+                        for ax in axes_before
+                    )
+                    shape_new = (
+                        new_indices[position + gg].subinfo.extents[
+                            new_sector[position + gg]
+                        ][ss]
+                        for gg, ss in enumerate(new_subkey)
+                    )
+                    shape_after = (
+                        old_indices[ax].size_of(new_sector[new_axes[ax]])
+                        for ax in axes_after
+                    )
+                    new_shape = (
+                        *shape_before,
+                        *shape_new,
+                        *shape_after,
+                    )
+                    array = _zeros(new_shape, **zeros_kwargs)
+                arrays.append(array)
+        else:
+            # recurse to next group
+            arrays = (
+                _recurse_concat(new_sector, g + 1, new_subkey)
+                for new_subkey in next_subkeys
+            )
+
+        return _concatenate(tuple(arrays), axis=position + g)
+
+    return {
+        new_sector: _recurse_concat(new_sector) for new_sector in new_blocks
+    }
+
+
 _AbelianArray_slots = (
     "_indices",
     "_blocks",
@@ -896,7 +1050,7 @@ class AbelianArray(BlockBase):
     ):
         self._indices = tuple(indices)
         self._blocks = dict(blocks)
-        
+
         self._symmetry = self.get_class_symmetry(symmetry)
 
         if charge is None:
@@ -1528,10 +1682,10 @@ class AbelianArray(BlockBase):
 
         return new.modify(
             indices=permuted(new._indices, axes),
-            blocks = {
+            blocks={
                 permuted(sector, axes): _transpose(array, axes)
                 for sector, array in new.blocks.items()
-            }
+            },
         )
 
     @property
@@ -1661,7 +1815,12 @@ class AbelianArray(BlockBase):
 
         return x.modify(indices=new_indices, charge=new_charge)
 
-    def _fuse_core(self, *axes_groups, inplace=False):
+    def _fuse_core(
+        self,
+        *axes_groups,
+        mode="auto",
+        inplace=False,
+    ):
         (
             num_groups,
             group_singlets,
@@ -1673,22 +1832,13 @@ class AbelianArray(BlockBase):
             new_indices,
             blockmap,
         ) = cached_fuse_block_info(self, axes_groups)
+        # NOTE: to turn off caching, we would use the following line instead:
         # ) = calc_fuse_block_info(self, axes_groups)
 
         _ex_array = self.get_any_array()
         backend = ar.infer_backend(_ex_array)
         _transpose = ar.get_lib_fn(backend, "transpose")
         _reshape = ar.get_lib_fn(backend, "reshape")
-        _concatenate = ar.get_lib_fn(backend, "concatenate")
-
-        new_blocks = {}
-        for sector, array in self.blocks.items():
-            new_shape, new_sector, subsectors = blockmap[sector]
-            # fuse (via transpose+reshape) the actual array, to concat later
-            new_array = _transpose(array, perm)
-            new_array = _reshape(new_array, new_shape)
-            # group the subblock into the correct new fused block
-            new_blocks.setdefault(new_sector, {})[subsectors] = new_array
 
         # explicity handle zeros function and dtype and device kwargs
         _zeros = ar.get_lib_fn(backend, "zeros")
@@ -1698,68 +1848,60 @@ class AbelianArray(BlockBase):
         if hasattr(_ex_array, "device"):
             zeros_kwargs["device"] = _ex_array.device
 
-        old_indices = self._indices
-
-        def _recurse_concat(new_sector, g=0, subkey=()):
-            if g in group_singlets:
-                # singlet group, no need to concatenate
-                new_subkey = subkey + ((new_sector[position + g],),)
-                if g == num_groups - 1:
-                    return new_blocks[new_sector][new_subkey]
-                else:
-                    return _recurse_concat(new_sector, g + 1, new_subkey)
-
-            # else fused group of multiple axes
-            new_charge = new_sector[position + g]
-            extent = new_indices[position + g].subinfo.extents[new_charge]
-            # given the current partial sector, get each next possible charge
-            next_subkeys = [(*subkey, subsector) for subsector in extent]
-
-            if g == num_groups - 1:
-                # final group (/level of recursion), get actual arrays
-                arrays = []
-                for new_subkey in next_subkeys:
-                    try:
-                        array = new_blocks[new_sector][new_subkey]
-                    except KeyError:
-                        # subsector is missing - need to create zeros
-                        shape_before = (
-                            old_indices[ax].size_of(new_sector[new_axes[ax]])
-                            for ax in axes_before
-                        )
-                        shape_new = (
-                            new_indices[position + gg].subinfo.extents[
-                                new_sector[position + gg]
-                            ][ss]
-                            for gg, ss in enumerate(new_subkey)
-                        )
-                        shape_after = (
-                            old_indices[ax].size_of(new_sector[new_axes[ax]])
-                            for ax in axes_after
-                        )
-                        new_shape = (*shape_before, *shape_new, *shape_after)
-                        array = _zeros(new_shape, **zeros_kwargs)
-                    arrays.append(array)
+        if mode == "auto":
+            if backend == "numpy":
+                mode = "insert"
             else:
-                # recurse to next group
-                arrays = (
-                    _recurse_concat(new_sector, g + 1, new_subkey)
-                    for new_subkey in next_subkeys
-                )
+                mode = "concat"
 
-            return _concatenate(tuple(arrays), axis=position + g)
-
-        new_blocks = {
-            new_sector: _recurse_concat(new_sector)
-            for new_sector in new_blocks
-        }
+        if mode == "insert":
+            new_blocks = _fuse_blocks_via_insert(
+                self.blocks,
+                num_groups,
+                group_singlets,
+                perm,
+                position,
+                new_indices,
+                blockmap,
+                _transpose,
+                _reshape,
+                _zeros,
+                zeros_kwargs,
+            )
+        elif mode == "concat":
+            new_blocks = _fuse_blocks_via_concat(
+                self._indices,
+                self._blocks,
+                num_groups,
+                group_singlets,
+                perm,
+                position,
+                axes_before,
+                axes_after,
+                new_axes,
+                new_indices,
+                blockmap,
+                backend,
+                _transpose,
+                _reshape,
+                _zeros,
+                zeros_kwargs,
+            )
+        else:
+            raise ValueError(f"Unknown mode {mode}.")
 
         if inplace:
             return self.modify(indices=new_indices, blocks=new_blocks)
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
 
-    def fuse(self, *axes_groups, expand_empty=True, inplace=False):
+    def fuse(
+        self,
+        *axes_groups,
+        expand_empty=True,
+        mode="auto",
+        inplace=False,
+    ):
         """Fuse the given group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
         the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
@@ -1784,6 +1926,12 @@ class AbelianArray(BlockBase):
             axis.
         expand_empty : bool, optional
             Whether to expand empty groups into new axes.
+        mode : "auto", "insert", "concat", optional
+            The method to use for fusing. `"insert"` creates the new fused
+            blocks and insert the subblocks inplace. `"concat"` recursively
+            concatenates the subblocks, which can be slightly slower but is
+            more compatible with e.g. autodiff. `"auto"` will use `"insert"` if
+            the backend is numpy, otherwise `"concat"`.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -1801,7 +1949,7 @@ class AbelianArray(BlockBase):
                 _axes_expand.append(ax)
 
         if _axes_groups:
-            xf = self._fuse_core(*_axes_groups, inplace=inplace)
+            xf = self._fuse_core(*_axes_groups, mode=mode, inplace=inplace)
         else:
             xf = self if inplace else self.copy()
 
@@ -2108,7 +2256,7 @@ class AbelianArray(BlockBase):
             [
                 c,
                 (
-                    f"shape~{self.shape}:" f"[{pattern}]"
+                    f"shape~{self.shape}:[{pattern}]"
                     if self.indices
                     else f"{self.get_any_array()}"
                 ),
@@ -2329,6 +2477,45 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     return cf
 
 
+_DEFAULT_TENSORDOT_MODE = "auto"
+
+
+def get_default_tensordot_mode():
+    """Get the current default tensordot mode."""
+    return _DEFAULT_TENSORDOT_MODE
+
+
+def set_default_tensordot_mode(mode):
+    """Set the default tensordot mode.
+
+    Parameters
+    ----------
+    mode : {"auto", "fused", "blockwise", None}
+        The mode to use for the contraction. None is no-op.
+    """
+    if mode is not None:
+        global _DEFAULT_TENSORDOT_MODE
+        _DEFAULT_TENSORDOT_MODE = mode
+
+
+@contextlib.contextmanager
+def default_tensordot_mode(mode):
+    """Context manager to temporarily change the default tensordot mode.
+
+    Parameters
+    ----------
+    mode : {"auto", "fused", "blockwise"}
+        The mode to use for the contraction.
+    """
+    global _DEFAULT_TENSORDOT_MODE
+    old_mode = _DEFAULT_TENSORDOT_MODE
+    _DEFAULT_TENSORDOT_MODE = mode
+    try:
+        yield
+    finally:
+        _DEFAULT_TENSORDOT_MODE = old_mode
+
+
 @tensordot.register(AbelianArray)
 def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     """Tensordot between two block sparse abelian symmetric arrays.
@@ -2377,6 +2564,9 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
 
     left_axes = without(range(ndim_a), axes_a)
     right_axes = without(range(ndim_b), axes_b)
+
+    if mode is None:
+        mode = _DEFAULT_TENSORDOT_MODE
 
     if mode == "auto":
         if len(axes_a) == 0:
