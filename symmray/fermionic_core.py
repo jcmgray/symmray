@@ -248,7 +248,9 @@ class FermionicArray(AbelianArray):
             if other.phases:
                 other = other.phase_sync()
 
-        return super()._binary_blockwise_op(other, fn, inplace=True, **kwargs)
+        return super(FermionicArray, xy)._binary_blockwise_op(
+            other, fn, inplace=True, **kwargs
+        )
 
     def _map_blocks(self, fn_block=None, fn_sector=None):
         super()._map_blocks(fn_block, fn_sector)
