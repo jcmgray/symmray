@@ -188,7 +188,10 @@ class BlockBase:
     def __add__(self, other):
         if isinstance(other, BlockBase):
             return self._binary_blockwise_op(
-                other, fn=operator.add, missing="outer"
+                other,
+                fn=operator.add,
+                missing="outer",
+                inplace=False,
             )
 
         # addition with non-matching block array breaks sparsity
@@ -209,7 +212,11 @@ class BlockBase:
 
     def __sub__(self, other):
         if isinstance(other, BlockBase):
-            return self._binary_blockwise_op(other, fn=operator.sub)
+            return self._binary_blockwise_op(
+                other,
+                fn=operator.sub,
+                inplace=False,
+            )
 
         # subtraction with non-matching block array breaks sparsity
         raise NotImplementedError(
@@ -270,7 +277,7 @@ class BlockBase:
 
     def __neg__(self):
         new = self.copy()
-        new.apply_to_arrays(lambda x: -x)
+        new.apply_to_arrays(operator.neg)
         return new
 
     def _do_reduction(self, fn):
@@ -320,6 +327,13 @@ class BlockBase:
     def sqrt(self):
         """Get the square root of all elements in the array."""
         return self._do_unary_op("sqrt")
+
+    def clip(self, a_min, a_max):
+        """Clip the values in the array."""
+        new = self.copy()
+        _clip = ar.get_lib_fn(self.backend, "clip")
+        new.apply_to_arrays(lambda x: _clip(x, a_min, a_max))
+        return new
 
     def norm(self):
         """Get the frobenius norm of the block array."""

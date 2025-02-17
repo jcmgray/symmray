@@ -42,12 +42,52 @@ def isfinite(x):
 
 def abs(x):
     """Return the absolute value of a `symmray` array."""
-    return x.abs()
+    try:
+        return x.abs()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("abs", x)
 
 
 def sqrt(x):
     """Return the square root of a `symmray` array."""
-    return x.sqrt()
+    try:
+        return x.sqrt()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("sqrt", x)
+
+
+def log(x):
+    """Return the natural logarithm of a `symmray` array."""
+    try:
+        return x.log()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("log", x)
+
+
+def log2(x):
+    """Return the base-2 logarithm of a `symmray` array."""
+    try:
+        return x.log2()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("log2", x)
+
+
+def log10(x):
+    """Return the base-10 logarithm of a `symmray` array."""
+    try:
+        return x.log10()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("log10", x)
+
+
+def clip(x, a_min, a_max):
+    """Clip the values of a `symmray` array."""
+    return x.clip(a_min, a_max)
 
 
 def squeeze(x, axis=None):
