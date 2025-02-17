@@ -75,10 +75,18 @@ def rand_z2_index(
         The total size of the index. If a dict, an explicit chargemap.
     dual : bool, optional
         The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", "maximal", or tuple of int, optional
-        The sizes of the charge sectors. If None, the sizes are randomly
-        determined. If "equal", the sizes are equal (up to remainders). For
-        Z2 indices, "maximal" is equivalent to "equal".
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
     seed : None, int, or numpy.random.Generator, optional
         The seed for the random number generator.
 
@@ -104,12 +112,22 @@ def rand_z2_index(
         return sr.BlockIndex(chargemap={charge: 1}, dual=dual)
 
     if subsizes is None:
+        # randomly distributed
         d0 = int(rng.integers(1, d))
         d1 = d - d0
+
     elif subsizes in ("equal", "maximal"):
+        # spread over both charge sectors
         d0 = d // 2
         d1 = d - d0
+
+    elif subsizes == "minimal":
+        # all in zero charge sector
+        d0 = d
+        d1 = 0
+
     else:
+        # sizes given explicitly
         d0, d1 = subsizes
 
     return sr.BlockIndex(chargemap={0: d0, 1: d1}, dual=dual)
@@ -159,6 +177,15 @@ def rand_z2z2_index(
         charges = possible[:ncharge]
         chargemap = {c: d // 4 + (i < d % 4) for i, c in enumerate(charges)}
 
+    elif subsizes == "minimal":
+        # all in zero charge sector
+        chargemap = {(0, 0): d}
+
+    else:
+        # sizes given explicitly
+        ncharge = len(subsizes)
+        chargemap = dict(zip(possible, subsizes))
+
     return sr.BlockIndex(chargemap=chargemap, dual=dual)
 
 
@@ -185,10 +212,18 @@ def rand_u1_index(
         The total size of the index.
     dual : bool, optional
         The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", "maximal", or tuple of int, optional
-        The sizes of the charge sectors. If None, the sizes are randomly
-        determined. If "equal", the sizes are equal (up to remainders). If
-        "maximal", there will be `d` charges of size 1.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
     seed : None, int, or numpy.random.Generator, optional
         The seed for the random number generator.
 
@@ -223,6 +258,11 @@ def rand_u1_index(
         # maximal spread of charges each with size 1
         ncharge = d
         subsizes = [1 for _ in range(ncharge)]
+
+    elif subsizes == "minimal":
+        # minimal spread of charges each with size 1
+        ncharge = 1
+        subsizes = [d]
 
     else:
         # only sizes given explicitly
@@ -289,6 +329,11 @@ def rand_u1u1_index(
         # maximal spread of charges each with size 1
         ncharge = d
         subsizes = [1 for _ in range(ncharge)]
+
+    elif subsizes == "minimal":
+        # all in zero charge sector
+        ncharge = 1
+        subsizes = [d]
 
     else:
         # only sizes given explicitly
@@ -458,9 +503,21 @@ def get_rand_u1array(
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
-    subsizes : None, "equal", "maximal", or tuple of int, optional
-        The sizes of the charge sectors. If None, the sizes are randomly
-        determined. If "equal", the sizes are equal.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
+    kwargs
+        Additional keyword arguments are passed to the random array
+        generation function.
 
     Returns
     -------
@@ -520,9 +577,18 @@ def get_rand_u1u1array(
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
-    subsizes : None, "equal", "maximal", or tuple of int, optional
-        The sizes of the charge sectors. If None, the sizes are randomly
-        determined. If "equal", the sizes are equal.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
 
     Returns
     -------
@@ -587,10 +653,21 @@ def get_rand(
         The distribution of the random numbers. Can be "normal" or "uniform".
     fermionic : bool, optional
         Whether to generate a fermionic array.
-    subsizes : None, "equal", "maximal", or tuple of int, optional
-        The sizes of the charge sectors. If None, the sizes are randomly
-        determined. If "equal", the sizes are equal (up to remainders). If
-        "maximal", as many charges as possible will be chosen.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
+    kwargs
+        Additional keyword arguments are passed to the random array
+        generation function.
 
     Returns
     -------
@@ -657,16 +734,16 @@ def from_dense(
     charge=None,
 ):
     from .abelian_core import (
-        Z2Array,
-        Z2Z2Array,
         U1Array,
         U1U1Array,
+        Z2Array,
+        Z2Z2Array,
     )
     from .fermionic_core import (
-        Z2FermionicArray,
         U1FermionicArray,
-        Z2Z2FermionicArray,
         U1U1FermionicArray,
+        Z2FermionicArray,
+        Z2Z2FermionicArray,
     )
 
     cls = {
