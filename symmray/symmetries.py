@@ -54,58 +54,58 @@ def sign_tuple(charge, dual=True):
 class Z2(Symmetry):
     __slots__ = ()
 
-    def valid(self, *charges):
+    def valid(self, *charges: int) -> bool:
         return all(charge in {0, 1} for charge in charges)
 
-    def combine(self, *charges):
+    def combine(self, *charges: int) -> int:
         return sum(charges) % 2
 
-    def sign(self, charge, dual=True):
+    def sign(self, charge: int, dual=True) -> int:
         # Z2 is self-inverse
         return charge
 
-    def parity(self, charge):
+    def parity(self, charge: int) -> int:
         return charge % 2
 
 
 class Z4(Symmetry):
     __slots__ = ()
 
-    def valid(self, *charges):
+    def valid(self, *charges: int) -> bool:
         return all(charge in {0, 1, 2, 3} for charge in charges)
 
-    def combine(self, *charges):
+    def combine(self, *charges: int) -> int:
         return sum(charges) % 4
 
-    def sign(self, charge, dual=True):
+    def sign(self, charge: int, dual=True) -> int:
         if dual:
             return 4 - charge
         return charge
 
-    def parity(self, charge):
+    def parity(self, charge: int) -> int:
         return charge % 2
 
 
 class U1(Symmetry):
     __slots__ = ()
 
-    def valid(self, *charges):
+    def valid(self, *charges: int) -> bool:
         return all(isinstance(charge, int) for charge in charges)
 
-    def combine(self, *charges):
+    def combine(self, *charges: int) -> int:
         return sum(charges)
 
-    def sign(self, charge, dual=True):
+    def sign(self, charge: int, dual=True) -> int:
         return sign_scalar(charge, dual)
 
-    def parity(self, charge):
+    def parity(self, charge: int) -> int:
         return charge % 2
 
 
 class Z2Z2(Symmetry):
     __slots__ = ()
 
-    def valid(self, *charges):
+    def valid(self, *charges: tuple[int, int]) -> bool:
         return all(
             isinstance(charge, tuple)
             and charge[0] in {0, 1}
@@ -113,24 +113,25 @@ class Z2Z2(Symmetry):
             for charge in charges
         )
 
-    def combine(self, *charges):
-        return (
-            sum(charge[0] for charge in charges) % 2,
-            sum(charge[1] for charge in charges) % 2,
-        )
+    def combine(self, *charges: tuple[int, int]) -> tuple[int, int]:
+        c0, c1 = 0, 0
+        for cl, cr in charges:
+            c0 ^= cl
+            c1 ^= cr
+        return (c0, c1)
 
-    def sign(self, charge, dual=True):
+    def sign(self, charge: tuple[int, int], dual=True) -> tuple[int, int]:
         # Z2Z2 is self-inverse
         return charge
 
-    def parity(self, charge):
-        return (charge[0] + charge[1]) % 2
+    def parity(self, charge: tuple[int, int]) -> int:
+        return charge[0] ^ charge[1]
 
 
 class U1U1(Symmetry):
     __slots__ = ()
 
-    def valid(self, *charges):
+    def valid(self, *charges: tuple[int, int]) -> bool:
         return all(
             isinstance(charge, tuple)
             and isinstance(charge[0], int)
@@ -138,21 +139,22 @@ class U1U1(Symmetry):
             for charge in charges
         )
 
-    def combine(self, *charges):
-        return (
-            sum(charge[0] for charge in charges),
-            sum(charge[1] for charge in charges),
-        )
+    def combine(self, *charges: tuple[int, int]) -> tuple[int, int]:
+        c0, c1 = 0, 0
+        for cl, cr in charges:
+            c0 += cl
+            c1 += cr
+        return (c0, c1)
 
-    def sign(self, charge, dual=True):
+    def sign(self, charge: tuple[int, int], dual=True) -> tuple[int, int]:
         return sign_tuple(charge, dual)
 
-    def parity(self, charge):
+    def parity(self, charge: tuple[int, int]) -> int:
         return (charge[0] + charge[1]) % 2
 
 
 @functools.lru_cache(2**14)
-def get_symmetry(symmetry):
+def get_symmetry(symmetry: str | Symmetry) -> Symmetry:
     """Get a symmetry object by name.
 
     Parameters
@@ -181,7 +183,10 @@ def get_symmetry(symmetry):
 
 
 @functools.lru_cache(maxsize=2**15)
-def calc_phase_permutation(parities, perm=None):
+def calc_phase_permutation(
+    parities: tuple[int, ...],
+    perm: tuple[int, ...] = None,
+) -> int:
     """Given sequence of parities and a permutation, compute the phase of the
     permutation acting on the odd charges. I.e. whether the number of swaps
     of odd sectors is even or odd.
