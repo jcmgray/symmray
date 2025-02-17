@@ -32,6 +32,7 @@ from .fermionic_local_operators import (
 )
 from .hamiltonians import (
     ham_fermi_hubbard_from_edges,
+    ham_fermi_hubbard_spinless_from_edges,
     ham_heisenberg_from_edges,
 )
 from .interface import (
@@ -86,6 +87,7 @@ __all__ = (
     "get_default_tensordot_mode",
     "get_symmetry",
     "ham_fermi_hubbard_from_edges",
+    "ham_fermi_hubbard_spinless_from_edges",
     "ham_heisenberg_from_edges",
     "isfinite",
     "linalg",

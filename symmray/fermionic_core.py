@@ -452,29 +452,34 @@ class FermionicArray(AbelianArray):
 
     def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
         """Conjugate this fermionic array. By default this include phases from
-        both the virtual flipping of all axes, and the conjugation of dual
-        indices, such that::
+        both the virtual flipping of all axes, but *not* the conjugation of
+        dual indices, such that::
 
             (
                 tensordot_fermionic(x.conj(), x, ndim) ==
                 tensordot_fermionic(x, x.conj(), ndim)
             )
 
-        If all indices have matching dualness (i.e. all bra or all ket), then
-        the above contractions will also be equal to ``x.norm() ** 2``.
+        If all indices have matching dualness (i.e. all bra or all ket), *or*
+        you set `phase_dual=True` then the above contractions will also be
+        equal to ``x.norm() ** 2``.
 
         Parameters
         ----------
+        phase_permutation : bool, optional
+            Whether to flip the phase of sectors whose odd charges undergo a
+            odd permutation due to *virtually* flipping the order of axes, by
+            default True.
         phase_dual : bool, optional
             Whether to flip the phase of dual indices, by default False. If a
             FermionicArray has a mix of dual and non-dual indices, and you are
             explicitly forming the norm, you may want to set this to True. But
             if it is part of a large tensor network you only need to flip the
-            phase of 'outer' dual indices.
-        phase_permutation : bool, optional
-            Whether to flip the phase of sectors whose odd charges undergo a
-            odd permutation due to *virtually* flipping the order of axes, by
-            default True.
+            phase of true 'outer' dual indices.
+
+        Returns
+        -------
+        FermionicArray
         """
         new = self if inplace else self.copy()
 
