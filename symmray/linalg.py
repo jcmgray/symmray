@@ -31,11 +31,15 @@ def _get_qr_fn(backend, stabilized=False):
         _qr_ubstab = _qr
         _diag = ar.get_lib_fn(backend, "diag")
         _reshape = ar.get_lib_fn(backend, "reshape")
-        _sign = ar.get_lib_fn(backend, "sign")
+        _abs = ar.get_lib_fn(backend, "abs")
+
+        def _sgn(x):
+            x0 = x == 0.0
+            return (x + x0) / (_abs(x) + x0)
 
         def _qr(x):
             q, r = _qr_ubstab(x)
-            s = _sign(_diag(r))
+            s = _sgn(_diag(r))
             q = q * _reshape(s, (1, -1))
             r = r * _reshape(s, (-1, 1))
             return q, r
