@@ -60,6 +60,8 @@ from .interface import (
     transpose,
 )
 from .networks import (
+    PEPS3D_abelian_rand,
+    PEPS3D_fermionic_rand,
     PEPS_abelian_rand,
     PEPS_fermionic_rand,
     TN_abelian_from_edges_rand,
@@ -106,6 +108,8 @@ __all__ = (
     "parse_edges_to_site_info",
     "PEPS_abelian_rand",
     "PEPS_fermionic_rand",
+    "PEPS3D_abelian_rand",
+    "PEPS3D_fermionic_rand",
     "reshape",
     "scipy",
     "set_default_tensordot_mode",

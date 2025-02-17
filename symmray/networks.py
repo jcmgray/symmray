@@ -389,6 +389,108 @@ def PEPS_abelian_rand(
     )
 
 
+def PEPS3D_abelian_rand(
+    symmetry,
+    Lx,
+    Ly,
+    Lz,
+    bond_dim,
+    phys_dim=2,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{},{},{}",
+    site_ind_id="k{},{},{}",
+    x_tag_id="X{}",
+    y_tag_id="Y{}",
+    z_tag_id="Z{}",
+    fermionic=False,
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random 3D PEPS with abelian symmetry.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the PEPS.
+    Lx : int
+        Length of the PEPS in the x-direction.
+    Ly : int
+        Length of the PEPS in the y-direction.
+    Lz : int
+        Length of the PEPS in the z-direction.
+    bond_dim : int or dict
+        The total (sum of charge sizes) bond dimension of the PEPS. You can
+        also provide an explicit map of bond charges to sizes.
+    phys_dim : int or dict, optional
+        The physical dimension of each site. If None, no physical sites are
+        included. If an integer, a default charge distribution is chosen. If a
+        dictionary, a custom map of physical charges to sizes.
+    cyclic : bool, optional
+        Whether the PEPS is cyclic in the x-direction.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use.
+    dtype : str, optional
+        The data type of the tensors.
+    site_tag_id : str, optional
+        The tag format for each site tensor.
+    site_ind_id : str, optional
+        The index format for each site tensor, if physical sites are included.
+    fermionic : bool, optional
+        Whether to generate fermionic tensors.
+    site_charge : callable, optional
+        A function that takes a site index and returns the charge of that site.
+        By default it will create all even parity tensors if Z2=0 or it will
+        alernate between 0 and 1 for U1.
+    subsizes : {"maximal", "equal"}, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders). If
+        "maximal", as many charges as possible will be chosen.
+    kwargs
+        Additional arguments to pass to :func:`symmray.utils.get_rand`.
+
+    Returns
+    -------
+    quimb.tensor.PEPS3D
+    """
+    import quimb.tensor as qtn
+
+    edges = qtn.edges_3d_cubic(Lx, Ly, Lz, cyclic=cyclic)
+
+    peps = TN_abelian_from_edges_rand(
+        symmetry,
+        edges,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        seed=seed,
+        dtype=dtype,
+        site_ind_id=site_ind_id,
+        site_tag_id=site_tag_id,
+        fermionic=fermionic,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
+    )
+
+    for i in range(Lx):
+        for j in range(Ly):
+            for k in range(Lz):
+                t = peps[site_tag_id.format(i, j, k)]
+                t.add_tag(x_tag_id.format(i))
+                t.add_tag(y_tag_id.format(j))
+                t.add_tag(z_tag_id.format(k))
+
+    return peps.view_as_(
+        qtn.PEPS3D,
+        Lx=Lx,
+        Ly=Ly,
+        Lz=Lz,
+        x_tag_id=x_tag_id,
+        y_tag_id=y_tag_id,
+        z_tag_id=z_tag_id,
+    )
 
 
 def PEPS_fermionic_rand(
@@ -464,6 +566,92 @@ def PEPS_fermionic_rand(
         site_ind_id=site_ind_id,
         x_tag_id=x_tag_id,
         y_tag_id=y_tag_id,
+        fermionic=True,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
+    )
+
+
+def PEPS3D_fermionic_rand(
+    symmetry,
+    Lx,
+    Ly,
+    Lz,
+    bond_dim,
+    phys_dim=2,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{},{},{}",
+    site_ind_id="k{},{},{}",
+    x_tag_id="X{}",
+    y_tag_id="Y{}",
+    z_tag_id="Z{}",
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random 3D fermionic PEPS. This is a wrapper around
+    :func:`PEPS3D_abelian_rand` with `fermionic=True`.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the PEPS.
+    Lx : int
+        Length of the PEPS in the x-direction.
+    Ly : int
+        Length of the PEPS in the y-direction.
+    Lz : int
+        Length of the PEPS in the z-direction.
+    bond_dim : int or dict
+        The total (sum of charge sizes) bond dimension of the PEPS. You can
+        also provide an explicit map of bond charges to sizes.
+    phys_dim : int or dict, optional
+        The physical dimension of each site. If None, no physical sites are
+        included. If an integer, a default charge distribution is chosen. If a
+        dictionary, a custom map of physical charges to sizes.
+    cyclic : bool, optional
+        Whether the PEPS is cyclic in the x-direction.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use.
+    dtype : str, optional
+        The data type of the tensors.
+    site_tag_id : str, optional
+        The tag format for each site tensor.
+    site_ind_id : str, optional
+        The index format for each site tensor, if physical sites are included.
+    site_charge : callable, optional
+        A function that takes a site index and returns the charge of that site.
+        By default it will create all even parity tensors if Z2=0 or it will
+        alernate between 0 and 1 for U1.
+    subsizes : {"maximal", "equal"}, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders). If
+        "maximal", as many charges as possible will be chosen.
+    kwargs
+        Additional arguments to pass to :func:`symmray.utils.get_rand`.
+
+    Returns
+    -------
+    quimb.tensor.PEPS3D
+    """
+    return PEPS3D_abelian_rand(
+        symmetry=symmetry,
+        Lx=Lx,
+        Ly=Ly,
+        Lz=Lz,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        cyclic=cyclic,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        x_tag_id=x_tag_id,
+        y_tag_id=y_tag_id,
+        z_tag_id=z_tag_id,
         fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
