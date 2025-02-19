@@ -2225,7 +2225,7 @@ class AbelianArray(BlockBase):
         """
         return drop_misaligned_sectors(self, other, *axes)
 
-    def einsum(self, eq):
+    def einsum(self, eq, preserve_array=False):
         """Einsum for abelian arrays, currently only single term."""
         _einsum = ar.get_lib_fn(self.backend, "einsum")
 
@@ -2264,10 +2264,18 @@ class AbelianArray(BlockBase):
 
         new_indices = tuple(ind_map[q] for q in rhs)
 
-        return self.copy_with(
-            indices=new_indices,
-            blocks=new_blocks,
-        )
+        if rhs or preserve_array:
+            # wrap in new array
+            return self.copy_with(
+                indices=new_indices,
+                blocks=new_blocks,
+            )
+
+        try:
+            return new_blocks[()]
+        except KeyError:
+            # no aligned blocks, return zero
+            return 0.0
 
     def __str__(self):
         lines = [
