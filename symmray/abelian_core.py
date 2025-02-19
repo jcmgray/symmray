@@ -2225,6 +2225,50 @@ class AbelianArray(BlockBase):
         """
         return drop_misaligned_sectors(self, other, *axes)
 
+    def einsum(self, eq):
+        """Einsum for abelian arrays, currently only single term."""
+        _einsum = ar.get_lib_fn(self.backend, "einsum")
+
+        # parse equation
+        lhs, rhs = eq.split("->")
+        ind_map = {}
+        traced = {}
+        for j, (q, ind) in enumerate(zip(lhs, self.indices)):
+            if q in rhs:
+                ind_map[q] = ind
+            else:
+                traced.setdefault(q, []).append(j)
+        # how to permute kept indices to match output
+        perm = tuple(map(lhs.index, rhs))
+
+        if DEBUG:
+            for q, js in traced.items():
+                if len(js) != 2:
+                    raise ValueError(
+                        f"Can only trace two indices, got {len(js)}."
+                    )
+                j1, j2 = js
+                assert self.indices[j1].matches(self.indices[j2])
+
+        new_blocks = {}
+        for sector, array in self.blocks.items():
+            if all(sector[ja] == sector[jb] for ja, jb in traced.values()):
+                # only trace diagonal blocks
+                new_sector = tuple(sector[i] for i in perm)
+                new_array = _einsum(eq, array)
+
+                try:
+                    new_blocks[new_sector] = new_blocks[new_sector] + new_array
+                except KeyError:
+                    new_blocks[new_sector] = new_array
+
+        new_indices = tuple(ind_map[q] for q in rhs)
+
+        return self.copy_with(
+            indices=new_indices,
+            blocks=new_blocks,
+        )
+
     def __str__(self):
         lines = [
             (

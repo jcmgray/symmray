@@ -404,7 +404,9 @@ def get_rand_z2array(
     return cls.random(
         indices=[
             (
-                sr.BlockIndex(d, dual=f)
+                d
+                if isinstance(d, sr.BlockIndex)
+                else sr.BlockIndex(d, dual=f)
                 if isinstance(d, dict)
                 else rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
             )
@@ -463,7 +465,9 @@ def get_rand_z2z2array(
     return cls.random(
         indices=[
             (
-                sr.BlockIndex(d, dual=f)
+                d
+                if isinstance(d, sr.BlockIndex)
+                else sr.BlockIndex(d, dual=f)
                 if isinstance(d, dict)
                 else rand_z2z2_index(d, dual=f, subsizes=subsizes, seed=rng)
             )
@@ -537,7 +541,9 @@ def get_rand_u1array(
     return cls.random(
         indices=[
             (
-                sr.BlockIndex(d, dual=f)
+                d
+                if isinstance(d, sr.BlockIndex)
+                else sr.BlockIndex(d, dual=f)
                 if isinstance(d, dict)
                 else rand_u1_index(d, f, subsizes=subsizes, seed=rng)
             )
@@ -608,7 +614,9 @@ def get_rand_u1u1array(
     return cls.random(
         indices=[
             (
-                sr.BlockIndex(d, dual=f)
+                d
+                if isinstance(d, sr.BlockIndex)
+                else sr.BlockIndex(d, dual=f)
                 if isinstance(d, dict)
                 else rand_u1u1_index(d, f, subsizes=subsizes, seed=rng)
             )
@@ -763,3 +771,51 @@ def from_dense(
         duals=duals,
         charge=charge,
     )
+
+
+def rand_index(
+    symmetry,
+    d,
+    dual=None,
+    subsizes=None,
+    seed=None,
+):
+    """Get a random index with the given symmetry.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the index.
+    d : int or dict
+        The total size of the index. If a dict, an explicit chargemap.
+    dual : bool, optional
+        The dualness of the index. If None, it is randomly chosen.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
+    seed : None, int, or numpy.random.Generator, optional
+        The seed for the random number generator.
+
+    Returns
+    -------
+    BlockIndex
+    """
+    if symmetry == "Z2":
+        return rand_z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    elif symmetry == "Z2Z2":
+        return rand_z2z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    elif symmetry == "U1":
+        return rand_u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    elif symmetry == "U1U1":
+        return rand_u1u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    else:
+        raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")

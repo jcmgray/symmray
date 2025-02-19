@@ -128,6 +128,11 @@ def tensordot(a, b, axes=2, **kwargs):
     )
 
 
+def einsum(eq, x):
+    """Perform an Einstein summation on a `symmray` array."""
+    return x.einsum(eq)
+
+
 def transpose(a, axes=None, **kwargs):
     """Transpose a `symmray` array."""
     return a.transpose(axes, **kwargs)
