@@ -296,7 +296,7 @@ class SubIndexInfo:
         """A copy of this subindex information with the relevant dualnesses
         reversed.
         """
-        self.copy_with(indices=tuple(ix.conj() for ix in self._indices))
+        return self.copy_with(indices=tuple(ix.conj() for ix in self._indices))
 
     def drop_charges(self, charges):
         """Get a copy of this subindex information with the charges in

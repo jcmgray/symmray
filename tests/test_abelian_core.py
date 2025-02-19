@@ -103,6 +103,30 @@ def test_abelian_reshape_unfuse(symmetry, seed, mode):
     assert c.allclose(a.fuse((0, 1), mode=mode))
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+def test_fuse_conj_unfuse(symmetry):
+    if symmetry in ("Z2", "U1"):
+        charge = 1
+    else:
+        charge = (1, 1)
+
+    d = 7
+    x = sr.utils.get_rand(
+        symmetry,
+        (d, d),
+        charge=charge,
+        subsizes="maximal",
+    )
+    xf = x.fuse((0, 1))
+    xfc = xf.conj()
+    xfc.check()
+    xfcu = xfc.unfuse_all()
+    xfcu.check()
+    xfcuc = xfcu.conj()
+    xfcuc.check()
+    assert x.allclose(xfcuc)
+
+
 def test_calc_reshape_args_edgecase():
     from symmray.abelian_core import calc_reshape_args
 
