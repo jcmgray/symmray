@@ -234,7 +234,7 @@ def test_block_multiply_diagonal(symmetry):
 )
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 def test_einsum_single_term(eq, symmetry):
-    lhs, *_ = eq.split("->")
+    lhs, rhs = eq.split("->")
 
     indices = {
         "a": sr.utils.rand_index(symmetry, 3),
@@ -256,6 +256,9 @@ def test_einsum_single_term(eq, symmetry):
     x.check()
     dx = x.to_dense()
     y = ar.do("einsum", eq, x)
-    y.check()
-    dy = y.to_dense()
+    if rhs:
+        y.check()
+        dy = y.to_dense()
+    else:
+        dy = y
     assert_allclose(dy, ar.do("einsum", eq, dx))
