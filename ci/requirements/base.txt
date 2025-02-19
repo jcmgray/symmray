@@ -1,0 +1,5 @@
+autoray
+coverage
+numpy
+pytest
+pytest-cov

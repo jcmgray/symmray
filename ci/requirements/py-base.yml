@@ -1,9 +1,0 @@
-channels:
-  - defaults
-  - conda-forge
-dependencies:
-  - autoray
-  - numpy
-  - pytest
-  - pytest-cov
-  - coverage
