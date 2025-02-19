@@ -139,6 +139,10 @@ def get_numpy_svd_with_fallback(x):
     return svd_with_fallback
 
 
+# used by quimb
+ar.register_function("symmray", "qr_stabilized", qr_stabilized)
+
+
 @functools.singledispatch
 def svd(x):
     if x.ndim != 2:
@@ -387,6 +391,10 @@ def svd_truncated(
     return U, None, VH
 
 
+# used by quimb
+ar.register_function("symmray", "svd_truncated", svd_truncated)
+
+
 @functools.singledispatch
 def eigh(x):
     """Perform a hermitian eigendecomposition on a AbelianArray."""
@@ -425,6 +433,33 @@ def eigh_fermionic(x):
     raise NotImplementedError("eigh not implemented for FermionicArray yet.")
 
 
-# these are used by quimb for compressed contraction and gauging
-ar.register_function("symmray", "qr_stabilized", qr_stabilized)
-ar.register_function("symmray", "svd_truncated", svd_truncated)
+@functools.singledispatch
+def solve(a, b):
+    if (a.ndim, b.ndim) != (2, 1):
+        raise NotImplementedError(
+            "solve only implemented for 2D AbelianArrays and 1D BlockVectors,"
+            f" got {a.ndim}D and {b.ndim}D. Consider fusing first."
+        )
+
+    _solve = ar.get_lib_fn(a.backend, "linalg.solve")
+
+    x_blocks = {}
+    for sector, array in a.blocks.items():
+        b_sector = (sector[0],)
+        if b_sector in b.blocks:
+            x_sector = (sector[1],)
+            x_blocks[x_sector] = _solve(array, b.blocks[b_sector])
+
+    sym = a.symmetry
+    x_charge = sym.combine(b.charge, sym.sign(a.charge))
+
+    return b.copy_with(
+        blocks=x_blocks,
+        indices=(a.indices[1],),
+        charge=x_charge,
+    )
+
+
+@solve.register(FermionicArray)
+def solve_fermionic(a, b):
+    raise NotImplementedError("solve not implemented for FermionicArray yet.")

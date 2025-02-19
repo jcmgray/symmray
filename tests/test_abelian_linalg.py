@@ -84,6 +84,26 @@ def test_eigh(symmetry, d):
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (2, 7, 31))
+def test_solve(symmetry, d):
+    ind = sr.utils.rand_index(symmetry, d)
+
+    a = sr.utils.get_rand(
+        symmetry,
+        shape=(ind.conj(), ind),
+        dtype="complex128",
+    )
+    b = sr.utils.get_rand(
+        symmetry,
+        shape=[ind],
+        dtype="complex128",
+    )
+    x = sr.linalg.solve(a, b)
+    x.check()
+    assert (a @ x).allclose(b)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 def test_expm_with_reshape(symmetry, d):
     pytest.importorskip("scipy")
