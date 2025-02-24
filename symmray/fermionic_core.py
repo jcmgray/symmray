@@ -721,6 +721,46 @@ class FermionicArray(AbelianArray):
 
         return new
 
+    def einsum(self, eq, preserve_array=False):
+        """Einsum for fermionic arrays, currently only single term.
+
+        Parameters
+        ----------
+        eq : str
+            The einsum equation, e.g. "abcb->ca". The output indices must be
+            specified and only trace and permutations are allowed.
+        preserve_array : bool, optional
+            If tracing to a scalar, whether to return an AbelainArray object
+            with no indices, or simply scalar itself (the default).
+
+        Returns
+        -------
+        AbelianArray or scalar
+        """
+        lhs, rhs = eq.split("->")
+
+        def key(i):
+            c = lhs[i]
+            return (
+                # group traced then kept indices
+                rhs.find(c),
+                # pair up traced indices
+                c,
+                # make sure traced pairs grouped like (-+)
+                not self.indices[i].dual,
+            )
+
+        # tranposition introduces all necessary phases
+        perm = tuple(sorted(range(self.ndim), key=key))
+        x = self.transpose(perm)
+        x.phase_sync(inplace=True)
+
+        # then can use AbelianArray einsum
+        new_lhs = "".join(lhs[i] for i in perm)
+        new_eq = f"{new_lhs}->{rhs}"
+
+        return AbelianArray.einsum(x, new_eq, preserve_array=preserve_array)
+
     def __matmul__(self, other):
         if self.ndim != 2 or other.ndim != 2:
             raise ValueError("Matrix multiplication requires 2D arrays.")

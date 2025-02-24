@@ -2226,7 +2226,21 @@ class AbelianArray(BlockBase):
         return drop_misaligned_sectors(self, other, *axes)
 
     def einsum(self, eq, preserve_array=False):
-        """Einsum for abelian arrays, currently only single term."""
+        """Einsum for abelian arrays, currently only single term.
+
+        Parameters
+        ----------
+        eq : str
+            The einsum equation, e.g. "abcb->ca". The output indices must be
+            specified and only trace and permutations are allowed.
+        preserve_array : bool, optional
+            If tracing to a scalar, whether to return an AbelainArray object
+            with no indices, or simply scalar itself (the default).
+
+        Returns
+        -------
+        AbelianArray or scalar
+        """
         _einsum = ar.get_lib_fn(self.backend, "einsum")
 
         # parse equation

@@ -319,3 +319,28 @@ def test_tensordot_vs_pyblock3(seed, method):
         z = sr.tensordot(x, y, axes=(axes_x, axes_y), mode="fused")
 
     assert float(z) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("symm", ["Z2", "U1"])
+def test_einsum_vs_tensordot(symm):
+    a = sr.utils.rand_index(symm, 4)
+    b = sr.utils.rand_index(symm, 5)
+    c = sr.utils.rand_index(symm, 6)
+    d = sr.utils.rand_index(symm, 3)
+    e = sr.utils.rand_index(symm, 2)
+    eq = "abcd,baed->ec"
+    x = sr.utils.get_rand(
+        symm,
+        shape=(a, b, c, d),
+        fermionic=True,
+    )
+    y = sr.utils.get_rand(
+        symm,
+        shape=(b.conj(), a.conj(), e, d.conj()),
+        fermionic=True,
+    )
+    z1 = sr.tensordot(x, y, [(1, 0, 3), (0, 1, 3)]).transpose()
+    xy = xy = sr.tensordot(x, y, ((), ()))
+    seq = eq.replace(",", "")
+    z2 = xy.einsum(seq)
+    assert z1.allclose(z2)
