@@ -1,5 +1,5 @@
-import pytest
 import autoray as ar
+import pytest
 
 import symmray as sr
 
@@ -192,3 +192,24 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
         absorb=None,
     )
     assert s.size <= 37
+
+
+@pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("b_charge", [False, True])
+def test_solve_fermionic(symm, seed, b_charge):
+    if symm in ("Z2", "U1"):
+        b_charge = 1 if b_charge else 0
+    elif symm in ("Z2Z2", "U1U1"):
+        b_charge = (1, 0) if b_charge else (0, 1)
+
+    i = sr.utils.rand_index(symm, 100, seed=seed)
+    j = i.conj()
+    A = sr.utils.get_rand(
+        symm, shape=(i, j), fermionic=1, oddpos="a", seed=seed
+    )
+    b = sr.utils.get_rand(
+        symm, shape=(i,), fermionic=1, charge=b_charge, oddpos="b", seed=seed
+    )
+    x = sr.linalg.solve(A, b)
+    assert (A @ x).allclose(b)

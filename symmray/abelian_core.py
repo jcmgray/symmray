@@ -2116,7 +2116,7 @@ class AbelianArray(BlockBase):
 
         return x
 
-    def __matmul__(self, other):
+    def __matmul__(self, other, preserve_array=False):
         if self.ndim > 2 or other.ndim > 2:
             raise ValueError("Only 1D and 2D arrays supported.")
 
@@ -2137,7 +2137,7 @@ class AbelianArray(BlockBase):
             right_axes=right_axes,
         )
 
-        if c.ndim == 0:
+        if (c.ndim == 0) and (not preserve_array):
             try:
                 return c.blocks[()]
             except KeyError:

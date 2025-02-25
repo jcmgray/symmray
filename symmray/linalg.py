@@ -450,16 +450,28 @@ def solve(a, b):
             x_sector = (sector[1],)
             x_blocks[x_sector] = _solve(array, b.blocks[b_sector])
 
+    # c_x = c_b - c_A
     sym = a.symmetry
     x_charge = sym.combine(b.charge, sym.sign(a.charge))
 
-    return b.copy_with(
+    x = b.copy_with(
         blocks=x_blocks,
-        indices=(a.indices[1],),
+        indices=(a.indices[1].conj(),),
         charge=x_charge,
     )
 
+    if DEBUG:
+        x.check()
+        a.check_with(x, (1,), (0,))
+
+    return x
 
 @solve.register(FermionicArray)
 def solve_fermionic(a, b):
-    raise NotImplementedError("solve not implemented for FermionicArray yet.")
+    x = solve.dispatch(AbelianArray)(a, b)
+
+    if x.indices[0].dual:
+        # inner index is like |x><x| so introduce a phase flip
+        x.phase_flip(0, inplace=True)
+
+    return x

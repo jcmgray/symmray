@@ -762,18 +762,28 @@ class FermionicArray(AbelianArray):
         return AbelianArray.einsum(x, new_eq, preserve_array=preserve_array)
 
     def __matmul__(self, other):
-        if self.ndim != 2 or other.ndim != 2:
+        # shortcut of matrx/vector products
+        if self.ndim > 2 or other.ndim > 2:
             raise ValueError("Matrix multiplication requires 2D arrays.")
 
         if other.indices[0].dual:
             # have |x><x| -> want <x|x>
             other = other.phase_flip(0)
 
-        new = super().__matmul__(other)
+        a = self.phase_sync()
+        b = other.phase_sync()
+        c = AbelianArray.__matmul__(a, b, preserve_array=True)
+        resolve_combined_oddpos(a, b, c)
 
-        resolve_combined_oddpos(self, other, new)
+        if c.ndim == 0:
+            try:
+                c.phase_sync(inplace=True)
+                return c.blocks[()]
+            except KeyError:
+                # no aligned blocks, return zero
+                return 0.0
 
-        return new
+        return c
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases
