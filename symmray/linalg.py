@@ -2,9 +2,9 @@ import functools
 
 import autoray as ar
 
+from .abelian_core import AbelianArray, BlockIndex
 from .block_core import BlockVector
 from .fermionic_core import FermionicArray
-from .abelian_core import BlockIndex, AbelianArray
 from .utils import DEBUG
 
 
@@ -396,29 +396,29 @@ ar.register_function("symmray", "svd_truncated", svd_truncated)
 
 
 @functools.singledispatch
-def eigh(x):
+def eigh(a):
     """Perform a hermitian eigendecomposition on a AbelianArray."""
-    if x.ndim != 2:
+    if a.ndim != 2:
         raise NotImplementedError(
             "eigh only implemented for 2D AbelianArrays,"
-            f" got {x.ndim}D. Consider fusing first."
+            f" got {a.ndim}D. Consider fusing first."
         )
-    if x.charge != x.symmetry.combine():
+    if a.charge != a.symmetry.combine():
         raise ValueError("Total charge much be the identity (zero) element.")
 
-    _eigh = ar.get_lib_fn(x.backend, "linalg.eigh")
+    _eigh = ar.get_lib_fn(a.backend, "linalg.eigh")
 
     eval_blocks = {}
     evec_blocks = {}
 
-    for sector, array in x.blocks.items():
+    for sector, array in a.blocks.items():
         evals, evecs = _eigh(array)
         charge = sector[1]
         eval_blocks[charge] = evals
         evec_blocks[sector] = evecs
 
     eigenvalues = BlockVector(eval_blocks)
-    eigenvectors = x.copy_with(blocks=evec_blocks)
+    eigenvectors = a.copy_with(blocks=evec_blocks)
 
     if DEBUG:
         eigenvectors.check()
@@ -429,8 +429,20 @@ def eigh(x):
 
 
 @eigh.register(FermionicArray)
-def eigh_fermionic(x):
-    raise NotImplementedError("eigh not implemented for FermionicArray yet.")
+def eigh_fermionic(a):
+    eigenvalues, eigenvectors = eigh.dispatch(AbelianArray)(a)
+
+    if not a.indices[1].dual:
+        symm = a.symmetry
+        # inner index is like |x><x| so introduce a phase flip,
+        # we don't explicitly have Wdag so put phase in eigenvalues
+        # XXX: is this the most compatible thing to do?
+        # it means ev @ diag(el) @ ev.H == a always
+        for c in eigenvalues.sectors:
+            if symm.parity(c):
+                eigenvalues.blocks[c] = -eigenvalues.blocks[c]
+
+    return eigenvalues, eigenvectors
 
 
 @functools.singledispatch
@@ -465,6 +477,7 @@ def solve(a, b):
         a.check_with(x, (1,), (0,))
 
     return x
+
 
 @solve.register(FermionicArray)
 def solve_fermionic(a, b):

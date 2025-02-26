@@ -60,12 +60,7 @@ def test_qr_with_expand_dims(symmetry, seed):
         seed=seed,
         fermionic=True,
     )
-    y = x.reshape(
-        (
-            1,
-            4 * 5 * 6,
-        )
-    )
+    y = x.reshape((1, 4 * 5 * 6))
     q, r = sr.linalg.qr(y)
     z = (q @ r).reshape((4, 5, 6))
     assert z.allclose(x)
@@ -192,6 +187,32 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
         absorb=None,
     )
     assert s.size <= 37
+
+
+@pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("dtype", ("float64", "complex128"))
+def test_eigh_fermionic(symm, seed, dtype):
+    d = 10
+    i = sr.utils.rand_index(
+        symm,
+        d,
+        subsizes=None,
+        seed=seed,
+    )
+    x = sr.utils.get_rand(
+        symm,
+        shape=(i, i.conj()),
+        fermionic=True,
+        dtype=dtype,
+        seed=seed,
+    )
+    # needs to be hermitian for eigh
+    x = x + x.H
+    el, ev = sr.linalg.eigh(x)
+    # reconstruct the matrix
+    y = sr.multiply_diagonal(ev, el, 1) @ ev.H
+    assert y.allclose(x)
 
 
 @pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
