@@ -1,5 +1,7 @@
+import os
+
 # a simple flag for enabling rigorous checks in many places
-DEBUG = False
+DEBUG = bool(os.environ.get("SYMMRAY_DEBUG", "0").upper() in ("1", "TRUE"))
 
 
 def set_debug(debug):
