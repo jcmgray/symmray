@@ -34,6 +34,7 @@ from .hamiltonians import (
     ham_fermi_hubbard_from_edges,
     ham_fermi_hubbard_spinless_from_edges,
     ham_heisenberg_from_edges,
+    ham_tfim_from_edges,
 )
 from .interface import (
     abs,
@@ -99,6 +100,7 @@ __all__ = (
     "ham_fermi_hubbard_from_edges",
     "ham_fermi_hubbard_spinless_from_edges",
     "ham_heisenberg_from_edges",
+    "ham_tfim_from_edges",
     "isfinite",
     "linalg",
     "log",

@@ -251,7 +251,7 @@ def build_local_fermionic_array(
     )
 
 
-def get_spinless_indexmap(symmetry):
+def get_spinless_charge_indexmap(symmetry):
     """Get a mapping of linear index to charge sector for a spinless
     fermion model.
 
@@ -270,7 +270,7 @@ def get_spinless_indexmap(symmetry):
         raise ValueError(f"Invalid symmetry: {symmetry}")
 
 
-def get_spinful_indexmap(symmetry):
+def get_spinful_charge_indexmap(symmetry):
     """Get a mapping of linear index to charge sector for a spinful
     fermion model.
 
@@ -312,8 +312,9 @@ def fermi_hubbard_spinless_local_array(
         The hopping parameter, by default 1.0.
     V : float, optional
         The nearest-neighbor interaction parameter, by default 8.0.
-    mu : float, optional
-        The chemical potential, by default 0.0.
+    mu : float or (float, float), optional
+        The chemical potential, by default 0.0. If a tuple, then the chemical
+        potential is different for each site.
     coordinations : tuple[int, int], optional
         The coordinations of the sites, by default (1, 1). If applying this
         local operator to every edge in a graph, then the single site
@@ -329,6 +330,11 @@ def fermi_hubbard_spinless_local_array(
     """
     a, b = map(FermionicOperator, "ab")
 
+    try:
+        mua, mub = mu
+    except TypeError:
+        mua = mub = mu
+
     terms = (
         # hopping
         (-t, (a.dag, b)),
@@ -337,14 +343,14 @@ def fermi_hubbard_spinless_local_array(
         (V, (a.dag, a, b.dag, b)),
         # chemical potential
         # mu is single site and will be overcounted without coordinations
-        (-mu / coordinations[0], (a.dag, a)),
-        (-mu / coordinations[1], (b.dag, b)),
+        (-mua / coordinations[0], (a.dag, a)),
+        (-mub / coordinations[1], (b.dag, b)),
     )
 
     basis_a = ((), (a.dag,))
     basis_b = ((), (b.dag,))
     bases = (basis_a, basis_b)
-    indexmap = get_spinless_indexmap(symmetry)
+    indexmap = get_spinless_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,
@@ -374,10 +380,17 @@ def fermi_hubbard_local_array(
         The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
     t : float, optional
         The hopping parameter, by default 1.0.
-    U : float, optional
-        The interaction parameter, by default 8.0.
-    mu : float, optional
-        The chemical potential, by default 0.0.
+    U : float or (float, float), optional
+        The interaction parameter, by default 8.0. If a tuple, then the
+        interaction parameter is different for each site.
+    mu : float or (float, float), optional
+        The chemical potential, by default 0.0. If a tuple, then the chemical
+        potential is different for each site.
+    coordinations : tuple[int, int], optional
+        The coordinations of the sites, by default (1, 1). If applying this
+        local operator to every edge in a graph, then the single site
+        contributions can be properly accounted for if the coordinations are
+        provided.
     like : str, optional
         The backend to use, by default "numpy".
 
@@ -391,24 +404,34 @@ def fermi_hubbard_local_array(
     bu = FermionicOperator("bu")
     bd = FermionicOperator("bd")
 
+    try:
+        Ua, Ub = U
+    except TypeError:
+        Ua = Ub = U
+
+    try:
+        mua, mub = mu
+    except TypeError:
+        mua = mub = mu
+
     terms = [
         (-t, (au.dag, bu)),
         (-t, (bu.dag, au)),
         (-t, (ad.dag, bd)),
         (-t, (bd.dag, ad)),
         # U, mu are single site and will be overcounted without coordinations
-        (U / coordinations[0], (au.dag, au, ad.dag, ad)),
-        (U / coordinations[1], (bu.dag, bu, bd.dag, bd)),
-        (-mu / coordinations[0], (au.dag, au)),
-        (-mu / coordinations[0], (ad.dag, ad)),
-        (-mu / coordinations[1], (bu.dag, bu)),
-        (-mu / coordinations[1], (bd.dag, bd)),
+        (Ua / coordinations[0], (au.dag, au, ad.dag, ad)),
+        (Ub / coordinations[1], (bu.dag, bu, bd.dag, bd)),
+        (-mua / coordinations[0], (au.dag, au)),
+        (-mua / coordinations[0], (ad.dag, ad)),
+        (-mub / coordinations[1], (bu.dag, bu)),
+        (-mub / coordinations[1], (bd.dag, bd)),
     ]
 
     basis_a = ((), (ad.dag,), (au.dag,), (au.dag, ad.dag))
     basis_b = ((), (bd.dag,), (bu.dag,), (bu.dag, bd.dag))
     bases = [basis_a, basis_b]
-    indexmap = get_spinful_indexmap(symmetry)
+    indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,
@@ -439,7 +462,7 @@ def fermi_number_operator_spinless_local_array(symmetry, like="numpy"):
 
     terms = [(1, (a.dag, a))]
     bases = [((), (a.dag,))]
-    indexmap = get_spinless_indexmap(symmetry)
+    indexmap = get_spinless_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,
@@ -475,7 +498,7 @@ def fermi_number_operator_spinful_local_array(symmetry, like="numpy"):
     terms = [(1, (au.dag, au)), (1, (ad.dag, ad))]
     # |00>, |01>, |10>, |11>
     bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
-    indexmap = get_spinful_indexmap(symmetry)
+    indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,
@@ -511,7 +534,7 @@ def fermi_spin_operator_local_array(symmetry, like="numpy"):
     terms = [(0.5, (au.dag, au)), (-0.5, (ad.dag, ad))]
     # |00>, |01>, |10>, |11>
     bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
-    indexmap = get_spinful_indexmap(symmetry)
+    indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
         terms,

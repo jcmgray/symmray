@@ -68,6 +68,7 @@ be returned by calling `to_dense` on the array, and a similarly defined
 
 Along with constructors for common hamiltonians:
 
+- `ham_tfim_from_edges`
 - `ham_heisenberg_from_edges`
 - `ham_fermi_hubbard_from_edges`
 - `ham_fermi_hubbard_spinless_from_edges` (AKA 't-V' model)
