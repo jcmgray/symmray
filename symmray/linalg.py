@@ -367,18 +367,20 @@ def svd_truncated(
 
     # absorb the singular values block by block
     for c0, c1 in U.sectors:
-        if absorb == -1:
+        if absorb in (-1, "left"):
             U.blocks[(c0, c1)] = U.blocks[(c0, c1)] * s.blocks[c1].reshape(
                 (1, -1)
             )
-        elif absorb == 1:
+        elif absorb in (1, "right"):
             VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)] * s.blocks[c1].reshape(
                 (-1, 1)
             )
-        elif absorb == 0:
+        elif absorb in (0, "both"):
             s_sqrt = ar.do("sqrt", s.blocks[c1], like=backend)
             U.blocks[(c0, c1)] = U.blocks[(c0, c1)] * s_sqrt.reshape((1, -1))
             VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)] * s_sqrt.reshape((-1, 1))
+        else:
+            raise ValueError(f"Unknown absorb value: {absorb}")
 
     if DEBUG:
         U.check()
