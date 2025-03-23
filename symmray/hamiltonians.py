@@ -199,13 +199,14 @@ def ham_fermi_hubbard_from_edges(
 
     t_factory = make_edge_factory(t)
     U_factory = make_node_factory(U)
+    mu_factory = make_node_factory(mu)
 
     return {
         (cooa, coob): fermi_hubbard_local_array(
             symmetry,
             t=t_factory(cooa, coob),
             U=(U_factory(cooa), U_factory(coob)),
-            mu=mu,
+            mu=(mu_factory(cooa), mu_factory(coob)),
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
         )
