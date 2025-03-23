@@ -6,6 +6,7 @@ import hashlib
 import itertools
 import math
 import operator
+import os
 import pickle
 import warnings
 from collections import OrderedDict, defaultdict
@@ -803,8 +804,30 @@ def calc_fuse_block_info(self, axes_groups):
 
 
 _fuseinfos = OrderedDict()
-_fuseinfo_cache_maxsize = 2**14
-_fuseinfo_cache_maxsectors = 2**10
+
+try:
+    _fuseinfo_cache_maxsize = int(os.environ["SYMMRAY_FUSE_CACHE_MAXSIZE"])
+    print(
+        f"Using SYMMRAY_FUSE_CACHE_MAXSIZE={_fuseinfo_cache_maxsize}."
+    )
+except KeyError:
+    _fuseinfo_cache_maxsize = 8192
+except (TypeError, ValueError):
+    print("SYMMRAY_FUSE_CACHE_MAXSIZE must be an integer, using default.")
+    _fuseinfo_cache_maxsize = 8192
+
+try:
+    _fuseinfo_cache_maxsectors = int(
+        os.environ["SYMMRAY_FUSE_CACHE_MAXSECTORS"]
+    )
+    print(
+        f"Using SYMMRAY_FUSE_CACHE_MAXSECTORS={_fuseinfo_cache_maxsectors}."
+    )
+except KeyError:
+    _fuseinfo_cache_maxsectors = 512
+except (TypeError, ValueError):
+    print("SYMMRAY_FUSE_CACHE_MAXSECTORS must be an integer, using default.")
+    _fuseinfo_cache_maxsectors = 512
 
 _fi_missed = 0
 _fi_hit = 0
@@ -825,7 +848,11 @@ def cached_fuse_block_info(self, axes_groups):
     This is a LRU cache that also skips caching if there are too many sectors.
     """
 
-    if len(self.blocks) > _fuseinfo_cache_maxsectors:
+    if _fuseinfo_cache_maxsize == 0:
+        # cache disabled
+        return calc_fuse_block_info(self, axes_groups)
+
+    if (len(self.blocks) > _fuseinfo_cache_maxsectors):
         # too many sectors to cache
         global _fi_missed_too_long
         _fi_missed_too_long += 1
@@ -1012,7 +1039,7 @@ def _fuse_blocks_via_concat(
     }
 
 
-_AbelianArray_slots = (
+_abelian_array_slots = (
     "_indices",
     "_blocks",
     "_charge",
@@ -1037,7 +1064,7 @@ class AbelianArray(BlockBase):
         The symmetry of the array, if not using a specific symmetry class.
     """
 
-    __slots__ = _AbelianArray_slots
+    __slots__ = _abelian_array_slots
     fermionic = False
     static_symmetry = False
 
@@ -1275,6 +1302,13 @@ class AbelianArray(BlockBase):
                     f"expected shape {self.get_block_shape(sector)} "
                     f"for sector {sector}."
                 )
+
+            if not ar.do(
+                "all",
+                ar.do("isfinite", array, like=self.backend),
+                like=self.backend,
+            ):
+                raise ValueError(f"Block {sector} contains non-finite values.")
 
     def check_chargemaps_aligned(self):
         """Check that the chargemaps of the indices are consistent with the
@@ -2676,7 +2710,7 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
 class Z2Array(AbelianArray):
     """A block array with Z2 symmetry."""
 
-    __slots__ = _AbelianArray_slots
+    __slots__ = _abelian_array_slots
     static_symmetry = True
 
     @staticmethod
@@ -2712,7 +2746,7 @@ class Z2Array(AbelianArray):
 class U1Array(AbelianArray):
     """A block array with U1 symmetry."""
 
-    __slots__ = _AbelianArray_slots
+    __slots__ = _abelian_array_slots
     static_symmetry = True
 
     @staticmethod
@@ -2761,7 +2795,7 @@ class U1Array(AbelianArray):
 class Z2Z2Array(AbelianArray):
     """A block array with Z2 x Z2 symmetry."""
 
-    __slots__ = _AbelianArray_slots
+    __slots__ = _abelian_array_slots
     static_symmetry = True
 
     @staticmethod
@@ -2777,7 +2811,7 @@ class Z2Z2Array(AbelianArray):
 class U1U1Array(AbelianArray):
     """A block array with U1 x U1 symmetry."""
 
-    __slots__ = _AbelianArray_slots
+    __slots__ = _abelian_array_slots
     static_symmetry = True
 
     @staticmethod
