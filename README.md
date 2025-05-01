@@ -34,7 +34,31 @@ the ``symmray`` namespace directly:
 ```python
 import symmray as sr
 
-z = sr.tensordot(x, y, axes=[(5, 2), (3, 7)])
+# create some random arrays:
+x = sr.utils.get_rand("Z2", shape=[2, 3, 4, 5], duals=[0, 1, 0, 1], fermionic=True)
+y = sr.utils.get_rand("Z2", shape=[3, 2, 5, 4], duals=[0, 1, 0, 1], fermionic=True)
+x, y
+# (Z2FermionicArray(shape~(2, 3, 4, 5):[+-+-], charge=0, num_blocks=8),
+#  Z2FermionicArray(shape~(3, 2, 5, 4):[+-+-], charge=0, num_blocks=8))
+
+# contract them:
+z = sr.tensordot(x, y, axes=[(0, 2), (1, 3)])
+z
+# Z2FermionicArray(shape~(3, 5, 3, 5):[--++], charge=0, num_blocks=8)
+
+print(z)
+# Z2FermionicArray(ndim=4, charge=0, indices=[
+#     (3 = 1+2 : -[0,1])
+#     (5 = 4+1 : -[0,1])
+#     (3 = 2+1 : +[0,1])
+#     (5 = 3+2 : +[0,1])
+# ], num_blocks=8, backend=numpy, dtype=float64)
+
+# fuse and decompose:
+sr.linalg.svd(z.fuse((0, 3), (1, 2)))
+# (Z2FermionicArray(shape~(15, 13):[--], charge=0, num_blocks=2),
+#  BlockVector(total_size=13, num_blocks=2),
+#  Z2FermionicArray(shape~(13, 15):[+-], charge=0, num_blocks=2))
 ```
 
 or you can use the automatic dispatch library `autoray` to support multiple
@@ -500,7 +524,22 @@ Some notable other libraries with overlapping functionality:
 
 ## References
 
-An incomplete but helpful list:
+This library was developed in part for the work:
+
+"Fermionic tensor network contraction for arbitrary geometries" - *Yang Gao, Huanchen Zhai, Johnnie Gray, Ruojing Peng, Gunhee Park, Wen-Yuan Liu, Eirik F. Kjønstad, Garnet Kin-Lic Chan* - https://arxiv.org/abs/2410.02215
+
+If `symmray` has been useful to you, and to encourage development, please consider citing it.
+
+```bibtex
+@article{gao2024fermionic,
+  title={Fermionic tensor network contraction for arbitrary geometries},
+  author={Gao, Yang and Zhai, Huanchen and Gray, Johnnie and Peng, Ruojing and Park, Gunhee and Liu, Wen-Yuan and Kjønstad, Eirik F and Chan, Garnet Kin-Lic},
+  journal={arXiv preprint arXiv:2410.02215},
+  year={2024}
+}
+```
+
+The following is a very incomplete list of other helpful references:
 
 **Abelian symmetries**:
 
