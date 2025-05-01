@@ -509,6 +509,78 @@ def fermi_number_operator_spinful_local_array(symmetry, like="numpy"):
     )
 
 
+def fermi_number_up_local_array(symmetry, like="numpy"):
+    """Construct the 'up' fermionic number operator for the Fermi-Hubbard
+    model. The indices are ordered as (a, a'), with the local basis like
+    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
+    spin respectively for single site `a`.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array : FermionicArray
+        The local operator in fermionic array form.
+    """
+    au = FermionicOperator("au")
+    ad = FermionicOperator("ad")
+
+    # nup
+    terms = [(1, (au.dag, au))]
+    # |00>, |01>, |10>, |11>
+    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+    )
+
+
+def fermi_number_down_local_array(symmetry, like="numpy"):
+    """Construct the 'down' fermionic number operator for the Fermi-Hubbard
+    model. The indices are ordered as (a, a'), with the local basis like
+    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
+    spin respectively for single site `a`.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+
+    Returns
+    -------
+    array : FermionicArray
+        The local operator in fermionic array form.
+    """
+    au = FermionicOperator("au")
+    ad = FermionicOperator("ad")
+
+    # nup
+    terms = [(1, (ad.dag, ad))]
+    # |00>, |01>, |10>, |11>
+    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+    )
+
+
 def fermi_spin_operator_local_array(symmetry, like="numpy"):
     """Construct the fermionic spin operator for the Fermi-Hubbard model. The
     indices are ordered as (a, a'), with the local basis like

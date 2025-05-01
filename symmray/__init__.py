@@ -26,8 +26,10 @@ from .fermionic_local_operators import (
     build_local_fermionic_elements,
     fermi_hubbard_local_array,
     fermi_hubbard_spinless_local_array,
+    fermi_number_down_local_array,
     fermi_number_operator_spinful_local_array,
     fermi_number_operator_spinless_local_array,
+    fermi_number_up_local_array,
     fermi_spin_operator_local_array,
 )
 from .hamiltonians import (
@@ -89,8 +91,10 @@ __all__ = (
     "expand_dims",
     "fermi_hubbard_local_array",
     "fermi_hubbard_spinless_local_array",
+    "fermi_number_down_local_array",
     "fermi_number_operator_spinful_local_array",
     "fermi_number_operator_spinless_local_array",
+    "fermi_number_up_local_array",
     "fermi_spin_operator_local_array",
     "FermionicArray",
     "FermionicOperator",
