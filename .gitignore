@@ -134,3 +134,4 @@ dmypy.json
 .vscode
 
 symmray/_version.py
+notebooks

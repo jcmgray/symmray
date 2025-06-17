@@ -51,39 +51,34 @@ def sign_tuple(charge, dual=True):
     return tuple(sign_scalar(c, dual) for c in charge)
 
 
-class Z2(Symmetry):
-    __slots__ = ()
+class ZN(Symmetry):
+    __slots__ = ("N",)
 
     def valid(self, *charges: int) -> bool:
-        return all(charge in {0, 1} for charge in charges)
+        return all(charge in range(self.N) for charge in charges)
 
     def combine(self, *charges: int) -> int:
-        return sum(charges) % 2
-
-    def sign(self, charge: int, dual=True) -> int:
-        # Z2 is self-inverse
-        return charge
-
-    def parity(self, charge: int) -> int:
-        return charge % 2
-
-
-class Z4(Symmetry):
-    __slots__ = ()
-
-    def valid(self, *charges: int) -> bool:
-        return all(charge in {0, 1, 2, 3} for charge in charges)
-
-    def combine(self, *charges: int) -> int:
-        return sum(charges) % 4
+        return sum(charges) % self.N
 
     def sign(self, charge: int, dual=True) -> int:
         if dual:
-            return 4 - charge
+            return (self.N - charge) % self.N
         return charge
 
     def parity(self, charge: int) -> int:
         return charge % 2
+
+
+class Z2(ZN):
+    N = 2
+
+    def sign(self, charge: int, dual=True) -> int:
+        # shortcut: Z2 is self-inverse
+        return charge
+
+
+class Z4(ZN):
+    N = 4
 
 
 class U1(Symmetry):

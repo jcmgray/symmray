@@ -807,9 +807,7 @@ _fuseinfos = OrderedDict()
 
 try:
     _fuseinfo_cache_maxsize = int(os.environ["SYMMRAY_FUSE_CACHE_MAXSIZE"])
-    print(
-        f"Using SYMMRAY_FUSE_CACHE_MAXSIZE={_fuseinfo_cache_maxsize}."
-    )
+    print(f"Using SYMMRAY_FUSE_CACHE_MAXSIZE={_fuseinfo_cache_maxsize}.")
 except KeyError:
     _fuseinfo_cache_maxsize = 8192
 except (TypeError, ValueError):
@@ -820,9 +818,7 @@ try:
     _fuseinfo_cache_maxsectors = int(
         os.environ["SYMMRAY_FUSE_CACHE_MAXSECTORS"]
     )
-    print(
-        f"Using SYMMRAY_FUSE_CACHE_MAXSECTORS={_fuseinfo_cache_maxsectors}."
-    )
+    print(f"Using SYMMRAY_FUSE_CACHE_MAXSECTORS={_fuseinfo_cache_maxsectors}.")
 except KeyError:
     _fuseinfo_cache_maxsectors = 512
 except (TypeError, ValueError):
@@ -852,7 +848,7 @@ def cached_fuse_block_info(self, axes_groups):
         # cache disabled
         return calc_fuse_block_info(self, axes_groups)
 
-    if (len(self.blocks) > _fuseinfo_cache_maxsectors):
+    if len(self.blocks) > _fuseinfo_cache_maxsectors:
         # too many sectors to cache
         global _fi_missed_too_long
         _fi_missed_too_long += 1
@@ -1047,7 +1043,110 @@ _abelian_array_slots = (
 )
 
 
-class AbelianArray(BlockBase):
+class AbelianCommon:
+    @property
+    def signature(self):
+        return "".join("-" if f else "+" for f in self.duals)
+
+    @property
+    def T(self):
+        """The transpose of the block array."""
+        return self.transpose()
+
+    def dagger(self, inplace=False):
+        """Return the adjoint of this block array."""
+        return self.conj(inplace=inplace).transpose(inplace=True)
+
+    @property
+    def H(self):
+        return self.dagger()
+
+    def fuse(
+        self,
+        *axes_groups,
+        expand_empty=True,
+        mode="auto",
+        inplace=False,
+    ):
+        """Fuse the given group or groups of axes. The new fused axes will be
+        inserted at the minimum index of any fused axis (even if it is not in
+        the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
+        produce an array with axes like::
+
+            groups inserted at axis 2, removed beyond that.
+                   ......<--
+            (0, 1, g0, g1, 4, 8, ...)
+                   |   |
+                   |   g1=(7, 2, 6)
+                   g0=(5, 3)
+
+        The fused axes will carry subindex information, which can be used to
+        automatically unfuse them back into their original components.
+        Depending on `expand_empty`, any empty groups can be expanded to new
+        singlet dimensions, or simply ignored.
+
+        Parameters
+        ----------
+        axes_groups : Sequence[Sequence[int]]
+            The axes to fuse. Each group of axes will be fused into a single
+            axis.
+        expand_empty : bool, optional
+            Whether to expand empty groups into new axes.
+        mode : "auto", "insert", "concat", optional
+            The method to use for fusing. `"insert"` creates the new fused
+            blocks and insert the subblocks inplace. `"concat"` recursively
+            concatenates the subblocks, which can be slightly slower but is
+            more compatible with e.g. autodiff. `"auto"` will use `"insert"` if
+            the backend is numpy, otherwise `"concat"`.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianCommon
+        """
+        # handle empty groups and ensure hashable
+        _axes_groups = []
+        _axes_expand = []
+        for ax, group in enumerate(axes_groups):
+            if group:
+                _axes_groups.append(tuple(group))
+            else:
+                _axes_expand.append(ax)
+
+        if _axes_groups:
+            xf = self._fuse_core(*_axes_groups, mode=mode, inplace=inplace)
+        else:
+            xf = self if inplace else self.copy()
+
+        if expand_empty and _axes_expand:
+            g0 = min(g for groups in _axes_groups for g in groups)
+            for ax in _axes_expand:
+                xf.expand_dims(g0 + ax, inplace=True)
+
+        return xf
+
+    def unfuse_all(self, inplace=False):
+        """Unfuse all indices that carry subindex information, likely from a
+        fusing operation.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianCommon
+        """
+        new = self if inplace else self.copy()
+        for ax in reversed(range(self.ndim)):
+            if new.is_fused(ax):
+                new.unfuse(ax, inplace=True)
+        return new
+
+
+class AbelianArray(AbelianCommon, BlockBase):
     """A block sparse array with symmetry constraints.
 
     Parameters
@@ -1186,6 +1285,12 @@ class AbelianArray(BlockBase):
     def ndim(self):
         """The number of dimensions/indices."""
         return len(self._indices)
+
+    def is_fused(self, ax):
+        """Does axis `ax` carry subindex information, i.e., is it a fused
+        index?
+        """
+        return self.indices[ax].subinfo is not None
 
     def sync_charges(self, inplace=False):
         """Given the blocks currently present, adjust the index chargemaps to
@@ -1488,7 +1593,7 @@ class AbelianArray(BlockBase):
 
     @classmethod
     def from_blocks(
-        cls, blocks, duals, charge=None, symmetry=symmetry, **kwargs
+        cls, blocks, duals, charge=None, symmetry=None, **kwargs
     ):
         """Create a block array from a dictionary of blocks and sequence of
         duals.
@@ -1722,19 +1827,6 @@ class AbelianArray(BlockBase):
             },
         )
 
-    @property
-    def T(self):
-        """The transpose of the block array."""
-        return self.transpose()
-
-    def dagger(self, inplace=False):
-        """Return the adjoint of this block array."""
-        return self.conj(inplace=inplace).transpose(inplace=True)
-
-    @property
-    def H(self):
-        return self.dagger()
-
     def squeeze(self, axis=None, inplace=False):
         """Squeeze the block array, removing axes of size 1.
 
@@ -1797,7 +1889,9 @@ class AbelianArray(BlockBase):
             The charge to insert at the new axis. If not given, a zero charge
             will be inserted.
         dual : bool, optional
-            The dual-ness of the new index.
+            The dual-ness of the new index. If not given, it will be inherited
+            from the axis before or after, if any. If there is no axis before
+            or after, it will default to `False`.
         inplace : bool, optional
             Whether to perform the operation inplace.
 
@@ -1929,71 +2023,6 @@ class AbelianArray(BlockBase):
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
 
-    def fuse(
-        self,
-        *axes_groups,
-        expand_empty=True,
-        mode="auto",
-        inplace=False,
-    ):
-        """Fuse the given group or groups of axes. The new fused axes will be
-        inserted at the minimum index of any fused axis (even if it is not in
-        the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
-        produce an array with axes like::
-
-            groups inserted at axis 2, removed beyond that.
-                   ......<--
-            (0, 1, g0, g1, 4, 8, ...)
-                   |   |
-                   |   g1=(7, 2, 6)
-                   g0=(5, 3)
-
-        The fused axes will carry subindex information, which can be used to
-        automatically unfuse them back into their original components.
-        Depending on `expand_empty`, any empty groups can be expanded to new
-        singlet dimensions, or simply ignored.
-
-        Parameters
-        ----------
-        axes_groups : Sequence[Sequence[int]]
-            The axes to fuse. Each group of axes will be fused into a single
-            axis.
-        expand_empty : bool, optional
-            Whether to expand empty groups into new axes.
-        mode : "auto", "insert", "concat", optional
-            The method to use for fusing. `"insert"` creates the new fused
-            blocks and insert the subblocks inplace. `"concat"` recursively
-            concatenates the subblocks, which can be slightly slower but is
-            more compatible with e.g. autodiff. `"auto"` will use `"insert"` if
-            the backend is numpy, otherwise `"concat"`.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-        """
-        # handle empty groups and ensure hashable
-        _axes_groups = []
-        _axes_expand = []
-        for ax, group in enumerate(axes_groups):
-            if group:
-                _axes_groups.append(tuple(group))
-            else:
-                _axes_expand.append(ax)
-
-        if _axes_groups:
-            xf = self._fuse_core(*_axes_groups, mode=mode, inplace=inplace)
-        else:
-            xf = self if inplace else self.copy()
-
-        if expand_empty and _axes_expand:
-            g0 = min(g for groups in _axes_groups for g in groups)
-            for ax in _axes_expand:
-                xf.expand_dims(g0 + ax, inplace=True)
-
-        return xf
-
     def unfuse(self, axis, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
         likely generated automatically from a fusing operation.
@@ -2055,25 +2084,6 @@ class AbelianArray(BlockBase):
             return self.modify(indices=new_indices, blocks=new_blocks)
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
-
-    def unfuse_all(self, inplace=False):
-        """Unfuse all indices that carry subindex information, likely from a
-        fusing operation.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-        """
-        new = self if inplace else self.copy()
-        for ax in reversed(range(self.ndim)):
-            if new.indices[ax].subinfo is not None:
-                new.unfuse(ax, inplace=True)
-        return new
 
     def reshape(self, newshape, inplace=False):
         """Reshape this abelian array to ``newshape``, assuming it can be done
@@ -2345,8 +2355,6 @@ class AbelianArray(BlockBase):
         return "\n".join(lines)
 
     def __repr__(self):
-        pattern = "".join("-" if f else "+" for f in self.duals)
-
         if self.static_symmetry:
             c = f"{self.__class__.__name__}("
         else:
@@ -2356,11 +2364,11 @@ class AbelianArray(BlockBase):
             [
                 c,
                 (
-                    f"shape~{self.shape}:[{pattern}]"
+                    f"shape~{self.shape}:[{self.signature}]"
                     if self.indices
                     else f"{self.get_any_array()}"
                 ),
-                f", charge={self._charge}",
+                f", charge={self.charge}",
                 f", num_blocks={self.num_blocks})",
             ]
         )
@@ -2571,7 +2579,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
     # unfuse result into (*left_axes, *right_axes)
     for ax in reversed(range(cf.ndim)):
-        if cf.indices[ax].subinfo is not None:
+        if cf.is_fused(ax):
             AbelianArray.unfuse(cf, ax, inplace=True)
 
     return cf
