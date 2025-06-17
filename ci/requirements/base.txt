@@ -1,5 +1,6 @@
 autoray
 coverage
+einops
 numpy
 pytest
 pytest-cov
