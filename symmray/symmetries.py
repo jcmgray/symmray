@@ -68,6 +68,9 @@ class ZN(Symmetry):
     def parity(self, charge: int) -> int:
         return charge % 2
 
+    def __reduce__(self):
+        return (get_zn_symmetry_cls, (self.N,))
+
 
 class Z2(ZN):
     N = 2
@@ -77,8 +80,12 @@ class Z2(ZN):
         return charge
 
 
-class Z4(ZN):
-    N = 4
+@functools.cache
+def get_zn_symmetry_cls(N: int) -> type:
+    """Get a ZN symmetry class."""
+    if N == 2:
+        return Z2
+    return type(f"Z{N}", (ZN,), {"N": N})
 
 
 class U1(Symmetry):
@@ -162,19 +169,23 @@ def get_symmetry(symmetry: str | Symmetry) -> Symmetry:
     Symmetry
         The symmetry object.
     """
-    if symmetry == "Z2":
+    import re
+
+    if isinstance(symmetry, Symmetry):
+        return symmetry
+    elif symmetry == "Z2":
         return Z2()
-    elif symmetry == "Z4":
-        return Z4()
+    elif m := re.fullmatch(r"Z(\d+)", symmetry):
+        N = int(m.group(1))
+        return get_zn_symmetry_cls(N)()
     elif symmetry == "U1":
         return U1()
     elif symmetry == "Z2Z2":
         return Z2Z2()
     elif symmetry == "U1U1":
         return U1U1()
-    elif isinstance(symmetry, Symmetry):
-        return symmetry
-    raise ValueError(f"Unknown symmetry: {symmetry}")
+    else:
+        raise ValueError(f"Unknown symmetry: {symmetry}")
 
 
 @functools.lru_cache(maxsize=2**15)

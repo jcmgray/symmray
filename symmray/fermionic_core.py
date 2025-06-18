@@ -908,17 +908,9 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
 
 
 class Z2FermionicArray(FermionicArray):
-    __slots__ = _fermionic_array_slots
-    static_symmetry = True
+    """A fermionic block array with Z2 symmetry."""
 
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        Z2 = get_symmetry("Z2")
-
-        if (symmetry is not None) and (symmetry != Z2):
-            raise ValueError(f"Expected Z2 symmetry, got {symmetry}.")
-
-        return Z2
+    static_symmetry = get_symmetry("Z2")
 
     def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
@@ -945,18 +937,23 @@ class Z2FermionicArray(FermionicArray):
         return data
 
 
+def get_zn_fermionic_array_cls(n):
+    """Get a fermionic block array class with ZN symmetry."""
+
+    if n == 2:
+        return Z2FermionicArray
+
+    return type(
+        f"Z{n}FermionicArray",
+        (FermionicArray,),
+        {"static_symmetry": get_symmetry(f"Z{n}")},
+    )
+
+
 class U1FermionicArray(FermionicArray):
-    __slots__ = _fermionic_array_slots
-    static_symmetry = True
+    """A fermionic block array with U1 symmetry."""
 
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        U1 = get_symmetry("U1")
-
-        if (symmetry is not None) and (symmetry != U1):
-            raise ValueError(f"Expected U1 symmetry, got {symmetry}.")
-
-        return U1
+    static_symmetry = get_symmetry("U1")
 
     def to_pyblock3(self, flat=False):
         from pyblock3.algebra.fermion import SparseFermionTensor, SubTensor
@@ -984,28 +981,12 @@ class U1FermionicArray(FermionicArray):
 
 
 class Z2Z2FermionicArray(FermionicArray):
-    __slots__ = _fermionic_array_slots
-    static_symmetry = True
+    """A fermionic block array with Z2 x Z2 symmetry."""
 
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        Z2Z2 = get_symmetry("Z2Z2")
-
-        if (symmetry is not None) and (symmetry != Z2Z2):
-            raise ValueError(f"Expected Z2Z2 symmetry, got {symmetry}.")
-
-        return Z2Z2
+    static_symmetry = get_symmetry("Z2Z2")
 
 
 class U1U1FermionicArray(FermionicArray):
-    __slots__ = _fermionic_array_slots
-    static_symmetry = True
+    """A fermionic block array with U1 x U1 symmetry."""
 
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        U1U1 = get_symmetry("U1U1")
-
-        if (symmetry is not None) and (symmetry != U1U1):
-            raise ValueError(f"Expected U1U1 symmetry, got {symmetry}.")
-
-        return U1U1
+    static_symmetry = get_symmetry("U1U1")

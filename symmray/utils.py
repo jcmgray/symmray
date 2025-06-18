@@ -1,3 +1,4 @@
+import functools
 import os
 
 # a simple flag for enabling rigorous checks in many places
@@ -63,18 +64,67 @@ def get_random_fill_fn(
     return fill_fn
 
 
-def rand_z2_index(
+def rand_partition(d, n, seed=None):
+    """Randomly partition `d` into `n` sizes each of size at least 1."""
+    if d == n:
+        return [1] * n
+
+    rng = get_rng(seed)
+
+    if n == 2:
+        # cut in two
+        s = int(rng.integers(1, d))
+        return [s, d - s]
+
+    # cut into 3 or more
+    splits = (
+        0,
+        *sorted(rng.choice(range(1, d - 1), size=n - 1, replace=False)),
+        d,
+    )
+    return [int(splits[i + 1] - splits[i]) for i in range(n)]
+
+
+def get_zn_charges(ncharge, order):
+    """Get a list of ``ncharge`` distinct ZN charges that are as close to
+    0 or |G| as possible, with a slight bias towards positive charges.
+
+    Parameters
+    ----------
+    ncharge : int
+        The number of distinct charges to get.
+    order : int
+        The order (i.e. size, N) of the cyclic group ZN.
+
+    Returns
+    -------
+    charges : list[int]
+        A list of `ncharge <= order` distinct ZN charges.
+    """
+    if ncharge >= order:
+        return list(range(order))
+
+    # get charges 'close to' zero / |G|
+    return sorted(
+        c % order for c in range(-ncharge // 2 + 1, +ncharge // 2 + 1)
+    )
+
+
+def rand_zn_index(
     d,
+    order,
     dual=None,
     subsizes=None,
     seed=None,
 ):
-    """Generate a random Z2 index with the given dimension.
+    """Generate a random ZN index with the given dimension and order.
 
     Parameters
     ----------
     d : int or dict
         The total size of the index. If a dict, an explicit chargemap.
+    order : int
+        The order (i.e. size, N) of the cyclic group ZN.
     dual : bool, optional
         The dualness of the index. If None, it is randomly chosen.
     subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
@@ -104,49 +154,45 @@ def rand_z2_index(
         dual = rng.choice([False, True])
 
     if isinstance(d, dict):
+        # charges and sizes given explicitly
         return sr.BlockIndex(chargemap=d, dual=dual)
 
     if d == 1:
+        # can only have one charge sector
         if subsizes is None:
-            charge = int(rng.choice([0, 1]))
+            charge = int(rng.integers(order))
         else:
             charge = 0
         return sr.BlockIndex(chargemap={charge: 1}, dual=dual)
 
     if subsizes is None:
-        # randomly distributed
-        d0 = int(rng.integers(1, d))
-        d1 = d - d0
+        # randomly distributed over all
+        ncharge = min(d, order)
+        subsizes = rand_partition(d, ncharge, seed=rng)
 
     elif subsizes in ("equal", "maximal"):
-        # spread over both charge sectors
-        d0 = d // 2
-        d1 = d - d0
+        # round-robin == maximal spread
+        ncharge = min(d, order)
+        subsizes = [
+            d // ncharge + int(i < d % ncharge) for i in range(ncharge)
+        ]
 
     elif subsizes == "minimal":
         # all in zero charge sector
-        d0 = d
-        d1 = 0
+        ncharge = 1
+        subsizes = [d]
 
     else:
         # sizes given explicitly
-        d0, d1 = subsizes
+        ncharge = len(subsizes)
 
-    return sr.BlockIndex(chargemap={0: d0, 1: d1}, dual=dual)
+    charges = get_zn_charges(ncharge, order)
+    chargemap = dict(zip(charges, subsizes))
+
+    return sr.BlockIndex(chargemap=chargemap, dual=dual)
 
 
-def rand_partition(d, n, seed=None):
-    """Randomly partition `d` into `n` sizes each of size at least 1."""
-    if d == n:
-        return [1] * n
-
-    rng = get_rng(seed)
-    splits = (
-        0,
-        *sorted(rng.choice(range(1, d - 1), size=n - 1, replace=False)),
-        d,
-    )
-    return [int(splits[i + 1] - splits[i]) for i in range(n)]
+rand_z2_index = functools.partial(rand_zn_index, order=2)
 
 
 def rand_z2z2_index(
@@ -360,10 +406,11 @@ def choose_duals(duals, ndim):
         return duals
 
 
-def get_rand_z2array(
+def get_rand_znarray(
     shape,
     duals=None,
     charge=0,
+    order=2,
     seed=None,
     dist="normal",
     fermionic=False,
@@ -383,10 +430,16 @@ def get_rand_z2array(
         the first half of the dimensions and True for the second half.
     charge : int, optional
         The total charge of the array.
+    order : int, optional
+        The order (i.e. size, N) of the cyclic group ZN.
     seed : int, optional
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
+    fermionic : bool, optional
+        Whether to generate a fermionic array.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        How to choose the sizes of the charge sectors, see `rand_zn_index`.
 
     Returns
     -------
@@ -398,19 +451,29 @@ def get_rand_z2array(
 
     duals = choose_duals(duals, len(shape))
 
-    if fermionic:
-        cls = sr.Z2FermionicArray
+    if order == 2:
+        if fermionic:
+            cls = sr.Z2FermionicArray
+        else:
+            cls = sr.Z2Array
     else:
-        cls = sr.Z2Array
+        if fermionic:
+            cls = sr.get_zn_fermionic_array_cls(order)
+        else:
+            cls = sr.get_zn_array_cls(order)
 
     return cls.random(
         indices=[
             (
                 d
                 if isinstance(d, sr.BlockIndex)
-                else sr.BlockIndex(d, dual=f)
-                if isinstance(d, dict)
-                else rand_z2_index(d, dual=f, subsizes=subsizes, seed=rng)
+                else rand_zn_index(
+                    d,
+                    order=order,
+                    dual=f,
+                    subsizes=subsizes,
+                    seed=rng,
+                )
             )
             for d, f in zip(shape, duals)
         ],
@@ -419,6 +482,9 @@ def get_rand_z2array(
         dist=dist,
         **kwargs,
     )
+
+
+get_rand_z2array = functools.partial(get_rand_znarray, order=2)
 
 
 def get_rand_z2z2array(
@@ -683,8 +749,13 @@ def get_rand(
     -------
     AbelianArray or FermionicArray
     """
-    if symmetry == "Z2":
-        fn = get_rand_z2array
+    import symmray as sr
+
+    symmetry = sr.get_symmetry(symmetry)
+
+    if isinstance(symmetry, sr.ZN):
+        fn = get_rand_znarray
+        kwargs["order"] = symmetry.N
     elif symmetry == "Z2Z2":
         fn = get_rand_z2z2array
     elif symmetry == "U1":
@@ -811,8 +882,14 @@ def rand_index(
     -------
     BlockIndex
     """
-    if symmetry == "Z2":
-        return rand_z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    import symmray as sr
+
+    symmetry = sr.get_symmetry(symmetry)
+
+    if isinstance(symmetry, sr.ZN):
+        return rand_zn_index(
+            d, order=symmetry.N, dual=dual, subsizes=subsizes, seed=seed
+        )
     elif symmetry == "Z2Z2":
         return rand_z2z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
     elif symmetry == "U1":

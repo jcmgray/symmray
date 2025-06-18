@@ -607,9 +607,7 @@ class Z2FlatArray(AbelianCommon):
 
         if num_groups == 1 and len(axes_groups[0]) == self.ndim:
             # full fuse, only one overall charge, subkeys are all current keys
-            subkeys = {
-                0: ar.do('reshape', self.fkeys, (1, -1, self.ndim))
-            }
+            subkeys = {0: ar.do("reshape", self.fkeys, (1, -1, self.ndim))}
         else:
             subkeys = {
                 g: build_cyclic_keys_by_charge(len(axs), 2, like=self.fkeys)

@@ -8,6 +8,7 @@ from .abelian_core import (
     Z2Z2Array,
     default_tensordot_mode,
     get_default_tensordot_mode,
+    get_zn_array_cls,
     set_default_tensordot_mode,
 )
 from .block_core import (
@@ -19,6 +20,7 @@ from .fermionic_core import (
     U1U1FermionicArray,
     Z2FermionicArray,
     Z2Z2FermionicArray,
+    get_zn_fermionic_array_cls,
 )
 from .fermionic_local_operators import (
     FermionicOperator,
@@ -72,7 +74,16 @@ from .networks import (
     TN_fermionic_from_edges_rand,
     parse_edges_to_site_info,
 )
-from .symmetries import U1, U1U1, Z2, Z2Z2, Symmetry, get_symmetry
+from .symmetries import (
+    U1,
+    U1U1,
+    Z2,
+    Z2Z2,
+    ZN,
+    Symmetry,
+    get_symmetry,
+    get_zn_symmetry_cls,
+)
 
 __all__ = (
     "AbelianArray",
@@ -101,6 +112,9 @@ __all__ = (
     "fuse",
     "get_default_tensordot_mode",
     "get_symmetry",
+    "get_zn_array_cls",
+    "get_zn_symmetry_cls",
+    "get_zn_fermionic_array_cls",
     "ham_fermi_hubbard_from_edges",
     "ham_fermi_hubbard_spinless_from_edges",
     "ham_heisenberg_from_edges",
@@ -143,4 +157,5 @@ __all__ = (
     "Z2Z2",
     "Z2Z2Array",
     "Z2Z2FermionicArray",
+    "ZN",
 )

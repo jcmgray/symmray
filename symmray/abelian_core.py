@@ -1193,10 +1193,16 @@ class AbelianArray(AbelianCommon, BlockBase):
         if DEBUG:
             self.check()
 
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
+    @classmethod
+    def get_class_symmetry(cls, symmetry=None):
         if symmetry is None:
-            raise ValueError("Symmetry must be given.")
+            if not cls.static_symmetry:
+                # symmetry must be given if not static
+                raise ValueError("Symmetry must be given.")
+            symmetry = cls.static_symmetry
+        elif cls.static_symmetry and symmetry != cls.static_symmetry:
+            raise ValueError("Cannot override static symmetry of class.")
+
         return get_symmetry(symmetry)
 
     def copy(self):
@@ -1592,9 +1598,7 @@ class AbelianArray(AbelianCommon, BlockBase):
         )
 
     @classmethod
-    def from_blocks(
-        cls, blocks, duals, charge=None, symmetry=None, **kwargs
-    ):
+    def from_blocks(cls, blocks, duals, charge=None, symmetry=None, **kwargs):
         """Create a block array from a dictionary of blocks and sequence of
         duals.
 
@@ -2718,17 +2722,7 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
 class Z2Array(AbelianArray):
     """A block array with Z2 symmetry."""
 
-    __slots__ = _abelian_array_slots
-    static_symmetry = True
-
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        Z2 = get_symmetry("Z2")
-
-        if (symmetry is not None) and (symmetry != Z2):
-            raise ValueError(f"Expected Z2 symmetry, got {symmetry}.")
-
-        return Z2
+    static_symmetry = get_symmetry("Z2")
 
     def to_pyblock3(self, flat=False):
         from pyblock3.algebra.core import SparseTensor, SubTensor
@@ -2751,20 +2745,22 @@ class Z2Array(AbelianArray):
         return data
 
 
+def get_zn_array_cls(n):
+    """Get a block array class with ZN symmetry."""
+    if n == 2:
+        return Z2Array
+
+    return type(
+        f"Z{n}Array",
+        (AbelianArray,),
+        {"static_symmetry": get_symmetry(f"Z{n}")},
+    )
+
+
 class U1Array(AbelianArray):
     """A block array with U1 symmetry."""
 
-    __slots__ = _abelian_array_slots
-    static_symmetry = True
-
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        U1 = get_symmetry("U1")
-
-        if (symmetry is not None) and (symmetry != U1):
-            raise ValueError(f"Expected U1 symmetry, got {symmetry}.")
-
-        return U1
+    static_symmetry = get_symmetry("U1")
 
     def to_pyblock3(self, flat=False):
         from pyblock3.algebra.core import SparseTensor, SubTensor
@@ -2803,30 +2799,10 @@ class U1Array(AbelianArray):
 class Z2Z2Array(AbelianArray):
     """A block array with Z2 x Z2 symmetry."""
 
-    __slots__ = _abelian_array_slots
-    static_symmetry = True
-
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        Z2Z2 = get_symmetry("Z2Z2")
-
-        if (symmetry is not None) and (symmetry != Z2Z2):
-            raise ValueError(f"Expected Z2Z2 symmetry, got {symmetry}.")
-
-        return Z2Z2
+    static_symmetry = get_symmetry("Z2Z2")
 
 
 class U1U1Array(AbelianArray):
     """A block array with U1 x U1 symmetry."""
 
-    __slots__ = _abelian_array_slots
-    static_symmetry = True
-
-    @staticmethod
-    def get_class_symmetry(symmetry=None):
-        U1U1 = get_symmetry("U1U1")
-
-        if (symmetry is not None) and (symmetry != U1U1):
-            raise ValueError(f"Expected U1U1 symmetry, got {symmetry}.")
-
-        return U1U1
+    static_symmetry = get_symmetry("U1U1")

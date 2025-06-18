@@ -4,7 +4,10 @@ import symmray as sr
 import numpy as np
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+all_symmetries = ["Z2", "Z4", "U1"]
+
+
+@pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
 @pytest.mark.parametrize("seed", range(3))
 def test_fermi_norm(symmetry, subsizes, seed):
@@ -35,7 +38,7 @@ def test_fermi_norm(symmetry, subsizes, seed):
     assert ne == pytest.approx(n4)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+@pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
 @pytest.mark.parametrize("seed", range(3))
 def test_transpose(symmetry, subsizes, seed):
@@ -175,7 +178,7 @@ def test_fuse_with_tensordot(seed):
     assert z_b.allclose(z_reff)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+@pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
 @pytest.mark.parametrize("seed", range(10))
 def test_fuse_unfuse(symmetry, seed, subsizes):
@@ -205,7 +208,7 @@ def test_fuse_unfuse(symmetry, seed, subsizes):
     assert x.allclose(yt)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+@pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
 @pytest.mark.parametrize("seed", range(10))
 def test_fuse_unfuse_matrix(symmetry, seed, subsizes):
@@ -321,7 +324,7 @@ def test_tensordot_vs_pyblock3(seed, method):
     assert float(z) == pytest.approx(expected)
 
 
-@pytest.mark.parametrize("symm", ["Z2", "U1"])
+@pytest.mark.parametrize("symm", all_symmetries)
 def test_einsum_vs_tensordot(symm):
     a = sr.utils.rand_index(symm, 4)
     b = sr.utils.rand_index(symm, 5)
