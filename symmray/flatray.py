@@ -577,7 +577,7 @@ class AbelianArrayFlat(AbelianCommon):
             )
         ]
 
-        print_charge_fusions(old_fkeys, self.duals, axes_groups)
+        # print_charge_fusions(old_fkeys, self.duals, axes_groups)
 
         # then we take slices across these to strore subcharge information
         # for unfusing
