@@ -16,7 +16,7 @@ from autoray.lazy.core import find_full_reshape
 
 from .block_core import BlockBase
 from .interface import tensordot
-from .symmetries import get_symmetry
+from .symmetries import get_symmetry, Symmetry
 from .utils import DEBUG
 
 
@@ -1035,14 +1035,6 @@ def _fuse_blocks_via_concat(
     }
 
 
-_abelian_array_slots = (
-    "_indices",
-    "_blocks",
-    "_charge",
-    "_symmetry",
-)
-
-
 class AbelianCommon:
     @property
     def signature(self):
@@ -1163,9 +1155,9 @@ class AbelianArray(AbelianCommon, BlockBase):
         The symmetry of the array, if not using a specific symmetry class.
     """
 
-    __slots__ = _abelian_array_slots
+    __slots__ = ("_indices", "_blocks", "_charge", "_symmetry")
     fermionic = False
-    static_symmetry = False
+    static_symmetry = None
 
     def __init__(
         self,
@@ -1194,9 +1186,9 @@ class AbelianArray(AbelianCommon, BlockBase):
             self.check()
 
     @classmethod
-    def get_class_symmetry(cls, symmetry=None):
+    def get_class_symmetry(cls, symmetry=None) -> Symmetry:
         if symmetry is None:
-            if not cls.static_symmetry:
+            if cls.static_symmetry is None:
                 # symmetry must be given if not static
                 raise ValueError("Symmetry must be given.")
             symmetry = cls.static_symmetry
@@ -1248,7 +1240,7 @@ class AbelianArray(AbelianCommon, BlockBase):
         return self
 
     @property
-    def symmetry(self):
+    def symmetry(self) -> Symmetry:
         """The symmetry object of the array."""
         return self._symmetry
 
@@ -2339,6 +2331,18 @@ class AbelianArray(AbelianCommon, BlockBase):
             # no aligned blocks, return zero
             return 0.0
 
+    def to_flat(self):
+        """
+        """
+        from .symmetries import ZN
+        from .flatray import get_zn_array_flat_cls
+
+        if not isinstance(self.symmetry, ZN):
+            raise ValueError("Only ZN symmetry supported.")
+
+        cls = get_zn_array_flat_cls(self.symmetry.N)
+        return cls.from_blocksparse(self)
+
     def __str__(self):
         lines = [
             (
@@ -2359,7 +2363,7 @@ class AbelianArray(AbelianCommon, BlockBase):
         return "\n".join(lines)
 
     def __repr__(self):
-        if self.static_symmetry:
+        if self.static_symmetry is not None:
             c = f"{self.__class__.__name__}("
         else:
             c = f"{self.__class__.__name__}{self.symmetry}("
@@ -2745,6 +2749,7 @@ class Z2Array(AbelianArray):
         return data
 
 
+@functools.cache
 def get_zn_array_cls(n):
     """Get a block array class with ZN symmetry."""
     if n == 2:

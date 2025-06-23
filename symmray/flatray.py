@@ -1,14 +1,19 @@
+import functools
 import math
+from itertools import repeat
 
 import autoray as ar
+
 from symmray.abelian_core import (
     AbelianCommon,
-    Z2Array,
     calc_fuse_group_info,
+    get_zn_array_cls,
 )
 
 
 class FuseInfo:
+    """Information required to unfuse a fused index."""
+
     def __init__(self, subkeys, extents, duals, fuseinfos=None):
         self.subkeys = subkeys
         subkey_shape = ar.do("shape", subkeys)
@@ -144,7 +149,14 @@ def build_cyclic_keys_all(ndim, order=2, flat=False, like=None):
     return keys
 
 
-def build_cyclic_keys_conserve(ndim, order=2, charge=0, flat=False, like=None):
+def build_cyclic_keys_conserve(
+    ndim,
+    order=2,
+    charge=0,
+    duals=None,
+    flat=False,
+    like=None,
+):
     """For cyclic group of order `order`, build all possible subkeys of
     length `ndim` with overall charge `charge`, in lexicographic order.
 
@@ -187,8 +199,15 @@ def build_cyclic_keys_conserve(ndim, order=2, charge=0, flat=False, like=None):
             )
             keys[selector] = i
 
-    # keys = ar.do("reshape", keys, (-1, ndim))
-    keys[..., -1] = (charge - (ar.do("sum", keys, axis=-1))) % order
+    if duals is not None:
+        signs = ar.do("array", [-1 if d else 1 for d in duals], like=keys)
+        last_sign = signs[-1]
+        signs = ar.do("reshape", signs, (1,) * ndim + (-1,), like=keys)
+        keys[..., -1] = (
+            charge - last_sign * (ar.do("sum", signs * keys, axis=-1))
+        ) % order
+    else:
+        keys[..., -1] = (charge - (ar.do("sum", keys, axis=-1))) % order
 
     if flat:
         # flatten the keys to a 2D array
@@ -197,7 +216,7 @@ def build_cyclic_keys_conserve(ndim, order=2, charge=0, flat=False, like=None):
     return keys
 
 
-def build_cyclic_keys_by_charge(ndim, order=2, like=None):
+def build_cyclic_keys_by_charge(ndim, order=2, duals=None, like=None):
     """For cyclic group of order `order`, build all possible subkeys of
     length `ndim`, grouped (via the first axis) by their overall charge,
     then lexicographically ordered within each charge.
@@ -243,13 +262,34 @@ def build_cyclic_keys_by_charge(ndim, order=2, like=None):
     c_total = ar.do("reshape", ar.do("arange", order), (order, 1), like=like)
 
     # compute last column of each sector, based on the total charge
-    c_last = (c_total - ar.do("sum", keys, axis=-1, like=like)) % order
+    if duals is not None:
+        signs = ar.do("array", [-1 if d else 1 for d in duals], like=keys)
+        last_sign = signs[-1]
+        signs = ar.do("reshape", signs, (1,) * (ndim + 1) + (-1,), like=keys)
+        c_last = (
+            c_total
+            - last_sign * ar.do("sum", signs * keys, axis=-1, like=like)
+        ) % order
+    else:
+        c_last = (c_total - ar.do("sum", keys, axis=-1, like=like)) % order
     keys[:, :, -1] = c_last
 
     return keys
 
 
-class Z2FlatArray(AbelianCommon):
+def zn_combine(sectors, duals=None, order=2, like=None):
+    """Implement vectorized addition modulo group order, with signature."""
+    if order == 2:
+        return ar.do("sum", sectors, axis=-1, like=like) % 2
+    signs = ar.do("array", [-1 if dual else 1 for dual in duals], like=sectors)
+    signs = ar.do("reshape", signs, (1, -1))
+    signed_sectors = sectors * signs
+    return ar.do("sum", signed_sectors, axis=-1, like=like) % order
+
+
+class AbelianArrayFlat(AbelianCommon):
+    order = None
+
     def __init__(self, fkeys, fblock, duals, fuseinfos=None):
         self.fkeys = ar.do("array", fkeys)
         self.fblock = ar.do("array", fblock)
@@ -268,7 +308,7 @@ class Z2FlatArray(AbelianCommon):
         else:
             fkeys = self.fkeys
             fblock = self.fblock
-        return Z2FlatArray(fkeys, fblock, self.duals, self.fuseinfos)
+        return self.__class__(fkeys, fblock, self.duals, self.fuseinfos)
 
     def check(self):
         assert len(self.fkeys) == len(self.fblock)
@@ -278,7 +318,10 @@ class Z2FlatArray(AbelianCommon):
         # check blocks all have the same overall charge
         assert (
             ar.do(
-                "size", ar.do("unique", ar.do("sum", self.fkeys, axis=1) % 2)
+                "size",
+                ar.do(
+                    "unique", zn_combine(self.fkeys, self.duals, self.order)
+                ),
             )
             == 1
         )
@@ -300,7 +343,7 @@ class Z2FlatArray(AbelianCommon):
     @property
     def shape(self):
         """Get the effective shape of the array."""
-        return tuple(2 * d for d in self.shape_block)
+        return tuple(self.order * d for d in self.shape_block)
 
     @property
     def num_blocks(self):
@@ -332,7 +375,8 @@ class Z2FlatArray(AbelianCommon):
             sector = tuple(map(int, self.fkeys[i]))
             block = self.fblock[i]
             blocks[sector] = block
-        return Z2Array.from_blocks(blocks, duals=self.duals)
+        cls = get_zn_array_cls(self.order)
+        return cls.from_blocks(blocks, duals=self.duals)
 
     def is_fused(self, ax):
         """Does axis `ax` carry subindex information, i.e., is it a fused
@@ -371,7 +415,7 @@ class Z2FlatArray(AbelianCommon):
 
         Returns
         -------
-        Z2FlatArray
+        AbelianArrayFlat
         """
         if axis < 0:
             axis += self.ndim + 1
@@ -423,7 +467,7 @@ class Z2FlatArray(AbelianCommon):
             self.fuseinfos = new_fuseinfos
             return self
         else:
-            return Z2FlatArray(
+            return self.__class__(
                 fkeys=new_fkeys,
                 fblock=new_fblock,
                 duals=new_duals,
@@ -448,16 +492,29 @@ class Z2FlatArray(AbelianCommon):
             axes_after,
             _,  # ax2group,
             group_duals,
-            new_axes,
+            _,  # new_axes,
         ) = calc_fuse_group_info(axes_groups, self.duals)
 
-        # create the new sectors
-        # XXX: avoid inplace, allow for ZN
-        new_fkeys = ar.do(
-            "zeros_like", self.fkeys, shape=(self.num_blocks, new_ndim)
-        )
-        for old_ax, new_ax in new_axes.items():
-            new_fkeys[:, new_ax] ^= self.fkeys[:, old_ax]
+        # create the new sectors, starting with the unfused axes before
+        new_fkeys_cols = [self.fkeys[:, ax] for ax in axes_before]
+        for axs, dg in zip(axes_groups, group_duals):
+            # charges with opposite sign to overall group need to be flipped
+            eff_duals = [self.duals[ax] != dg for ax in axs]
+            new_fkeys_cols.append(
+                zn_combine(self.fkeys[:, axs], eff_duals, self.order)
+            )
+        # then we add the unfused axes after
+        new_fkeys_cols.extend(self.fkeys[:, ax] for ax in axes_after)
+        # combine!
+        new_fkeys = ar.do("stack", tuple(new_fkeys_cols), axis=1)
+
+        # XXX: avoid inplace?
+        # new_fkeys = ar.do(
+        #     "zeros_like", self.fkeys, shape=(self.num_blocks, new_ndim)
+        # )
+        # for old_ax, new_ax in new_axes.items():
+        #     new_fkeys[:, new_ax] += self.fkeys[:, old_ax]
+        # new_fkeys %= self.order
 
         # then we find the correct order to sort the new keys
         sortingcols = (
@@ -470,90 +527,126 @@ class Z2FlatArray(AbelianCommon):
             *(self.fkeys[:, ax] for group in axes_groups for ax in group),
         )
         kord = lexsort_keys(sortingcols)
+        old_fkeys = self.fkeys[kord]
         new_fkeys = new_fkeys[kord]
         new_blocks = self.fblock[kord]
 
-        # # now we compute subcharge information for each group
-        # # first we reshape the old sectors given the sort above:
-        # #     (*fused_charges, *unfused_charges, --locked dim, *subcharges)
-        # # whichever is the last charge of the first two groups is locked,
-        # # and so taken away from the reshaping.
-        # keys_reshaper = []
-        # axes_seen = 0
-        # g_to_charge_slice = {}
+        # now we compute subcharge information for each group
+        # first we reshape the old sectors given the sort above:
+        #     (*fused_charges, *unfused_charges, --locked dim, *subcharges)
+        # whichever is the last charge of the first two groups is locked,
+        # and so taken away from the reshaping.
+        keys_reshaper = []
+        axes_seen = 0
+        g_locked_map = {}
 
-        # for g in range(num_groups):
-        #     axes_seen += len(axes_groups[g])
-        #     if axes_seen == self.ndim:
-        #         # if all axes are being fused, the last one is locked
-        #         keys_reshaper.append(1)
-        #         if num_groups >= 2:
-        #             # all axes are fused, multiple new charges, last of which
-        #             # is locked, so we can't take a slice across it
-        #             g_to_charge_slice[g] = g - 1
-        #     else:
-        #         # one dimension for each fused charge
-        #         keys_reshaper.append(2)
-        # # one dimension for all the unfused axes
-        # keys_reshaper.append(-1)
-        # # then one dimension for each *extra* subcharge in each group
-        # for group in axes_groups:
-        #     keys_reshaper.extend([2] * (len(group) - 1))
-        # # and finally one dimension for the row of charges
-        # keys_reshaper.append(self.ndim)
+        for g in range(num_groups):
+            axes_seen += len(axes_groups[g])
+            if axes_seen == self.ndim:
+                # if all axes are being fused, the last one is locked
+                keys_reshaper.append(1)
+                if num_groups > 1:
+                    # all axes are fused, multiple new charges, last of which
+                    # is locked to prev, so we can't take a slice across it
+                    # directly, nor will it be sorted
+                    g_locked_map[g] = g - 1
+            else:
+                # one dimension for each fused charge
+                keys_reshaper.append(self.order)
+        # one dimension for all the unfused axes
+        keys_reshaper.append(-1)
+        # then one dimension for each *extra* subcharge in each group
+        nsubaxes = 0
+        for group in axes_groups:
+            # each group has one locked charge within it
+            nsub = len(group) - 1
+            keys_reshaper.extend([self.order] * nsub)
+            nsubaxes += nsub
 
-        # # reshape!
-        # old_fkeys = ar.do("reshape", self.fkeys[kord], tuple(keys_reshaper))
+        # reshape! including finally one dimension for the row of charges
+        new_fkeys = ar.do("reshape", new_fkeys, (*keys_reshaper, new_ndim))
+        old_fkeys = ar.do("reshape", old_fkeys, (*keys_reshaper, self.ndim))
 
-        # print_charge_fusions(old_fkeys, self.duals, axes_groups)
+        # drop sub charge axes from new_fkeys
+        new_fkeys = new_fkeys[
+            (
+                *repeat(slice(None), num_groups),  # fused charges
+                slice(None),  # unfused axes
+                *repeat(0, nsubaxes),  # sub charges, take first (arbitrary)
+                slice(None),  # row of charges
+            )
+        ]
 
-        # # then we take slices across these to strore subcharge information
-        # # for unfusing
-        # subkeys = {}
-        # for g in range(num_groups):
-        #     if g in group_singlets:
-        #         # no need to record subcharges
-        #         continue
+        print_charge_fusions(old_fkeys, self.duals, axes_groups)
 
-        #     subkey_selector = []
+        # then we take slices across these to strore subcharge information
+        # for unfusing
+        subkeys = {}
+        for g in range(num_groups):
+            if g in group_singlets:
+                # no need to record subcharges
+                continue
 
-        #     # is this group is locked, need to slice over previous group
-        #     g_slice = g_to_charge_slice.get(g, g)
+            subkey_selector = []
 
-        #     # fix other grouped charges to any value, take slice across g
-        #     for go in range(num_groups):
-        #         if go == g_slice:
-        #             subkey_selector.append(slice(None))
-        #         else:
-        #             subkey_selector.append(0)
+            # is this group is locked, need to slice over previous group
+            g_lock = g_locked_map.get(g, g)
 
-        #     # fix stack of unfused axes to any value
-        #     subkey_selector.append(0)
+            # fix other grouped charges to any value, take slice across g
+            for go in range(num_groups):
+                if go == g_lock:
+                    subkey_selector.append(slice(None))
+                else:
+                    subkey_selector.append(0)
 
-        #     # then we fix the subcharges for other groups to any value
-        #     # and slice across fused subcharges
-        #     for go in range(num_groups):
-        #         m = len(axes_groups[go]) - 1
-        #         if go == g:
-        #             subkey_selector.extend([slice(None)] * m)
-        #         else:
-        #             subkey_selector.extend([0] * m)
+            # fix stack of unfused axes to any value
+            subkey_selector.append(0)
 
-        #     # finally we take the slice across the legs
-        #     # i.e. the row of charges making up the sector
-        #     subkey_selector.append(slice(None))
+            # then we fix the subcharges for other groups to any value
+            # and slice across fused subcharges
+            for go in range(num_groups):
+                m = len(axes_groups[go]) - 1
+                if go == g:
+                    subkey_selector.extend([slice(None)] * m)
+                else:
+                    subkey_selector.extend([0] * m)
 
-        #     # take the slice!
-        #     subkey_selector = tuple(subkey_selector)
-        #     subkey = old_fkeys[subkey_selector]
-        #     # flatten into (overall_charge, subcharges, row)
-        #     subkey = ar.do(
-        #         "reshape", subkey, (keys_reshaper[g_slice], -1, self.ndim)
-        #     )
-        #     # just get axes relevant to this group
-        #     subkey = subkey[:, :, axes_groups[g]]
-        #     # store
-        #     subkeys[g] = subkey
+            # finally we take the slice across the legs
+            # i.e. the row of charges making up the sector
+            subkey_selector.append(slice(None))
+
+            # take the slice!
+            subkey_selector = tuple(subkey_selector)
+            subkey = old_fkeys[subkey_selector]
+            # flatten into (overall_charge, subcharges, row)
+            subkey = ar.do(
+                "reshape", subkey, (keys_reshaper[g_lock], -1, self.ndim)
+            )
+            # just get axes relevant to this group
+            subkey = subkey[:, :, axes_groups[g]]
+
+            if g_lock != g:
+                # this group axis is locked to the previous group,
+                # so we need to do an additional sort the overall charge axis
+                gcharges = new_fkeys[
+                    (
+                        *repeat(0, g - 1),  # other groups
+                        slice(None),  # group we are locked to
+                        0,  # locked g axis
+                        0,  # unfused axes
+                        pos + g,
+                    )
+                ]
+                kord = ar.do("argsort", gcharges, like=self.backend)
+                subkey = subkey[kord]
+
+            # store
+            subkeys[g] = subkey
+
+        # reflatten into stack
+        new_fkeys = ar.do(
+            "reshape", new_fkeys, (-1, new_ndim), like=self.backend
+        )
 
         # now we create the unmerge/merge pattern for einops:
         # heres a full example for 2 groups and 6 axes:
@@ -588,7 +681,7 @@ class Z2FlatArray(AbelianCommon):
                 bax = f"B{g}"
                 # keep track of the unmerged
                 if bax in unmerged_batch_sizes:
-                    unmerged_batch_sizes[bax] *= 2
+                    unmerged_batch_sizes[bax] *= self.order
                 else:
                     unmerged_batch_sizes[bax] = 1
             pattern += ")"
@@ -600,19 +693,25 @@ class Z2FlatArray(AbelianCommon):
         # perform the rearrangement!
         new_blocks = rearrange(new_blocks, pattern, **unmerged_batch_sizes)
 
-        # then we update the sectors, these have been sorted already by
-        # grouped charge, each group being of equal size / stride:
-        stride = math.prod(unmerged_batch_sizes.values())
-        new_fkeys = new_fkeys[::stride]
+        # # then we update the sectors, these have been sorted already by
+        # # grouped charge, each group being of equal size / stride:
+        # stride = math.prod(unmerged_batch_sizes.values())
+        # new_fkeys = new_fkeys[::stride]
 
-        if num_groups == 1 and len(axes_groups[0]) == self.ndim:
-            # full fuse, only one overall charge, subkeys are all current keys
-            subkeys = {0: ar.do("reshape", self.fkeys, (1, -1, self.ndim))}
-        else:
-            subkeys = {
-                g: build_cyclic_keys_by_charge(len(axs), 2, like=self.fkeys)
-                for g, axs in enumerate(axes_groups)
-            }
+        # if num_groups == 1 and len(axes_groups[0]) == self.ndim:
+        #     # full fuse, only one overall charge, subkeys are all current keys
+        #     subkeys = {0: ar.do("reshape", self.fkeys, (1, -1, self.ndim))}
+        # else:
+        #     subkeys = {
+        #         g: build_cyclic_keys_by_charge(
+        #             ndim=len(axs),
+        #             order=self.order,
+        #             duals=[self.duals[ax] != group_duals[g] for ax in axs],
+        #             # duals=[self.duals[ax] for ax in axs],
+        #             like=self.fkeys,
+        #         )
+        #         for g, axs in enumerate(axes_groups)
+        #     }
 
         # finally we construct info, including for unfusing
         new_duals = []
@@ -661,7 +760,7 @@ class Z2FlatArray(AbelianCommon):
             self.duals = new_duals
             self.fuseinfos = new_fuseinfos
         else:
-            return Z2FlatArray(
+            return self.__class__(
                 fkeys=new_fkeys,
                 fblock=new_blocks,
                 duals=new_duals,
@@ -682,9 +781,9 @@ class Z2FlatArray(AbelianCommon):
 
         Returns
         -------
-        Z2FlatArray
+        AbelianArrayFlat
         """
-        from einops import repeat, rearrange
+        from einops import rearrange, repeat
 
         new = self if inplace else self.copy()
 
@@ -764,7 +863,7 @@ class Z2FlatArray(AbelianCommon):
             self.fuseinfos = new_flatinfos
             return self
         else:
-            return Z2FlatArray(
+            return self.__class__(
                 fkeys=new_fkeys,
                 fblock=new_fblock,
                 duals=new_duals,
@@ -785,6 +884,9 @@ class Z2FlatArray(AbelianCommon):
 
     def einsum(self, eq, preserve_array=False):
         raise NotImplementedError()
+
+    def __reduce__(self):
+        return (get_zn_array_flat_cls, (self.order,))
 
     def __repr__(self):
         return (
@@ -846,3 +948,20 @@ def print_charge_fusions(keys, duals, axes_groups):
             print(f"{key[ax]}", end=" ")
 
         print()
+
+
+class Z2ArrayFlat(AbelianArrayFlat):
+    order = 2
+
+
+@functools.cache
+def get_zn_array_flat_cls(N):
+    """Get a block array class with ZN symmetry."""
+    if N == 2:
+        return Z2ArrayFlat
+
+    return type(
+        f"Z{N}ArrayFlat",
+        (AbelianArrayFlat,),
+        {"order": N},
+    )

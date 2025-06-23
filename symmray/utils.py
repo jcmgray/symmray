@@ -85,6 +85,7 @@ def rand_partition(d, n, seed=None):
     return [int(splits[i + 1] - splits[i]) for i in range(n)]
 
 
+@functools.cache
 def get_zn_charges(ncharge, order):
     """Get a list of ``ncharge`` distinct ZN charges that are as close to
     0 or |G| as possible, with a slight bias towards positive charges.

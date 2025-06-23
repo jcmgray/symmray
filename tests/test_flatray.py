@@ -1,46 +1,21 @@
 import pytest
 import symmray as sr
 
-from symmray.flatray import Z2FlatArray
 
-
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize(
     "shape,axes_groups",
     [
-        (
-            [
-                4,
-            ],
-            [(0,)],
-        ),
+        ([4], [(0,)]),
         ([2, 2], [(0, 1)]),
         ([2, 2], [(0,), (1,)]),
         ([2, 2], [(1,), (0,)]),
         ([4] * 6, [(1, 3), (4, 2)]),
-        (
-            [6, 2, 4, 8],
-            [
-                (
-                    3,
-                    2,
-                    1,
-                )
-            ],
-        ),
+        ([6, 2, 4, 8], [(3, 2, 1)]),
         ([6, 2, 4, 8], [(0, 1)]),
         ([6, 2, 4, 8], [(2, 3)]),
-        (
-            [6, 2, 4, 8],
-            [
-                (0, 1, 2, 3),
-            ],
-        ),
-        (
-            [6, 2, 4, 8],
-            [
-                (2, 3, 1, 0),
-            ],
-        ),
+        ([6, 2, 4, 8], [(0, 1, 2, 3)]),
+        ([6, 2, 4, 8], [(2, 3, 1, 0)]),
         ([6, 2, 4, 8], [(0, 1), (2, 3)]),
         ([2, 2, 2, 2, 2], [(0, 1), (2, 3, 4)]),
         ([2, 2, 2, 2, 2, 2], [(0, 1), (2, 3), (4, 5)]),
@@ -50,13 +25,19 @@ from symmray.flatray import Z2FlatArray
     ],
 )
 @pytest.mark.parametrize("charge", [0, 1])
-def test_fuse_basic(shape, axes_groups, charge):
+def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
+    if symmetry == "Z3":
+        shape = [3 * d // 2 for d in shape]
+    elif symmetry == "Z4":
+        shape = [4 * d // 2 for d in shape]
+
     xs = sr.utils.get_rand(
-        "Z2", shape=shape, subsizes="equal", charge=0, seed=42
+        symmetry, shape=shape, subsizes="equal", charge=charge, seed=42
     )
     ys = xs.fuse(*axes_groups)
-    x = Z2FlatArray.from_blocksparse(xs)
+    x = xs.to_flat()
     x.check()
+    assert x.to_blocksparse().allclose(xs)
     y = x.fuse(*axes_groups)
     y.check()
     assert y.to_blocksparse().allclose(ys)
