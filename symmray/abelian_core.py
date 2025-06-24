@@ -1036,6 +1036,25 @@ def _fuse_blocks_via_concat(
 
 
 class AbelianCommon:
+    """Common base class for arrays with Abelian symmetry."""
+
+    @property
+    def symmetry(self) -> Symmetry:
+        """The symmetry object of the array."""
+        return self._symmetry
+
+    @classmethod
+    def get_class_symmetry(cls, symmetry=None) -> Symmetry:
+        if symmetry is None:
+            if cls.static_symmetry is None:
+                # symmetry must be given if not static
+                raise ValueError("Symmetry must be given.")
+            symmetry = cls.static_symmetry
+        elif cls.static_symmetry and symmetry != cls.static_symmetry:
+            raise ValueError("Cannot override static symmetry of class.")
+
+        return get_symmetry(symmetry)
+
     @property
     def signature(self):
         return "".join("-" if f else "+" for f in self.duals)
@@ -1191,18 +1210,6 @@ class AbelianArray(AbelianCommon, BlockBase):
         if DEBUG:
             self.check()
 
-    @classmethod
-    def get_class_symmetry(cls, symmetry=None) -> Symmetry:
-        if symmetry is None:
-            if cls.static_symmetry is None:
-                # symmetry must be given if not static
-                raise ValueError("Symmetry must be given.")
-            symmetry = cls.static_symmetry
-        elif cls.static_symmetry and symmetry != cls.static_symmetry:
-            raise ValueError("Cannot override static symmetry of class.")
-
-        return get_symmetry(symmetry)
-
     def copy(self):
         """Copy this block array."""
         new = self.__new__(self.__class__)
@@ -1244,11 +1251,6 @@ class AbelianArray(AbelianCommon, BlockBase):
             self.check()
 
         return self
-
-    @property
-    def symmetry(self) -> Symmetry:
-        """The symmetry object of the array."""
-        return self._symmetry
 
     @property
     def indices(self):
@@ -1677,7 +1679,7 @@ class AbelianArray(AbelianCommon, BlockBase):
         index_maps,
         duals,
         charge=None,
-        symmetry=symmetry,
+        symmetry=None,
         invalid_sectors="warn",
         **kwargs,
     ):
@@ -2356,7 +2358,7 @@ class AbelianArray(AbelianCommon, BlockBase):
     def to_flat(self):
         """ """
         from .symmetries import ZN
-        from .flatray import get_zn_array_flat_cls
+        from .flat_core import get_zn_array_flat_cls
 
         if not isinstance(self.symmetry, ZN):
             raise ValueError("Only ZN symmetry supported.")

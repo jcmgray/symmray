@@ -2,10 +2,10 @@
 
 TODO:
 
-- [ ] cache properties
-- [ ] cache patterns and reshapers/slicers
 - [ ] use Symmetry object
 - [ ] rename core objects: sectors, blocks, indices.
+- [ ] cache properties
+- [ ] cache patterns and reshapers/slicers
 - [ ] store size in FlatIndex and remove extents?
 
 """
@@ -15,11 +15,12 @@ from itertools import repeat
 
 import autoray as ar
 
-from symmray.abelian_core import (
+from .abelian_core import (
     AbelianCommon,
     calc_fuse_group_info,
     get_zn_array_cls,
 )
+from .symmetries import get_symmetry
 
 
 class FlatIndex:
@@ -35,19 +36,34 @@ class FlatIndex:
         Default is None, which means the index is not fused.
     """
 
-    __slots__ = ("dual", "subinfo")
+    __slots__ = ("_dual", "_subinfo")
 
     def __init__(self, dual=False, subinfo=None):
-        self.dual = dual
-        self.subinfo = subinfo
+        self._dual = dual
+        self._subinfo = subinfo
+
+    @property
+    def dual(self):
+        """Whether the index flows 'outwards' / (+ve) / ket-like = ``False`` or
+        'inwards' / (-ve) / bra-like= ``True``. The charge sign is given by
+        ``(-1) ** dual``.
+        """
+        return self._dual
+
+    @property
+    def subinfo(self):
+        """Information about the subindices of this index and their extents if
+        this index was formed from fusing.
+        """
+        return self._subinfo
 
     def conj(self):
         """Return the conjugate of the index, i.e., flip the dualness and
         subinfo.
         """
         return FlatIndex(
-            dual=not self.dual,
-            subinfo=None if self.subinfo is None else self.subinfo.conj(),
+            dual=not self._dual,
+            subinfo=None if self._subinfo is None else self._subinfo.conj(),
         )
 
 
@@ -157,184 +173,6 @@ def lexsort_keys(vectors, stable=True):
     return ar.do("argsort", ranks, stable=stable, like=backend)
 
 
-def build_cyclic_keys_all(ndim, order=2, flat=False, like=None):
-    """For cyclic group of order `order`, build all possible subkeys of
-    length `ndim`, in lexicographic order.
-
-    Parameters
-    ----------
-    ndim : int
-        The number of sub charges to build keys for.
-    order : int, optional
-        The order of the cyclic group, i.e., the number of distinct charges.
-        Default is 2, which corresponds to the Z2 group.
-    flat : bool, optional
-        Whether to flatten the keys into a 2D array. If True, the output will
-        be a 2D array of shape (order ** ndim, ndim). If False, the output will
-        be a multi-dimensional array of shape `(order,) * ndim + (ndim,)`.
-        Default is False.
-    like : array_like, optional
-        If provided, the output will be created with the same backend as this
-        array. If None, the output will be created with the default backend,
-        which is usually `numpy`.
-
-    Returns
-    -------
-    array_like
-        An array of shape (order ** ndim, ndim) or
-        (order, order, ..., order, ndim) depending on the `flat` parameter.
-    """
-    kws = {}
-    if like is None:
-        kws["dtype"] = "int64"
-    keys = ar.do("zeros", (order,) * ndim + (ndim,), like=like, **kws)
-
-    for i in range(1, order):
-        for j in range(ndim):
-            selector = (
-                *(
-                    slice(i, i + 1) if k == j else slice(None)
-                    for k in range(ndim)
-                ),
-                j,
-            )
-            keys[selector] = i
-
-    if flat:
-        # flatten the keys to a 2D array
-        keys = ar.do("reshape", keys, (-1, ndim), like=like)
-
-    return keys
-
-
-def build_cyclic_keys_conserve(
-    ndim,
-    order=2,
-    charge=0,
-    duals=None,
-    flat=False,
-    like=None,
-):
-    """For cyclic group of order `order`, build all possible subkeys of
-    length `ndim` with overall charge `charge`, in lexicographic order.
-
-    Parameters
-    ----------
-    ndim : int
-        The number of sub charges to build keys for.
-    order : int, optional
-        The order of the cyclic group, i.e., the number of distinct charges.
-        Default is 2, which corresponds to the Z2 group.
-    flat : bool, optional
-        Whether to flatten the keys into a 2D array. If True, the output will
-        be a 2D array of shape (order ** (ndim - 1), ndim). If False, the
-        output will be a multi-dimensional array of shape
-        `(order,) * (ndim - 1) + (ndim,)`.. Default is False.
-    like : array_like, optional
-        If provided, the output will be created with the same backend as this
-        array. If None, the output will be created with the default backend,
-        which is usually `numpy`.
-
-    Returns
-    -------
-    array_like
-        An array of shape (order ** (ndim - 1), ndim) or
-        (order,) * (ndim - 1) + (ndim,) depending on the `flat` parameter.
-    """
-    kws = {}
-    if like is None:
-        kws["dtype"] = "int64"
-    keys = ar.do("zeros", (order,) * (ndim - 1) + (ndim,), like=like, **kws)
-
-    for i in range(1, order):
-        for j in range(ndim - 1):
-            selector = (
-                *(
-                    slice(i, i + 1) if k == j else slice(None)
-                    for k in range(ndim - 1)
-                ),
-                j,
-            )
-            keys[selector] = i
-
-    if duals is not None:
-        signs = ar.do("array", [-1 if d else 1 for d in duals], like=keys)
-        last_sign = signs[-1]
-        signs = ar.do("reshape", signs, (1,) * ndim + (-1,), like=keys)
-        keys[..., -1] = (
-            charge - last_sign * (ar.do("sum", signs * keys, axis=-1))
-        ) % order
-    else:
-        keys[..., -1] = (charge - (ar.do("sum", keys, axis=-1))) % order
-
-    if flat:
-        # flatten the keys to a 2D array
-        keys = ar.do("reshape", keys, (-1, ndim), like=like)
-
-    return keys
-
-
-def build_cyclic_keys_by_charge(ndim, order=2, duals=None, like=None):
-    """For cyclic group of order `order`, build all possible subkeys of
-    length `ndim`, grouped (via the first axis) by their overall charge,
-    then lexicographically ordered within each charge.
-
-    Parameters
-    ----------
-    ndim : int
-        The number of sub charges to build keys for.
-    order : int, optional
-        The order of the cyclic group, i.e., the number of distinct charges.
-        Default is 2, which corresponds to the Z2 group.
-    like : array_like, optional
-        If provided, the output will be created with the same backend as this
-        array. If None, the output will be created with the default backend,
-        which is usually `numpy`.
-
-    Returns
-    -------
-    array_like
-        An array of shape (order, order ** (ndim - 1), ndim).
-    """
-    kws = {}
-    if like is None:
-        kws["dtype"] = "int64"
-    keys = ar.do("zeros", (order,) * ndim + (ndim,), like=like, **kws)
-
-    for i in range(1, order):
-        for j in range(ndim - 1):
-            selector = (
-                slice(None),
-                *(
-                    slice(i, i + 1) if k == j else slice(None)
-                    for k in range(ndim - 1)
-                ),
-                j,
-            )
-            keys[selector] = i
-
-    # flatten all but the overall charge and sector axis
-    keys = ar.do("reshape", keys, (order, -1, ndim), like=like)
-
-    # create broadcastable array of possible total charges
-    c_total = ar.do("reshape", ar.do("arange", order), (order, 1), like=like)
-
-    # compute last column of each sector, based on the total charge
-    if duals is not None:
-        signs = ar.do("array", [-1 if d else 1 for d in duals], like=keys)
-        last_sign = signs[-1]
-        signs = ar.do("reshape", signs, (1,) * (ndim + 1) + (-1,), like=keys)
-        c_last = (
-            c_total
-            - last_sign * ar.do("sum", signs * keys, axis=-1, like=like)
-        ) % order
-    else:
-        c_last = (c_total - ar.do("sum", keys, axis=-1, like=like)) % order
-    keys[:, :, -1] = c_last
-
-    return keys
-
-
 def zn_combine(sectors, duals=None, order=2, like=None):
     """Implement vectorized addition modulo group order, with signature."""
     if order == 2:
@@ -353,13 +191,17 @@ def zn_combine(sectors, duals=None, order=2, like=None):
 
 
 class AbelianArrayFlat(AbelianCommon):
-    order = None
+    """Base class for abelian arrays with flat storage and cyclic symmetry."""
+
+    fermionic = False
+    static_symmetry = None
 
     def __init__(
         self,
         fkeys,
         fblock,
         indices,
+        symmetry=None,
     ):
         self.fkeys = ar.do("array", fkeys)
         self.fblock = ar.do("array", fblock)
@@ -369,6 +211,12 @@ class AbelianArrayFlat(AbelianCommon):
             x if isinstance(x, FlatIndex) else FlatIndex(x)
             for x in indices
         )
+        self._symmetry = self.get_class_symmetry(symmetry)
+
+    @property
+    def order(self):
+        """Get the order of the symmetry group."""
+        return self._symmetry.N
 
     @property
     def duals(self):
@@ -1065,17 +913,195 @@ def print_charge_fusions(keys, duals, axes_groups):
 
 
 class Z2ArrayFlat(AbelianArrayFlat):
-    order = 2
+    static_symmetry = get_symmetry("Z2")
 
 
 @functools.cache
-def get_zn_array_flat_cls(N):
+def get_zn_array_flat_cls(n):
     """Get a block array class with ZN symmetry."""
-    if N == 2:
+    if n == 2:
         return Z2ArrayFlat
 
     return type(
-        f"Z{N}ArrayFlat",
+        f"Z{n}ArrayFlat",
         (AbelianArrayFlat,),
-        {"order": N},
+        {"static_symmetry": get_symmetry(f"Z{n}")},
     )
+
+
+def build_cyclic_keys_all(ndim, order=2, flat=False, like=None):
+    """For cyclic group of order `order`, build all possible subkeys of
+    length `ndim`, in lexicographic order.
+
+    Parameters
+    ----------
+    ndim : int
+        The number of sub charges to build keys for.
+    order : int, optional
+        The order of the cyclic group, i.e., the number of distinct charges.
+        Default is 2, which corresponds to the Z2 group.
+    flat : bool, optional
+        Whether to flatten the keys into a 2D array. If True, the output will
+        be a 2D array of shape (order ** ndim, ndim). If False, the output will
+        be a multi-dimensional array of shape `(order,) * ndim + (ndim,)`.
+        Default is False.
+    like : array_like, optional
+        If provided, the output will be created with the same backend as this
+        array. If None, the output will be created with the default backend,
+        which is usually `numpy`.
+
+    Returns
+    -------
+    array_like
+        An array of shape (order ** ndim, ndim) or
+        (order, order, ..., order, ndim) depending on the `flat` parameter.
+    """
+    kws = {}
+    if like is None:
+        kws["dtype"] = "int64"
+    keys = ar.do("zeros", (order,) * ndim + (ndim,), like=like, **kws)
+
+    for i in range(1, order):
+        for j in range(ndim):
+            selector = (
+                *(
+                    slice(i, i + 1) if k == j else slice(None)
+                    for k in range(ndim)
+                ),
+                j,
+            )
+            keys[selector] = i
+
+    if flat:
+        # flatten the keys to a 2D array
+        keys = ar.do("reshape", keys, (-1, ndim), like=like)
+
+    return keys
+
+
+def build_cyclic_keys_conserve(
+    ndim,
+    order=2,
+    charge=0,
+    duals=None,
+    flat=False,
+    like=None,
+):
+    """For cyclic group of order `order`, build all possible subkeys of
+    length `ndim` with overall charge `charge`, in lexicographic order.
+
+    Parameters
+    ----------
+    ndim : int
+        The number of sub charges to build keys for.
+    order : int, optional
+        The order of the cyclic group, i.e., the number of distinct charges.
+        Default is 2, which corresponds to the Z2 group.
+    flat : bool, optional
+        Whether to flatten the keys into a 2D array. If True, the output will
+        be a 2D array of shape (order ** (ndim - 1), ndim). If False, the
+        output will be a multi-dimensional array of shape
+        `(order,) * (ndim - 1) + (ndim,)`.. Default is False.
+    like : array_like, optional
+        If provided, the output will be created with the same backend as this
+        array. If None, the output will be created with the default backend,
+        which is usually `numpy`.
+
+    Returns
+    -------
+    array_like
+        An array of shape (order ** (ndim - 1), ndim) or
+        (order,) * (ndim - 1) + (ndim,) depending on the `flat` parameter.
+    """
+    kws = {}
+    if like is None:
+        kws["dtype"] = "int64"
+    keys = ar.do("zeros", (order,) * (ndim - 1) + (ndim,), like=like, **kws)
+
+    for i in range(1, order):
+        for j in range(ndim - 1):
+            selector = (
+                *(
+                    slice(i, i + 1) if k == j else slice(None)
+                    for k in range(ndim - 1)
+                ),
+                j,
+            )
+            keys[selector] = i
+
+    if duals is not None:
+        signs = ar.do("array", [-1 if d else 1 for d in duals], like=keys)
+        last_sign = signs[-1]
+        signs = ar.do("reshape", signs, (1,) * ndim + (-1,), like=keys)
+        keys[..., -1] = (
+            charge - last_sign * (ar.do("sum", signs * keys, axis=-1))
+        ) % order
+    else:
+        keys[..., -1] = (charge - (ar.do("sum", keys, axis=-1))) % order
+
+    if flat:
+        # flatten the keys to a 2D array
+        keys = ar.do("reshape", keys, (-1, ndim), like=like)
+
+    return keys
+
+
+def build_cyclic_keys_by_charge(ndim, order=2, duals=None, like=None):
+    """For cyclic group of order `order`, build all possible subkeys of
+    length `ndim`, grouped (via the first axis) by their overall charge,
+    then lexicographically ordered within each charge.
+
+    Parameters
+    ----------
+    ndim : int
+        The number of sub charges to build keys for.
+    order : int, optional
+        The order of the cyclic group, i.e., the number of distinct charges.
+        Default is 2, which corresponds to the Z2 group.
+    like : array_like, optional
+        If provided, the output will be created with the same backend as this
+        array. If None, the output will be created with the default backend,
+        which is usually `numpy`.
+
+    Returns
+    -------
+    array_like
+        An array of shape (order, order ** (ndim - 1), ndim).
+    """
+    kws = {}
+    if like is None:
+        kws["dtype"] = "int64"
+    keys = ar.do("zeros", (order,) * ndim + (ndim,), like=like, **kws)
+
+    for i in range(1, order):
+        for j in range(ndim - 1):
+            selector = (
+                slice(None),
+                *(
+                    slice(i, i + 1) if k == j else slice(None)
+                    for k in range(ndim - 1)
+                ),
+                j,
+            )
+            keys[selector] = i
+
+    # flatten all but the overall charge and sector axis
+    keys = ar.do("reshape", keys, (order, -1, ndim), like=like)
+
+    # create broadcastable array of possible total charges
+    c_total = ar.do("reshape", ar.do("arange", order), (order, 1), like=like)
+
+    # compute last column of each sector, based on the total charge
+    if duals is not None:
+        signs = ar.do("array", [-1 if d else 1 for d in duals], like=keys)
+        last_sign = signs[-1]
+        signs = ar.do("reshape", signs, (1,) * (ndim + 1) + (-1,), like=keys)
+        c_last = (
+            c_total
+            - last_sign * ar.do("sum", signs * keys, axis=-1, like=like)
+        ) % order
+    else:
+        c_last = (c_total - ar.do("sum", keys, axis=-1, like=like)) % order
+    keys[:, :, -1] = c_last
+
+    return keys
