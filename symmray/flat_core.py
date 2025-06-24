@@ -225,27 +225,51 @@ def zn_combine(sectors, duals=None, order=2, like=None):
 
 
 class AbelianArrayFlat(AbelianCommon):
-    """Base class for abelian arrays with flat storage and cyclic symmetry."""
+    """Base class for abelian arrays with flat storage and cyclic symmetry.
+
+    Parameters
+    ----------
+    sectors : array_like
+        The stack of sector keys, with shape (num_blocks, ndim). Each row
+        represents a sector of a corresponding block, and each column
+        represents a charge in a given axis.
+    blocks : array_like
+        The stack of array blocks, with shape (num_blocks, *shape_block), i.e.
+        `ndim + 1` dimensions, where the first dimension is the block index,
+        which should match the first dimension of `sectors`, and the rest are
+        the dimensions of individual blocks.
+    indices : sequence[FlatIndex | bool]
+        Indices describing the dualness and any subindex information for each
+        dimension of the array. If bools are supplied, they will be converted
+        to a FlatIndex with the corresponding dualness, and no subindex
+        information.
+    """
 
     fermionic = False
     static_symmetry = None
 
     def __init__(
         self,
-        fkeys,
-        fblock,
+        sectors,
+        blocks,
         indices,
         symmetry=None,
     ):
-        self.fkeys = ar.do("array", fkeys)
-        self.fblock = ar.do("array", fblock)
-        self.backend = ar.infer_backend(self.fblock)
-        self.indices = tuple(
+        self._sectors = (
+            sectors if hasattr(sectors, "shape") else ar.do("array", sectors)
+        )
+        self._blocks = (
+            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
+        )
+        self._indices = tuple(
             # allow sequence of duals to be supplied directly
             x if isinstance(x, FlatIndex) else FlatIndex(x)
             for x in indices
         )
         self._symmetry = self.get_class_symmetry(symmetry)
+
+        # infer the backend to reuse for efficiency
+        self.backend = ar.infer_backend(self._blocks)
 
     @property
     def order(self):
@@ -253,52 +277,79 @@ class AbelianArrayFlat(AbelianCommon):
         return self._symmetry.N
 
     @property
+    def sectors(self):
+        """The stack of sector keys, with shape (num_blocks, ndim). Each row
+        represents a sector of a corresponding block, and each column
+        represents a charge in a given axis."""
+        return self._sectors
+
+    @property
+    def blocks(self):
+        """The stack of array blocks, with shape (num_blocks, *shape_block),
+        i.e. `ndim + 1` dimensions, where the first dimension is the block
+        index, which should match the first dimension of `sectors`, and the
+        rest are the dimensions of individual blocks."""
+        return self._blocks
+
+    @property
+    def indices(self):
+        """Indices describing the dualness and any subindex information for \
+        each dimension of the array."""
+        return self._indices
+
+    @property
     def duals(self):
         """Get the dualness of each index."""
-        return tuple(index.dual for index in self.indices)
+        return tuple(index.dual for index in self._indices)
 
     def check(self):
-        assert len(self.fkeys) == len(self.fblock)
-        assert self.ndim == len(self.indices)
-        assert self.ndim == len(self.fkeys[0])
+        assert len(self._sectors) == len(self._blocks)
+        assert self.ndim == len(self._indices)
+        assert self.ndim == len(self._sectors[0])
         # check blocks all have the same overall charge
         sector_charges = ar.do(
-            "unique", zn_combine(self.fkeys, self.duals, self.order)
+            "unique", zn_combine(self._sectors, self.duals, self.order)
         )
         assert ar.do("size", sector_charges) == 1
 
     def copy(self, deep=False):
         """Create a copy of the array."""
         if deep:
-            fkeys = ar.do("copy", self.fkeys, like=self.backend)
-            fblock = ar.do("copy", self.fblock, like=self.backend)
+            sectors = ar.do("copy", self._sectors, like=self.backend)
+            blocks = ar.do("copy", self._blocks, like=self.backend)
         else:
-            fkeys = self.fkeys
-            fblock = self.fblock
-        return self.__class__(fkeys, fblock, self.indices)
+            sectors = self._sectors
+            blocks = self._blocks
+        return self.__class__(sectors, blocks, self._indices)
 
     def _modify_or_copy(
-        self, fkeys=None, fblock=None, indices=None, inplace=False
+        self, sectors=None, blocks=None, indices=None, inplace=False
     ):
-        fkeys = self.fkeys if fkeys is None else fkeys
-        fblock = self.fblock if fblock is None else fblock
-        indices = self.indices if indices is None else indices
+        sectors = self._sectors if sectors is None else sectors
+        blocks = self._blocks if blocks is None else blocks
+        indices = self._indices if indices is None else indices
+
         if inplace:
-            self.fkeys = fkeys
-            self.fblock = fblock
-            self.indices = indices
+            self._sectors = sectors
+            self._blocks = blocks
+            self._indices = indices
             return self
         else:
-            return self.__class__(fkeys=fkeys, fblock=fblock, indices=indices)
+            return self.__class__(
+                sectors=sectors,
+                blocks=blocks,
+                indices=indices,
+            )
 
-    def _get_shape_fblock(self):
-        """Get the full shape of the fblock"""
-        return ar.do("shape", self.fblock, like=self.backend)
+    def _get_shape_blocks_full(self):
+        """Get the full shape of the stacked blocks, including the number of
+        blocks."""
+        return ar.do("shape", self._blocks, like=self.backend)
 
     @property
     def shape_block(self):
         """Get the shape of an individual block."""
-        return self._get_shape_fblock()[1:]
+        return self._get_shape_blocks_full()[1:]
 
     @property
     def ndim(self):
@@ -313,22 +364,25 @@ class AbelianArrayFlat(AbelianCommon):
     @property
     def num_blocks(self):
         """Get the number of blocks in the array."""
-        return self._get_shape_fblock()[0]
+        return self._get_shape_blocks_full()[0]
 
     @classmethod
     def from_blocks(cls, blocks, indices):
-        fkeys = []
-        fblock = None
+        """Create a flat array from an explicit dictionary of blocks, and
+        sequence of indices or duals.
+        """
+        sectors = []
+        full_blocks = None
         fshape = None
         for i, key in enumerate(sorted(blocks)):
             block = blocks[key]
             bshape = ar.do("shape", block)
-            if fblock is None:
+            if full_blocks is None:
                 fshape = (len(blocks), *bshape)
-                fblock = ar.do("empty", fshape, like=block)
-            fkeys.append(list(key))
-            fblock[i] = block
-        return cls(fkeys, fblock, indices)
+                full_blocks = ar.do("empty", fshape, like=block)
+            sectors.append(list(key))
+            full_blocks[i] = block
+        return cls(sectors, full_blocks, indices)
 
     @classmethod
     def from_blocksparse(cls, x):
@@ -337,8 +391,8 @@ class AbelianArrayFlat(AbelianCommon):
     def to_blocksparse(self):
         blocks = {}
         for i in range(self.num_blocks):
-            sector = tuple(map(int, self.fkeys[i]))
-            block = self.fblock[i]
+            sector = tuple(map(int, self._sectors[i]))
+            block = self._blocks[i]
             blocks[sector] = block
         cls = get_zn_array_cls(self.order)
         return cls.from_blocks(blocks, duals=self.duals)
@@ -347,7 +401,7 @@ class AbelianArrayFlat(AbelianCommon):
         """Does axis `ax` carry subindex information, i.e., is it a fused
         index?
         """
-        return self.indices[ax].subinfo is not None
+        return self._indices[ax].subinfo is not None
 
     def sort_stack(self, axes=(), all_axes=False, inplace=False):
         """Lexicgraphic sort the stack of blocks according to the values of
@@ -368,13 +422,13 @@ class AbelianArrayFlat(AbelianCommon):
             # include all non-specified axes as tie-breakers
             axes = (*axes, *(ax for ax in range(self.ndim) if ax not in axes))
 
-        cols = self.fkeys[:, axes]
+        cols = self._sectors[:, axes]
         kord = lexsort_keys(cols)
-        new_fkeys = self.fkeys[kord]
-        new_fblock = self.fblock[kord]
+        new_sectors = self._sectors[kord]
+        new_blocks = self._blocks[kord]
 
         return self._modify_or_copy(
-            fkeys=new_fkeys, fblock=new_fblock, inplace=inplace
+            sectors=new_sectors, blocks=new_blocks, inplace=inplace
         )
 
     def expand_dims(self, axis, c=None, dual=None, inplace=False):
@@ -406,10 +460,10 @@ class AbelianArrayFlat(AbelianCommon):
             # to make fusing and unfusing singleton axes commutative
             if axis > 0:
                 # inherit from left
-                dual = self.indices[axis - 1].dual
+                dual = self._indices[axis - 1].dual
             elif axis < self.ndim:
                 # inherit from right
-                dual = self.indices[axis].dual
+                dual = self._indices[axis].dual
             else:
                 # no axes to inherit from
                 dual = False
@@ -422,9 +476,9 @@ class AbelianArrayFlat(AbelianCommon):
         keys_new_col = ar.do(
             "tile", c, (self.num_blocks, 1), like=self.backend
         )
-        new_fkeys = ar.do(
+        new_sectors = ar.do(
             "concatenate",
-            (self.fkeys[:, :axis], keys_new_col, self.fkeys[:, axis:]),
+            (self._sectors[:, :axis], keys_new_col, self._sectors[:, axis:]),
             axis=1,
             like=self.backend,
         )
@@ -435,18 +489,18 @@ class AbelianArrayFlat(AbelianCommon):
             + (None,)
             + (slice(None),) * (self.ndim - axis - 1)
         )
-        new_fblock = self.fblock[selector]
+        new_blocks = self._blocks[selector]
 
         # expand the index information
         new_indices = (
-            *self.indices[:axis],
+            *self._indices[:axis],
             FlatIndex(dual),
-            *self.indices[axis:],
+            *self._indices[axis:],
         )
 
         return self._modify_or_copy(
-            fkeys=new_fkeys,
-            fblock=new_fblock,
+            sectors=new_sectors,
+            blocks=new_blocks,
             indices=new_indices,
             inplace=inplace,
         )
@@ -473,33 +527,33 @@ class AbelianArrayFlat(AbelianCommon):
         ) = calc_fuse_group_info(axes_groups, self.duals)
 
         # create the new sectors, starting with the unfused axes before
-        new_fkeys = [self.fkeys[:, ax] for ax in axes_before]
+        new_sectors = [self._sectors[:, ax] for ax in axes_before]
         for axs, dg in zip(axes_groups, group_duals):
             # charges with opposite sign to overall group need to be flipped
             eff_duals = [self.duals[ax] != dg for ax in axs]
-            new_fkeys.append(
-                zn_combine(self.fkeys[:, axs], eff_duals, self.order)
+            new_sectors.append(
+                zn_combine(self._sectors[:, axs], eff_duals, self.order)
             )
         # then we add the unfused axes after
-        new_fkeys.extend(self.fkeys[:, ax] for ax in axes_after)
+        new_sectors.extend(self._sectors[:, ax] for ax in axes_after)
         # combine into single array
-        new_fkeys = ar.do("stack", tuple(new_fkeys), axis=1)
+        new_sectors = ar.do("stack", tuple(new_sectors), axis=1)
 
         # then we find the correct order to sort the new keys
         sortingcols = (
             # first we sort by fused charge
-            *(new_fkeys[:, pos + g] for g in range(num_groups)),
+            *(new_sectors[:, pos + g] for g in range(num_groups)),
             # then we sort by the unfused axes
-            *(self.fkeys[:, ax] for ax in axes_before),
-            *(self.fkeys[:, ax] for ax in axes_after),
+            *(self._sectors[:, ax] for ax in axes_before),
+            *(self._sectors[:, ax] for ax in axes_after),
             # and finally by the fused charges within each group
-            *(self.fkeys[:, ax] for group in axes_groups for ax in group),
+            *(self._sectors[:, ax] for group in axes_groups for ax in group),
         )
         kord = lexsort_keys(sortingcols)
-        new_blocks = self.fblock[kord]
-        new_fkeys = new_fkeys[kord]
-
-        old_fkeys = self.fkeys[kord]
+        new_blocks = self._blocks[kord]
+        new_sectors = new_sectors[kord]
+        # XXX: only optionally store the fusing information
+        old_sectors = self._sectors[kord]
 
         # now we compute subcharge information for each group
         # first we reshape the old sectors given the sort above:
@@ -534,11 +588,13 @@ class AbelianArrayFlat(AbelianCommon):
             nsubaxes += nsub
 
         # reshape! including finally one dimension for the row of charges
-        new_fkeys = ar.do("reshape", new_fkeys, (*keys_reshaper, new_ndim))
-        old_fkeys = ar.do("reshape", old_fkeys, (*keys_reshaper, self.ndim))
+        new_sectors = ar.do("reshape", new_sectors, (*keys_reshaper, new_ndim))
+        old_sectors = ar.do(
+            "reshape", old_sectors, (*keys_reshaper, self.ndim)
+        )
 
-        # drop sub charge axes from new_fkeys
-        new_fkeys = new_fkeys[
+        # drop sub charge axes from new_sectors
+        new_sectors = new_sectors[
             (
                 *repeat(slice(None), num_groups),  # fused charges
                 slice(None),  # unfused axes
@@ -585,7 +641,7 @@ class AbelianArrayFlat(AbelianCommon):
 
             # take the slice!
             subkey_selector = tuple(subkey_selector)
-            subkey = old_fkeys[subkey_selector]
+            subkey = old_sectors[subkey_selector]
             # flatten into (overall_charge, subcharges, row)
             subkey = ar.do(
                 "reshape", subkey, (keys_reshaper[g_lock], -1, self.ndim)
@@ -596,7 +652,7 @@ class AbelianArrayFlat(AbelianCommon):
             if g_lock != g:
                 # this group axis is locked to the previous group,
                 # so we need to do an additional sort the overall charge axis
-                gcharges = new_fkeys[
+                gcharges = new_sectors[
                     (
                         *repeat(0, g - 1),  # other groups
                         slice(None),  # group we are locked to
@@ -612,8 +668,8 @@ class AbelianArrayFlat(AbelianCommon):
             subkeys[g] = subkey
 
         # reflatten new keys into stack
-        new_fkeys = ar.do(
-            "reshape", new_fkeys, (-1, new_ndim), like=self.backend
+        new_sectors = ar.do(
+            "reshape", new_sectors, (-1, new_ndim), like=self.backend
         )
 
         # now we create the unmerge/merge pattern for einops:
@@ -666,11 +722,11 @@ class AbelianArrayFlat(AbelianCommon):
         # # then we update the sectors, these have been sorted already by
         # # grouped charge, each group being of equal size / stride:
         # stride = math.prod(unmerged_batch_sizes.values())
-        # new_fkeys = new_fkeys[::stride]
+        # new_sectors = new_sectors[::stride]
 
         # if num_groups == 1 and len(axes_groups[0]) == self.ndim:
         #     # full fuse, only one overall charge, subkeys are all current keys
-        #     subkeys = {0: ar.do("reshape", self.fkeys, (1, -1, self.ndim))}
+        #     subkeys = {0: ar.do("reshape", self._sectors, (1, -1, self.ndim))}
         # else:
         #     subkeys = {
         #         g: build_cyclic_keys_by_charge(
@@ -678,7 +734,7 @@ class AbelianArrayFlat(AbelianCommon):
         #             order=self.order,
         #             duals=[self.duals[ax] != group_duals[g] for ax in axs],
         #             # duals=[self.duals[ax] for ax in axs],
-        #             like=self.fkeys,
+        #             like=self._sectors,
         #         )
         #         for g, axs in enumerate(axes_groups)
         #     }
@@ -716,8 +772,8 @@ class AbelianArrayFlat(AbelianCommon):
             new_indices.append(self.indices[ax])
 
         return self._modify_or_copy(
-            fkeys=new_fkeys,
-            fblock=new_blocks,
+            sectors=new_sectors,
+            blocks=new_blocks,
             indices=new_indices,
             inplace=inplace,
         )
@@ -751,7 +807,7 @@ class AbelianArrayFlat(AbelianCommon):
 
         # keys coming from remaining axes
         ka = repeat(
-            new.fkeys, "(Bf B) s -> (Bf B x) s", Bf=fi.ncharge, x=fi.nsectors
+            new.sectors, "(Bf B) s -> (Bf B x) s", Bf=fi.ncharge, x=fi.nsectors
         )[:, axs_rem]
 
         # keys coming from unfused axis
@@ -785,7 +841,7 @@ class AbelianArrayFlat(AbelianCommon):
         pattern = "".join(pattern)
 
         # perform the unfuse!
-        new_blocks = rearrange(new.fblock, pattern, **sizes)
+        new_blocks = rearrange(new.blocks, pattern, **sizes)
 
         # unpack sub indices
         new_indices = (
@@ -794,21 +850,21 @@ class AbelianArrayFlat(AbelianCommon):
             *new.indices[ax + 1 :],
         )
 
-        new.fkeys = new_keys
-        new.fblock = new_blocks
-        new.indices = new_indices
+        new._sectors = new_keys
+        new._blocks = new_blocks
+        new._indices = new_indices
 
         return new
 
     def conj(self, inplace=False):
         """Return the complex conjugate of this block array, including the
         indices."""
-        new_fkeys = self.fkeys
-        new_fblock = ar.do("conj", self.fblock, like=self.backend)
-        new_indices = tuple(ix.conj() for ix in self.indices)
+        new_sectors = self._sectors
+        new_blocks = ar.do("conj", self._blocks, like=self.backend)
+        new_indices = tuple(ix.conj() for ix in self._indices)
         return self._modify_or_copy(
-            fkeys=new_fkeys,
-            fblock=new_fblock,
+            sectors=new_sectors,
+            blocks=new_blocks,
             indices=new_indices,
             inplace=inplace,
         )
@@ -822,20 +878,19 @@ class AbelianArrayFlat(AbelianCommon):
         axes = tuple(map(int, axes))
 
         # transpose block as usual, but with broadcasted block axis
-        new_fblock = ar.do(
+        new_blocks = ar.do(
             "transpose",
-            self.fblock,
+            self._blocks,
             (0, *(ax + 1 for ax in axes)),
             like=self.backend,
         )
 
-        # just swap columns of sectors
-        new_fkeys = self.fkeys[:, axes]
-        new_indices = tuple(self.indices[ax] for ax in axes)
+        new_sectors = self._sectors[:, axes]
+        new_indices = tuple(self._indices[ax] for ax in axes)
 
         return self._modify_or_copy(
-            fkeys=new_fkeys,
-            fblock=new_fblock,
+            sectors=new_sectors,
+            blocks=new_blocks,
             indices=new_indices,
             inplace=inplace,
         )
@@ -846,26 +901,26 @@ class AbelianArrayFlat(AbelianCommon):
         b = other.sort_stack((0,))
 
         # new sectors given by concatenation of the sectors
-        new_fkeys = ar.do(
+        new_sectors = ar.do(
             "concatenate",
-            (a.fkeys[:, :-1], b.fkeys[:, 1:]),
+            (a.sectors[:, :-1], b.sectors[:, 1:]),
             axis=1,
             like=self.backend,
         )
 
         # new full block given by batch matrix multiplication
-        new_fblock = ar.do(
+        new_blocks = ar.do(
             "matmul",
-            a.fblock,
-            b.fblock,
+            a.blocks,
+            b.blocks,
             like=self.backend,
         )
 
         new_indices = (*a.indices[:-1], *b.indices[1:])
 
         return a.__class__(
-            fblock=new_fblock,
-            fkeys=new_fkeys,
+            blocks=new_blocks,
+            sectors=new_sectors,
             indices=new_indices,
         )
 
