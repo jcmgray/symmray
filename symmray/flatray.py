@@ -1,5 +1,16 @@
+"""Flat Abelian array implementation.
+
+TODO:
+
+- [ ] cache properties
+- [ ] cache patterns and reshapers/slicers
+- [ ] use Symmetry object
+- [ ] rename core objects
+- [ ] use a FlatIndex object for the fuseinfo and duals
+
+"""
+
 import functools
-import math
 from itertools import repeat
 
 import autoray as ar
@@ -386,17 +397,41 @@ class AbelianArrayFlat(AbelianCommon):
         """
         return self.fuseinfos[ax] is not None
 
-    def sort_stack(self, axes=(), all_axes=None):
+    def sort_stack(self, axes=(), all_axes=False, inplace=False):
         """Lexicgraphic sort the stack of blocks according to the values of
         charges in the specified axes, optionally filling in the rest of the
         axes with the remaining axes in the order they appear.
         """
+        # XXX: if nothing specified, default to all axes?
+
+        # ensure tuple and handle negative axes
+        if not isinstance(axes, (tuple, list)):
+            if axes < 0:
+                axes = axes + self.ndim
+            axes = (axes,)
+        else:
+            axes = tuple(ax if ax >= 0 else ax + self.ndim for ax in axes)
+
         if all_axes:
+            # include all non-specified axes as tie-breakers
             axes = (*axes, *(ax for ax in range(self.ndim) if ax not in axes))
+
         cols = self.fkeys[:, axes]
         kord = lexsort_keys(cols)
-        self.fkeys = self.fkeys[kord]
-        self.fblock = self.fblock[kord]
+        new_fkeys = self.fkeys[kord]
+        new_fblock = self.fblock[kord]
+
+        if inplace:
+            self.fkeys = new_fkeys
+            self.fblock = new_fblock
+            return self
+        else:
+            return self.__class__(
+                fkeys=new_fkeys,
+                fblock=new_fblock,
+                duals=self.duals,
+                fuseinfos=self.fuseinfos,
+            )
 
     def expand_dims(self, axis, c=None, dual=None, inplace=False):
         """Expand the shape of an abelian array.
@@ -787,7 +822,7 @@ class AbelianArrayFlat(AbelianCommon):
             raise ValueError(f"Axis {ax} is not fused in this array.")
 
         axs_rem = tuple(range(ax)) + tuple(range(ax + 1, self.ndim))
-        new.sort_stack((ax, *axs_rem), True)
+        new.sort_stack((ax, *axs_rem), inplace=True)
 
         # keys coming from remaining axes
         ka = repeat(
@@ -899,6 +934,37 @@ class AbelianArrayFlat(AbelianCommon):
                 duals=new_duals,
                 fuseinfos=new_fuseinfos,
             )
+
+    def __matmul__(self, other, preserve_array=False):
+        # sort shared axis to align sectors
+        a = self.sort_stack((-1,))
+        b = other.sort_stack((0,))
+
+        # new sectors given by concatenation of the sectors
+        new_fkeys = ar.do(
+            "concatenate",
+            (a.fkeys[:, :-1], b.fkeys[:, 1:]),
+            axis=1,
+            like=self.backend,
+        )
+
+        # new full block given by batch matrix multiplication
+        new_fblock = ar.do(
+            "matmul",
+            a.fblock,
+            b.fblock,
+            like=self.backend,
+        )
+
+        new_duals = (*a.duals[:-1], *b.duals[1:])
+        new_fuseinfos = (*a.fuseinfos[:-1], *b.fuseinfos[1:])
+
+        return a.__class__(
+            fblock=new_fblock,
+            fkeys=new_fkeys,
+            duals=new_duals,
+            fuseinfos=new_fuseinfos,
+        )
 
     def trace(self):
         raise NotImplementedError()

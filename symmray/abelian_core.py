@@ -1177,7 +1177,11 @@ class AbelianArray(AbelianCommon, BlockBase):
             if self._blocks:
                 # infer the charge total from any sector
                 sector = next(iter(self._blocks))
-                self._charge = self.symmetry.combine(*sector)
+                signed_sector = (
+                    self.symmetry.sign(c, ix.dual)
+                    for c, ix in zip(sector, self._indices)
+                )
+                self._charge = self.symmetry.combine(*signed_sector)
             else:
                 # default to the identity charge
                 self._charge = self.symmetry.combine()
@@ -1481,6 +1485,13 @@ class AbelianArray(AbelianCommon, BlockBase):
         """
         _allclose = ar.get_lib_fn(self.backend, "allclose")
 
+        # charge and signature must match
+        if self.charge != other.charge:
+            return False
+
+        if self.duals != other.duals:
+            return False
+
         # all shared blocks must be close
         shared = self.blocks.keys() & other.blocks.keys()
         for sector in shared:
@@ -1604,20 +1615,18 @@ class AbelianArray(AbelianCommon, BlockBase):
             The dual-ness of each index.
         charge : hashable
             The total charge of the array. If not given, it will be
-            taken as the identity / zero element.
+            taken computed from the first sector, or set to the
+            identity / zero element if no sectors are given.
         symmetry : str or Symmetry, optional
             The symmetry of the array, if not using a specific symmetry class.
+        kwargs
+            Additional keyword arguments to pass to the constructor.
 
         Returns
         -------
         AbelianArray
         """
         symmetry = cls.get_class_symmetry(symmetry)
-
-        if charge is None:
-            charge = symmetry.combine()
-        else:
-            charge = charge
 
         ndim = len(next(iter(blocks.keys())))
         charge_size_maps = [{} for _ in range(ndim)]
@@ -1633,6 +1642,17 @@ class AbelianArray(AbelianCommon, BlockBase):
                         f"Inconsistent block sizes for index {i}"
                         f" with charge {c}: {d_existing} != {d}."
                     )
+
+            if charge is None:
+                # infer the charge total from the first sector
+                signed_sector = tuple(
+                    symmetry.sign(c, dual) for c, dual in zip(sector, duals)
+                )
+                charge = symmetry.combine(*signed_sector)
+
+        if charge is None:
+            # no blocks given, default to identity charge
+            charge = symmetry.combine()
 
         duals = tuple(duals)
         if len(duals) != ndim:

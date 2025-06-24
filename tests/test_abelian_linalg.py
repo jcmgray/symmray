@@ -90,7 +90,7 @@ def test_solve(symmetry, d):
 
     a = sr.utils.get_rand(
         symmetry,
-        shape=(ind.conj(), ind),
+        shape=(ind, ind.conj()),
         dtype="complex128",
     )
     b = sr.utils.get_rand(
