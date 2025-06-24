@@ -52,7 +52,7 @@ class FlatIndex:
         return self._dual
 
     @property
-    def subinfo(self) -> "FlatSubIndexInfo" | None:
+    def subinfo(self) -> "FlatSubIndexInfo | None":
         """Information about the subindices of this index and their extents if
         this index was formed from fusing.
         """
