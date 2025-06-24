@@ -2,8 +2,6 @@
 
 TODO:
 
-- [ ] use Symmetry object
-- [ ] rename core objects: sectors, blocks, indices.
 - [ ] cache properties
 - [ ] cache patterns and reshapers/slicers
 - [ ] store size in FlatIndex and remove extents?
