@@ -1057,8 +1057,8 @@ class AbelianCommon:
         self,
         *axes_groups,
         expand_empty=True,
-        mode="auto",
         inplace=False,
+        **kwargs,
     ):
         """Fuse the given group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
@@ -1092,6 +1092,8 @@ class AbelianCommon:
             the backend is numpy, otherwise `"concat"`.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
+        kwargs : dict, optional
+            Additional keyword arguments to pass to the core fusing method.
 
         Returns
         -------
@@ -1107,7 +1109,7 @@ class AbelianCommon:
                 _axes_expand.append(ax)
 
         if _axes_groups:
-            xf = self._fuse_core(*_axes_groups, mode=mode, inplace=inplace)
+            xf = self._fuse_core(*_axes_groups, inplace=inplace, **kwargs)
         else:
             xf = self if inplace else self.copy()
 
@@ -2332,8 +2334,7 @@ class AbelianArray(AbelianCommon, BlockBase):
             return 0.0
 
     def to_flat(self):
-        """
-        """
+        """ """
         from .symmetries import ZN
         from .flatray import get_zn_array_flat_cls
 

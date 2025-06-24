@@ -280,10 +280,17 @@ def build_cyclic_keys_by_charge(ndim, order=2, duals=None, like=None):
 def zn_combine(sectors, duals=None, order=2, like=None):
     """Implement vectorized addition modulo group order, with signature."""
     if order == 2:
+        # self inverse, no need to check duals
         return ar.do("sum", sectors, axis=-1, like=like) % 2
-    signs = ar.do("array", [-1 if dual else 1 for dual in duals], like=sectors)
-    signs = ar.do("reshape", signs, (1, -1))
-    signed_sectors = sectors * signs
+
+    if duals is not None:
+        signs = [(-1) ** dual for dual in duals]
+        signs = ar.do("array", signs, like=like)
+        signs = ar.do("reshape", signs, (1, -1))
+        signed_sectors = sectors * signs
+    else:
+        signed_sectors = sectors
+
     return ar.do("sum", signed_sectors, axis=-1, like=like) % order
 
 
@@ -316,15 +323,10 @@ class AbelianArrayFlat(AbelianCommon):
         assert self.ndim == len(self.fkeys[0])
         assert self.ndim == len(self.fuseinfos)
         # check blocks all have the same overall charge
-        assert (
-            ar.do(
-                "size",
-                ar.do(
-                    "unique", zn_combine(self.fkeys, self.duals, self.order)
-                ),
-            )
-            == 1
+        sector_charges = ar.do(
+            "unique", zn_combine(self.fkeys, self.duals, self.order)
         )
+        assert ar.do("size", sector_charges) == 1
 
     def _get_shape_fblock(self):
         """Get the full shape of the fblock"""
@@ -477,9 +479,9 @@ class AbelianArrayFlat(AbelianCommon):
     def _fuse_core(
         self,
         *axes_groups,
-        mode="auto",
         inplace=False,
     ):
+        """ """
         from einops import rearrange
 
         (
@@ -496,25 +498,17 @@ class AbelianArrayFlat(AbelianCommon):
         ) = calc_fuse_group_info(axes_groups, self.duals)
 
         # create the new sectors, starting with the unfused axes before
-        new_fkeys_cols = [self.fkeys[:, ax] for ax in axes_before]
+        new_fkeys = [self.fkeys[:, ax] for ax in axes_before]
         for axs, dg in zip(axes_groups, group_duals):
             # charges with opposite sign to overall group need to be flipped
             eff_duals = [self.duals[ax] != dg for ax in axs]
-            new_fkeys_cols.append(
+            new_fkeys.append(
                 zn_combine(self.fkeys[:, axs], eff_duals, self.order)
             )
         # then we add the unfused axes after
-        new_fkeys_cols.extend(self.fkeys[:, ax] for ax in axes_after)
-        # combine!
-        new_fkeys = ar.do("stack", tuple(new_fkeys_cols), axis=1)
-
-        # XXX: avoid inplace?
-        # new_fkeys = ar.do(
-        #     "zeros_like", self.fkeys, shape=(self.num_blocks, new_ndim)
-        # )
-        # for old_ax, new_ax in new_axes.items():
-        #     new_fkeys[:, new_ax] += self.fkeys[:, old_ax]
-        # new_fkeys %= self.order
+        new_fkeys.extend(self.fkeys[:, ax] for ax in axes_after)
+        # combine into single array
+        new_fkeys = ar.do("stack", tuple(new_fkeys), axis=1)
 
         # then we find the correct order to sort the new keys
         sortingcols = (
@@ -527,9 +521,10 @@ class AbelianArrayFlat(AbelianCommon):
             *(self.fkeys[:, ax] for group in axes_groups for ax in group),
         )
         kord = lexsort_keys(sortingcols)
-        old_fkeys = self.fkeys[kord]
-        new_fkeys = new_fkeys[kord]
         new_blocks = self.fblock[kord]
+        new_fkeys = new_fkeys[kord]
+
+        old_fkeys = self.fkeys[kord]
 
         # now we compute subcharge information for each group
         # first we reshape the old sectors given the sort above:
@@ -576,8 +571,6 @@ class AbelianArrayFlat(AbelianCommon):
                 slice(None),  # row of charges
             )
         ]
-
-        # print_charge_fusions(old_fkeys, self.duals, axes_groups)
 
         # then we take slices across these to strore subcharge information
         # for unfusing
@@ -643,7 +636,7 @@ class AbelianArrayFlat(AbelianCommon):
             # store
             subkeys[g] = subkey
 
-        # reflatten into stack
+        # reflatten new keys into stack
         new_fkeys = ar.do(
             "reshape", new_fkeys, (-1, new_ndim), like=self.backend
         )
@@ -655,40 +648,42 @@ class AbelianArrayFlat(AbelianCommon):
 
         # LHS, first we 'unfuse' the block index
         # with one new axis for each group, `ax0 -> (B B0 B1 B2 ...)`
-        pattern = "(B"
+        pattern = ["(B"]
         for g in range(num_groups):
-            pattern += f" B{g}"
-        pattern += ")"
+            pattern.append(f" B{g}")
+        pattern.append(")")
 
         # then we label each of the input axes `... p0 p1 p2 ...`
         for ax in range(self.ndim):
-            pattern += f" p{ax}"
+            pattern.append(f" p{ax}")
 
         # RHS, start with the new block index
-        pattern += " -> B"
+        pattern.append(" -> B")
 
         # then add the unfused output axes before the groups
         for ax in axes_before:
-            pattern += f" p{ax}"
+            pattern.append(f" p{ax}")
 
         # then the groups, each looks like `(B0 p5 p2 ...)`, one dimension
         # coming from the batch index, and the rest real axis fusions
         unmerged_batch_sizes = {}
         for g in range(num_groups):
-            pattern += f" (B{g}"
+            pattern.append(f" (B{g}")
             for ax in axes_groups[g]:
-                pattern += f" p{ax}"
+                pattern.append(f" p{ax}")
                 bax = f"B{g}"
                 # keep track of the unmerged
                 if bax in unmerged_batch_sizes:
                     unmerged_batch_sizes[bax] *= self.order
                 else:
                     unmerged_batch_sizes[bax] = 1
-            pattern += ")"
+            pattern.append(")")
 
         # then add the unfused output axes after the groups
         for ax in axes_after:
-            pattern += f" p{ax}"
+            pattern.append(f" p{ax}")
+
+        pattern = "".join(pattern)
 
         # perform the rearrangement!
         new_blocks = rearrange(new_blocks, pattern, **unmerged_batch_sizes)
@@ -787,13 +782,12 @@ class AbelianArrayFlat(AbelianCommon):
 
         new = self if inplace else self.copy()
 
-        axs_rem = tuple(range(ax)) + tuple(range(ax + 1, self.ndim))
-
-        new.sort_stack((ax, *axs_rem), True)
-
         fi = new.fuseinfos[ax]
         if fi is None:
             raise ValueError(f"Axis {ax} is not fused in this array.")
+
+        axs_rem = tuple(range(ax)) + tuple(range(ax + 1, self.ndim))
+        new.sort_stack((ax, *axs_rem), True)
 
         # keys coming from remaining axes
         ka = repeat(
@@ -870,8 +864,41 @@ class AbelianArrayFlat(AbelianCommon):
                 fuseinfos=new_flatinfos,
             )
 
-    def transpose(self, *axes):
-        raise NotImplementedError()
+    def transpose(self, axes=None, inplace=False):
+        """Transpose this flat abelian array."""
+        if axes is None:
+            # reverse the axes
+            axes = tuple(range(self.ndim - 1, -1, -1))
+
+        axes = tuple(map(int, axes))
+
+        # just swap columbs of sectors
+        new_fkeys = self.fkeys[:, axes]
+
+        # transpose block as usual, but broadcast block axis
+        new_fblock = ar.do(
+            "transpose",
+            self.fblock,
+            (0, *(ax + 1 for ax in axes)),
+            like=self.backend,
+        )
+
+        new_duals = tuple(self.duals[ax] for ax in axes)
+        new_fuseinfos = tuple(self.fuseinfos[ax] for ax in axes)
+
+        if inplace:
+            self.fkeys = new_fkeys
+            self.fblock = new_fblock
+            self.duals = new_duals
+            self.fuseinfos = new_fuseinfos
+            return self
+        else:
+            return self.__class__(
+                fkeys=new_fkeys,
+                fblock=new_fblock,
+                duals=new_duals,
+                fuseinfos=new_fuseinfos,
+            )
 
     def trace(self):
         raise NotImplementedError()

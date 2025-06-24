@@ -36,6 +36,7 @@ def test_z2symmetric_array_basics():
 all_symmetries = ("Z2", "Z3", "Z5", "U1", "Z2Z2", "U1U1")
 multi_symmetries = ("Z2Z2", "U1U1")
 
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 def test_AbelianArray_to_dense(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6))
