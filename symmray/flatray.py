@@ -5,8 +5,8 @@ TODO:
 - [ ] cache properties
 - [ ] cache patterns and reshapers/slicers
 - [ ] use Symmetry object
-- [ ] rename core objects
-- [ ] use a FlatIndex object for the fuseinfo and duals
+- [ ] rename core objects: sectors, blocks, indices.
+- [ ] store size in FlatIndex and remove extents?
 
 """
 
@@ -22,10 +22,65 @@ from symmray.abelian_core import (
 )
 
 
-class FuseInfo:
-    """Information required to unfuse a fused index."""
+class FlatIndex:
+    """Simple class to store dualness and any fuse information of an index.
 
-    def __init__(self, subkeys, extents, duals, fuseinfos=None):
+    Parameters
+    ----------
+    dual : bool, optional
+        Whether the index is dual (i.e., contributes a negative sign to the
+        corresponding charge). Default is False.
+    subinfo : FlatSubIndexInfo, optional
+        Information about the subindex, if this index is a fused index.
+        Default is None, which means the index is not fused.
+    """
+
+    __slots__ = ("dual", "subinfo")
+
+    def __init__(self, dual=False, subinfo=None):
+        self.dual = dual
+        self.subinfo = subinfo
+
+    def conj(self):
+        """Return the conjugate of the index, i.e., flip the dualness and
+        subinfo.
+        """
+        return FlatIndex(
+            dual=not self.dual,
+            subinfo=None if self.subinfo is None else self.subinfo.conj(),
+        )
+
+
+class FlatSubIndexInfo:
+    """Information required to unfuse a fused index.
+
+    Parameters
+    ----------
+    indices : tuple[FlatIndex]
+        The indices that are being fused.
+    subkeys : array_like
+        The subkeys for the fused index, with shape
+        (ncharge, nsectors, nsubcharges). I.e. the first axis selects the
+        overall fused charge, the second axis selects the subsector within
+        that charge, and the third axis selects the individual charge within
+        that subsector.
+    extents : tuple[int]
+        The size of each subindex, i.e. 'sub shape'.
+    """
+
+    __slots__ = (
+        "indices",
+        "subkeys",
+        "extents",
+        "ncharge",
+        "nsectors",
+        "nsubcharges",
+    )
+
+    def __init__(self, indices, subkeys, extents):
+        self.indices = tuple(
+            x if isinstance(x, FlatIndex) else FlatIndex(x) for x in indices
+        )
         self.subkeys = subkeys
         subkey_shape = ar.do("shape", subkeys)
         # number of overall charges, e.g. {0, 1} -> 2
@@ -33,22 +88,16 @@ class FuseInfo:
         # number of subcharges, e.g. 3 for above
         self.ncharge, self.nsectors, self.nsubcharges = subkey_shape
         self.extents = tuple(extents)
-        self.duals = tuple(duals)
-        if fuseinfos is None:
-            self.fuseinfos = (None,) * self.nsubcharges
-        else:
-            self.fuseinfos = tuple(fuseinfos)
+
+    def check(self):
+        assert len(self.indices) == len(self.subkeys[0])
+        assert len(self.indices) == len(self.extents)
 
     def conj(self):
-        new_duals = tuple(not d for d in self.duals)
-        new_fuseinfos = tuple(
-            fi.conj() if fi is not None else None for fi in self.fuseinfos
-        )
-        return FuseInfo(
+        return FlatSubIndexInfo(
+            indices=tuple(ix.conj() for ix in self.indices),
             subkeys=self.subkeys,
             extents=self.extents,
-            duals=new_duals,
-            fuseinfos=new_fuseinfos,
         )
 
     def __repr__(self):
@@ -57,9 +106,7 @@ class FuseInfo:
             f"ncharge={self.ncharge}, "
             f"nsectors={self.nsectors}, "
             f"nsubcharges={self.nsubcharges}, "
-            f"extents={self.extents}, "
-            f"duals={self.duals}, "
-            f"fuseinfos={self.fuseinfos})"
+            f"extents={self.extents})"
         )
 
 
@@ -308,15 +355,35 @@ def zn_combine(sectors, duals=None, order=2, like=None):
 class AbelianArrayFlat(AbelianCommon):
     order = None
 
-    def __init__(self, fkeys, fblock, duals, fuseinfos=None):
+    def __init__(
+        self,
+        fkeys,
+        fblock,
+        indices,
+    ):
         self.fkeys = ar.do("array", fkeys)
         self.fblock = ar.do("array", fblock)
         self.backend = ar.infer_backend(self.fblock)
-        self.duals = tuple(map(bool, duals))
-        if fuseinfos is None:
-            self.fuseinfos = (None,) * self.ndim
-        else:
-            self.fuseinfos = tuple(fuseinfos)
+        self.indices = tuple(
+            # allow sequence of duals to be supplied directly
+            x if isinstance(x, FlatIndex) else FlatIndex(x)
+            for x in indices
+        )
+
+    @property
+    def duals(self):
+        """Get the dualness of each index."""
+        return tuple(index.dual for index in self.indices)
+
+    def check(self):
+        assert len(self.fkeys) == len(self.fblock)
+        assert self.ndim == len(self.indices)
+        assert self.ndim == len(self.fkeys[0])
+        # check blocks all have the same overall charge
+        sector_charges = ar.do(
+            "unique", zn_combine(self.fkeys, self.duals, self.order)
+        )
+        assert ar.do("size", sector_charges) == 1
 
     def copy(self, deep=False):
         """Create a copy of the array."""
@@ -326,18 +393,21 @@ class AbelianArrayFlat(AbelianCommon):
         else:
             fkeys = self.fkeys
             fblock = self.fblock
-        return self.__class__(fkeys, fblock, self.duals, self.fuseinfos)
+        return self.__class__(fkeys, fblock, self.indices)
 
-    def check(self):
-        assert len(self.fkeys) == len(self.fblock)
-        assert self.ndim == len(self.duals)
-        assert self.ndim == len(self.fkeys[0])
-        assert self.ndim == len(self.fuseinfos)
-        # check blocks all have the same overall charge
-        sector_charges = ar.do(
-            "unique", zn_combine(self.fkeys, self.duals, self.order)
-        )
-        assert ar.do("size", sector_charges) == 1
+    def _modify_or_copy(
+        self, fkeys=None, fblock=None, indices=None, inplace=False
+    ):
+        fkeys = self.fkeys if fkeys is None else fkeys
+        fblock = self.fblock if fblock is None else fblock
+        indices = self.indices if indices is None else indices
+        if inplace:
+            self.fkeys = fkeys
+            self.fblock = fblock
+            self.indices = indices
+            return self
+        else:
+            return self.__class__(fkeys=fkeys, fblock=fblock, indices=indices)
 
     def _get_shape_fblock(self):
         """Get the full shape of the fblock"""
@@ -364,7 +434,7 @@ class AbelianArrayFlat(AbelianCommon):
         return self._get_shape_fblock()[0]
 
     @classmethod
-    def from_blocks(cls, blocks, duals):
+    def from_blocks(cls, blocks, indices):
         fkeys = []
         fblock = None
         fshape = None
@@ -376,11 +446,11 @@ class AbelianArrayFlat(AbelianCommon):
                 fblock = ar.do("empty", fshape, like=block)
             fkeys.append(list(key))
             fblock[i] = block
-        return cls(fkeys, fblock, duals)
+        return cls(fkeys, fblock, indices)
 
     @classmethod
     def from_blocksparse(cls, x):
-        return cls.from_blocks(blocks=x.blocks, duals=x.duals)
+        return cls.from_blocks(blocks=x.blocks, indices=x.duals)
 
     def to_blocksparse(self):
         blocks = {}
@@ -395,7 +465,7 @@ class AbelianArrayFlat(AbelianCommon):
         """Does axis `ax` carry subindex information, i.e., is it a fused
         index?
         """
-        return self.fuseinfos[ax] is not None
+        return self.indices[ax].subinfo is not None
 
     def sort_stack(self, axes=(), all_axes=False, inplace=False):
         """Lexicgraphic sort the stack of blocks according to the values of
@@ -421,17 +491,9 @@ class AbelianArrayFlat(AbelianCommon):
         new_fkeys = self.fkeys[kord]
         new_fblock = self.fblock[kord]
 
-        if inplace:
-            self.fkeys = new_fkeys
-            self.fblock = new_fblock
-            return self
-        else:
-            return self.__class__(
-                fkeys=new_fkeys,
-                fblock=new_fblock,
-                duals=self.duals,
-                fuseinfos=self.fuseinfos,
-            )
+        return self._modify_or_copy(
+            fkeys=new_fkeys, fblock=new_fblock, inplace=inplace
+        )
 
     def expand_dims(self, axis, c=None, dual=None, inplace=False):
         """Expand the shape of an abelian array.
@@ -462,10 +524,10 @@ class AbelianArrayFlat(AbelianCommon):
             # to make fusing and unfusing singleton axes commutative
             if axis > 0:
                 # inherit from left
-                dual = self.duals[axis - 1]
+                dual = self.indices[axis - 1].dual
             elif axis < self.ndim:
                 # inherit from right
-                dual = self.duals[axis]
+                dual = self.indices[axis].dual
             else:
                 # no axes to inherit from
                 dual = False
@@ -494,22 +556,18 @@ class AbelianArrayFlat(AbelianCommon):
         new_fblock = self.fblock[selector]
 
         # expand the index information
-        new_duals = self.duals[:axis] + (dual,) + self.duals[axis:]
-        new_fuseinfos = self.fuseinfos[:axis] + (None,) + self.fuseinfos[axis:]
+        new_indices = (
+            *self.indices[:axis],
+            FlatIndex(dual),
+            *self.indices[axis:],
+        )
 
-        if inplace:
-            self.fkeys = new_fkeys
-            self.fblock = new_fblock
-            self.duals = new_duals
-            self.fuseinfos = new_fuseinfos
-            return self
-        else:
-            return self.__class__(
-                fkeys=new_fkeys,
-                fblock=new_fblock,
-                duals=new_duals,
-                fuseinfos=new_fuseinfos,
-            )
+        return self._modify_or_copy(
+            fkeys=new_fkeys,
+            fblock=new_fblock,
+            indices=new_indices,
+            inplace=inplace,
+        )
 
     def _fuse_core(
         self,
@@ -744,58 +802,43 @@ class AbelianArrayFlat(AbelianCommon):
         #     }
 
         # finally we construct info, including for unfusing
-        new_duals = []
-        new_fuseinfos = []
+        new_indices = []
 
         for ax in axes_before:
-            new_duals.append(self.duals[ax])
-            new_fuseinfos.append(self.fuseinfos[ax])
+            new_indices.append(self.indices[ax])
 
-        new_duals.extend(group_duals)
-
-        old_duals = self.duals
+        old_indices = self.indices
         old_shape_block = self.shape_block
-        old_fuseinfos = self.fuseinfos
 
         for g in range(num_groups):
             if g in group_singlets:
                 # no new fuse -> just propagate any current info
-                new_fuseinfos.append(self.fuseinfos[axes_groups[g][0]])
+                new_indices.append(old_indices[axes_groups[g][0]])
             else:
-                # create a new fuseinfo for this group
+                # create a new subinfo for this group
+                sub_indices = []
                 sub_extents = []
-                sub_duals = []
-                sub_fuseinfos = []
 
                 for ax in axes_groups[g]:
+                    sub_indices.append(old_indices[ax])
                     sub_extents.append(old_shape_block[ax])
-                    sub_duals.append(old_duals[ax])
-                    sub_fuseinfos.append(old_fuseinfos[ax])
 
-                finfo = FuseInfo(
+                subinfo = FlatSubIndexInfo(
+                    indices=sub_indices,
                     subkeys=subkeys[g],
                     extents=sub_extents,
-                    duals=sub_duals,
-                    fuseinfos=sub_fuseinfos,
                 )
-                new_fuseinfos.append(finfo)
+                new_indices.append(FlatIndex(group_duals[g], subinfo=subinfo))
 
         for ax in axes_after:
-            new_duals.append(self.duals[ax])
-            new_fuseinfos.append(self.fuseinfos[ax])
+            new_indices.append(self.indices[ax])
 
-        if inplace:
-            self.fkeys = new_fkeys
-            self.fblock = new_blocks
-            self.duals = new_duals
-            self.fuseinfos = new_fuseinfos
-        else:
-            return self.__class__(
-                fkeys=new_fkeys,
-                fblock=new_blocks,
-                duals=new_duals,
-                fuseinfos=new_fuseinfos,
-            )
+        return self._modify_or_copy(
+            fkeys=new_fkeys,
+            fblock=new_blocks,
+            indices=new_indices,
+            inplace=inplace,
+        )
 
     def unfuse(self, ax, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
@@ -805,7 +848,7 @@ class AbelianArrayFlat(AbelianCommon):
         ----------
         axis : int
             The axis to unfuse. It must have fuse information
-            (`.fuseinfos[ax]`).
+            (`.indices[ax].subinfo`).
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -817,7 +860,7 @@ class AbelianArrayFlat(AbelianCommon):
 
         new = self if inplace else self.copy()
 
-        fi = new.fuseinfos[ax]
+        fi = new.indices[ax].subinfo
         if fi is None:
             raise ValueError(f"Axis {ax} is not fused in this array.")
 
@@ -862,17 +905,16 @@ class AbelianArrayFlat(AbelianCommon):
         # perform the unfuse!
         new_blocks = rearrange(new.fblock, pattern, **sizes)
 
-        new_duals = (*new.duals[:ax], *fi.duals, *new.duals[ax + 1 :])
-        new_fuseinfos = (
-            *new.fuseinfos[:ax],
-            *fi.fuseinfos,
-            *new.fuseinfos[ax + 1 :],
+        # unpack sub indices
+        new_indices = (
+            *new.indices[:ax],
+            *fi.indices,
+            *new.indices[ax + 1 :],
         )
 
         new.fkeys = new_keys
         new.fblock = new_blocks
-        new.duals = new_duals
-        new.fuseinfos = new_fuseinfos
+        new.indices = new_indices
 
         return new
 
@@ -881,23 +923,13 @@ class AbelianArrayFlat(AbelianCommon):
         indices."""
         new_fkeys = self.fkeys
         new_fblock = ar.do("conj", self.fblock, like=self.backend)
-        new_duals = tuple(not d for d in self.duals)
-        new_flatinfos = tuple(
-            fi.conj() if fi is not None else None for fi in self.fuseinfos
+        new_indices = tuple(ix.conj() for ix in self.indices)
+        return self._modify_or_copy(
+            fkeys=new_fkeys,
+            fblock=new_fblock,
+            indices=new_indices,
+            inplace=inplace,
         )
-        if inplace:
-            self.fkeys = new_fkeys
-            self.fblock = new_fblock
-            self.duals = new_duals
-            self.fuseinfos = new_flatinfos
-            return self
-        else:
-            return self.__class__(
-                fkeys=new_fkeys,
-                fblock=new_fblock,
-                duals=new_duals,
-                fuseinfos=new_flatinfos,
-            )
 
     def transpose(self, axes=None, inplace=False):
         """Transpose this flat abelian array."""
@@ -907,10 +939,7 @@ class AbelianArrayFlat(AbelianCommon):
 
         axes = tuple(map(int, axes))
 
-        # just swap columbs of sectors
-        new_fkeys = self.fkeys[:, axes]
-
-        # transpose block as usual, but broadcast block axis
+        # transpose block as usual, but with broadcasted block axis
         new_fblock = ar.do(
             "transpose",
             self.fblock,
@@ -918,22 +947,16 @@ class AbelianArrayFlat(AbelianCommon):
             like=self.backend,
         )
 
-        new_duals = tuple(self.duals[ax] for ax in axes)
-        new_fuseinfos = tuple(self.fuseinfos[ax] for ax in axes)
+        # just swap columns of sectors
+        new_fkeys = self.fkeys[:, axes]
+        new_indices = tuple(self.indices[ax] for ax in axes)
 
-        if inplace:
-            self.fkeys = new_fkeys
-            self.fblock = new_fblock
-            self.duals = new_duals
-            self.fuseinfos = new_fuseinfos
-            return self
-        else:
-            return self.__class__(
-                fkeys=new_fkeys,
-                fblock=new_fblock,
-                duals=new_duals,
-                fuseinfos=new_fuseinfos,
-            )
+        return self._modify_or_copy(
+            fkeys=new_fkeys,
+            fblock=new_fblock,
+            indices=new_indices,
+            inplace=inplace,
+        )
 
     def __matmul__(self, other, preserve_array=False):
         # sort shared axis to align sectors
@@ -956,14 +979,12 @@ class AbelianArrayFlat(AbelianCommon):
             like=self.backend,
         )
 
-        new_duals = (*a.duals[:-1], *b.duals[1:])
-        new_fuseinfos = (*a.fuseinfos[:-1], *b.fuseinfos[1:])
+        new_indices = (*a.indices[:-1], *b.indices[1:])
 
         return a.__class__(
             fblock=new_fblock,
             fkeys=new_fkeys,
-            duals=new_duals,
-            fuseinfos=new_fuseinfos,
+            indices=new_indices,
         )
 
     def trace(self):
