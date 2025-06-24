@@ -1830,7 +1830,20 @@ class AbelianArray(AbelianCommon, BlockBase):
         return new
 
     def transpose(self, axes=None, inplace=False):
-        """Transpose the block array."""
+        """Transpose the block array.
+
+        Parameters
+        ----------
+        axes : tuple[int, ...] | None, optional
+            A permutation of the axes to transpose the array by. If None,
+            the axes will be reversed.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+        """
         new = self if inplace else self.copy()
 
         _transpose = ar.get_lib_fn(new.backend, "transpose")

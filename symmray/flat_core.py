@@ -17,6 +17,7 @@ import autoray as ar
 
 from .abelian_core import (
     AbelianCommon,
+    AbelianArray,
     calc_fuse_group_info,
     get_zn_array_cls,
 )
@@ -43,7 +44,7 @@ class FlatIndex:
         self._subinfo = subinfo
 
     @property
-    def dual(self):
+    def dual(self) -> bool:
         """Whether the index flows 'outwards' / (+ve) / ket-like = ``False`` or
         'inwards' / (-ve) / bra-like= ``True``. The charge sign is given by
         ``(-1) ** dual``.
@@ -51,13 +52,13 @@ class FlatIndex:
         return self._dual
 
     @property
-    def subinfo(self):
+    def subinfo(self) -> "FlatSubIndexInfo" | None:
         """Information about the subindices of this index and their extents if
         this index was formed from fusing.
         """
         return self._subinfo
 
-    def conj(self):
+    def conj(self) -> "FlatIndex":
         """Return the conjugate of the index, i.e., flip the dualness and
         subinfo.
         """
@@ -106,7 +107,7 @@ class FlatSubIndexInfo:
         self._extents = tuple(extents)
 
     @property
-    def indices(self):
+    def indices(self) -> tuple[FlatIndex]:
         """The subkeys for the fused index, with shape
         (ncharge, nsectors, nsubcharges). I.e. the first axis selects the
         overall fused charge, the second axis selects the subsector within
@@ -115,7 +116,7 @@ class FlatSubIndexInfo:
         return self._indices
 
     @property
-    def extents(self):
+    def extents(self) -> tuple[int]:
         """The extents of the fused index."""
         return self._extents
 
@@ -125,17 +126,17 @@ class FlatSubIndexInfo:
         return self._subkeys
 
     @property
-    def ncharge(self):
+    def ncharge(self) -> int:
         """Number of overall charges in this subindex."""
         return self._ncharge
 
     @property
-    def nsectors(self):
+    def nsectors(self) -> int:
         """Number of subsectors in this subindex."""
         return self._nsectors
 
     @property
-    def nsubcharges(self):
+    def nsubcharges(self) -> int:
         """Number of subcharges in this subindex."""
         return self._nsubcharges
 
@@ -143,7 +144,7 @@ class FlatSubIndexInfo:
         assert len(self._indices) == len(self._subkeys[0])
         assert len(self._indices) == len(self._extents)
 
-    def conj(self):
+    def conj(self) -> "FlatSubIndexInfo":
         return FlatSubIndexInfo(
             indices=tuple(ix.conj() for ix in self._indices),
             subkeys=self._subkeys,
@@ -160,16 +161,19 @@ class FlatSubIndexInfo:
         )
 
 
-def lexsort_keys(vectors, stable=True):
-    """Given a sequence of vectors of positive integers, find the indices that
-    sort them lexicographically, such that the first vector is the most
-    significant.
+def lexsort_sectors(sectors, stable=True):
+    """Given a sequence of columns of positive integers, or equivalently a
+    matrix of shape (num_sectors, num_charges), find the indices that
+    sort them lexicographically, such that the first column is the most
+    significant, then the second, and so forth.
 
     Parameters
     ----------
-    vectors : array_like or sequence of array_like
-        The vectors to sort, each vector should be a 1D array of positive
-        integers. Either supplied as a 2D array, or a sequence of 1D arrays.
+    sectors : array_like or sequence[array_like]
+        The sectors to sort, each column should be a 1D array of positive
+        integer charges. Either supplied as a 2D array, or a sequence of 1D
+        arrays (columns of charges), in which case they will be stacked along a
+        second axis.
     stable : bool, optional
         Whether to use a stable sort. Default is True, which uses the
         `argsort` function with the `stable` parameter set to True. If False,
@@ -178,43 +182,62 @@ def lexsort_keys(vectors, stable=True):
     Returns
     -------
     array_like
-        The indices that would sort the vectors lexicographically.
+        The indices that would sort the stack of sectors lexicographically.
 
     Examples
     --------
 
-        >>> vectors = np.array([[4, 1, 0], [3, 2, 1], [3, 1, 0], [2, 0, 1]])
-        >>> k = lexsort_keys(vectors)
-        >>> vectors[k]
+        >>> sectors = np.array([[4, 1, 0], [3, 2, 1], [3, 1, 0], [2, 0, 1]])
+        >>> k = lexsort_sectors(sectors)
+        >>> sectors[k]
         array([[2, 0, 1],
                [3, 1, 0],
                [3, 2, 1],
                [4, 1, 0]])
     """
-    if not ar.is_array(vectors):
-        vectors = ar.do("stack", vectors, axis=1)
+    if not ar.is_array(sectors):
+        sectors = ar.do("stack", sectors, axis=1)
 
-    backend = ar.infer_backend(vectors)
+    backend = ar.infer_backend(sectors)
 
-    n = ar.do("shape", vectors, like=backend)[1]
-    limits = ar.do("max", vectors, axis=0, like=backend) + 1
-    ws = ar.do("ones", (1, n), dtype=vectors.dtype, like=backend)
+    n = ar.do("shape", sectors, like=backend)[1]
+    limits = ar.do("max", sectors, axis=0, like=backend) + 1
+    ws = ar.do("ones", (1, n), dtype=sectors.dtype, like=backend)
     for ax in range(n - 2, -1, -1):
         # reverse cumulative product to get 'strides'
         ws[0, ax] = ws[0, ax + 1] * limits[ax]
 
-    ranks = ar.do("sum", ws * vectors, axis=1, like=backend)
+    ranks = ar.do("sum", ws * sectors, axis=1, like=backend)
     return ar.do("argsort", ranks, stable=stable, like=backend)
 
 
 def zn_combine(sectors, duals=None, order=2, like=None):
-    """Implement vectorized addition modulo group order, with signature."""
+    """Implement vectorized addition modulo group order, with signature.
+
+    Parameters
+    ----------
+    sectors : array_like
+        The stack of sectors, with shape (num_blocks, num_charges). Each
+        row represents a subsector.
+    duals : sequence[bool] | None, optional
+        The dualness of each index, i.e., whether the charge contributes
+        positively or negatively. If not given, it will be assumed that all
+        charges are positive.
+    order : int, optional
+        The order of the symmetry group, i.e., the number of distinct charges
+        in each axis. Default is 2, which corresponds to Z2 symmetry.
+    like : str or array_like, optional
+        The array-like object to use as a reference for the output type and
+        backend. If not given, will be inferred..
+    """
     if order == 2:
         # self inverse, no need to check duals
         return ar.do("sum", sectors, axis=-1, like=like) % 2
 
-    if duals is not None:
+    if (duals is not None) and any(duals):
+        # turn duals into phases
         signs = [(-1) ** dual for dual in duals]
+        # broadcasted multiply
         signs = ar.do("array", signs, like=like)
         signs = ar.do("reshape", signs, (1, -1))
         signed_sectors = sectors * signs
@@ -238,7 +261,7 @@ class AbelianArrayFlat(AbelianCommon):
         `ndim + 1` dimensions, where the first dimension is the block index,
         which should match the first dimension of `sectors`, and the rest are
         the dimensions of individual blocks.
-    indices : sequence[FlatIndex | bool]
+    indices : sequence[FlatIndex]
         Indices describing the dualness and any subindex information for each
         dimension of the array. If bools are supplied, they will be converted
         to a FlatIndex with the corresponding dualness, and no subindex
@@ -272,7 +295,7 @@ class AbelianArrayFlat(AbelianCommon):
         self.backend = ar.infer_backend(self._blocks)
 
     @property
-    def order(self):
+    def order(self) -> int:
         """Get the order of the symmetry group."""
         return self._symmetry.N
 
@@ -292,13 +315,13 @@ class AbelianArrayFlat(AbelianCommon):
         return self._blocks
 
     @property
-    def indices(self):
+    def indices(self) -> tuple[FlatIndex]:
         """Indices describing the dualness and any subindex information for \
         each dimension of the array."""
         return self._indices
 
     @property
-    def duals(self):
+    def duals(self) -> tuple[bool]:
         """Get the dualness of each index."""
         return tuple(index.dual for index in self._indices)
 
@@ -312,7 +335,7 @@ class AbelianArrayFlat(AbelianCommon):
         )
         assert ar.do("size", sector_charges) == 1
 
-    def copy(self, deep=False):
+    def copy(self, deep=False) -> "AbelianArrayFlat":
         """Create a copy of the array."""
         if deep:
             sectors = ar.do("copy", self._sectors, like=self.backend)
@@ -324,7 +347,7 @@ class AbelianArrayFlat(AbelianCommon):
 
     def _modify_or_copy(
         self, sectors=None, blocks=None, indices=None, inplace=False
-    ):
+    ) -> "AbelianArrayFlat":
         sectors = self._sectors if sectors is None else sectors
         blocks = self._blocks if blocks is None else blocks
         indices = self._indices if indices is None else indices
@@ -341,35 +364,50 @@ class AbelianArrayFlat(AbelianCommon):
                 indices=indices,
             )
 
-    def _get_shape_blocks_full(self):
+    def _get_shape_blocks_full(self) -> tuple[int, ...]:
         """Get the full shape of the stacked blocks, including the number of
         blocks."""
         return ar.do("shape", self._blocks, like=self.backend)
 
     @property
-    def shape_block(self):
+    def shape_block(self) -> tuple[int, ...]:
         """Get the shape of an individual block."""
         return self._get_shape_blocks_full()[1:]
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         """Get the number of effective dimensions of the array."""
         return len(self.shape_block)
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         """Get the effective shape of the array."""
         return tuple(self.order * d for d in self.shape_block)
 
     @property
-    def num_blocks(self):
+    def num_blocks(self) -> int:
         """Get the number of blocks in the array."""
         return self._get_shape_blocks_full()[0]
 
     @classmethod
-    def from_blocks(cls, blocks, indices):
+    def from_blocks(cls, blocks, indices) -> "AbelianArrayFlat":
         """Create a flat array from an explicit dictionary of blocks, and
         sequence of indices or duals.
+
+        Parameters
+        ----------
+        blocks : dict[tuple[int, ...], array_like]
+            A dictionary mapping sector keys (tuples of charges) to blocks
+            (arrays).
+        indices : sequence[FlatIndex] | sequence[bool]
+            A sequence of indices describing the dualness and any subindex
+            information for each dimension of the array. If bools are supplied,
+            they will be converted to a FlatIndex with the corresponding
+            dualness, and no subindex information.
+
+        Returns
+        -------
+        AbelianArrayFlat
         """
         sectors = []
         full_blocks = None
@@ -385,10 +423,18 @@ class AbelianArrayFlat(AbelianCommon):
         return cls(sectors, full_blocks, indices)
 
     @classmethod
-    def from_blocksparse(cls, x):
+    def from_blocksparse(cls, x: AbelianArray) -> "AbelianArrayFlat":
+        """Create a flat abelian array from a blocksparse abelian array.
+
+        Parameters
+        ----------
+        x : AbelianArray
+            The blocksparse abelian array to convert.
+        """
         return cls.from_blocks(blocks=x.blocks, indices=x.duals)
 
-    def to_blocksparse(self):
+    def to_blocksparse(self) -> AbelianArray:
+        """Create a blocksparse abelian array from this flat abelian array."""
         blocks = {}
         for i in range(self.num_blocks):
             sector = tuple(map(int, self._sectors[i]))
@@ -397,18 +443,44 @@ class AbelianArrayFlat(AbelianCommon):
         cls = get_zn_array_cls(self.order)
         return cls.from_blocks(blocks, duals=self.duals)
 
-    def is_fused(self, ax):
+    def is_fused(self, ax: int) -> bool:
         """Does axis `ax` carry subindex information, i.e., is it a fused
         index?
         """
         return self._indices[ax].subinfo is not None
 
-    def sort_stack(self, axes=(), all_axes=False, inplace=False):
-        """Lexicgraphic sort the stack of blocks according to the values of
-        charges in the specified axes, optionally filling in the rest of the
-        axes with the remaining axes in the order they appear.
+    def sort_stack(
+        self,
+        axes=None,
+        all_axes=None,
+        inplace=False,
+    ) -> "AbelianArrayFlat":
+        """Lexicgraphic sort the stack of sectors and blocks according to the
+        values of charges in the specified axes, optionally filling in the rest
+        of the axes with the remaining axes in the order they appear.
+
+        Parameters
+        ----------
+        axes : int | tuple[int, ...], optional
+            The axes to sort by. If a single integer is given, it will be
+            interpreted as the axis to sort by. If a tuple of integers is
+            given, it will be interpreted as the axes to sort by in order.
+            Default is None, if all_axes is also None or True, this will sort
+            all axes in their current order.
+        all_axes : bool, optional
+            Whether to include all non-specified axes as tie-breakers, after
+            the specified axes. If ``None``, the default, this will be True
+            if `axes` is not supplied explicitly, and False otherwise.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+            Default is False, which returns a new array.
         """
-        # XXX: if nothing specified, default to all axes?
+        if axes is None:
+            axes = ()
+            if all_axes is None:
+                all_axes = True
+        elif all_axes is None:
+            all_axes = False
 
         # ensure tuple and handle negative axes
         if not isinstance(axes, (tuple, list)):
@@ -423,7 +495,7 @@ class AbelianArrayFlat(AbelianCommon):
             axes = (*axes, *(ax for ax in range(self.ndim) if ax not in axes))
 
         cols = self._sectors[:, axes]
-        kord = lexsort_keys(cols)
+        kord = lexsort_sectors(cols)
         new_sectors = self._sectors[kord]
         new_blocks = self._blocks[kord]
 
@@ -431,7 +503,9 @@ class AbelianArrayFlat(AbelianCommon):
             sectors=new_sectors, blocks=new_blocks, inplace=inplace
         )
 
-    def expand_dims(self, axis, c=None, dual=None, inplace=False):
+    def expand_dims(
+        self, axis, c=None, dual=None, inplace=False
+    ) -> "AbelianArrayFlat":
         """Expand the shape of an abelian array.
 
         Parameters
@@ -509,8 +583,12 @@ class AbelianArrayFlat(AbelianCommon):
         self,
         *axes_groups,
         inplace=False,
-    ):
-        """ """
+    ) -> "AbelianArrayFlat":
+        """The core implementation of the fuse operation, which fuses
+        multiple axes into a single group, and returns a new array with
+        the new sectors and blocks. The new axes are inserted at the minimum
+        axis of any of the groups.
+        """
         from einops import rearrange
 
         (
@@ -549,7 +627,7 @@ class AbelianArrayFlat(AbelianCommon):
             # and finally by the fused charges within each group
             *(self._sectors[:, ax] for group in axes_groups for ax in group),
         )
-        kord = lexsort_keys(sortingcols)
+        kord = lexsort_sectors(sortingcols)
         new_blocks = self._blocks[kord]
         new_sectors = new_sectors[kord]
         # XXX: only optionally store the fusing information
@@ -778,7 +856,7 @@ class AbelianArrayFlat(AbelianCommon):
             inplace=inplace,
         )
 
-    def unfuse(self, ax, inplace=False):
+    def unfuse(self, axis, inplace=False) -> "AbelianArrayFlat":
         """Unfuse the ``axis`` index, which must carry subindex information,
         likely generated automatically from a fusing operation.
 
@@ -786,7 +864,8 @@ class AbelianArrayFlat(AbelianCommon):
         ----------
         axis : int
             The axis to unfuse. It must have fuse information
-            (`.indices[ax].subinfo`).
+            (`.indices[axis].subinfo`), typically from a previous fusing
+            operation.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -798,12 +877,12 @@ class AbelianArrayFlat(AbelianCommon):
 
         new = self if inplace else self.copy()
 
-        fi = new.indices[ax].subinfo
+        fi = new.indices[axis].subinfo
         if fi is None:
-            raise ValueError(f"Axis {ax} is not fused in this array.")
+            raise ValueError(f"Axis {axis} is not fused in this array.")
 
-        axs_rem = tuple(range(ax)) + tuple(range(ax + 1, self.ndim))
-        new.sort_stack((ax, *axs_rem), inplace=True)
+        axs_rem = tuple(range(axis)) + tuple(range(axis + 1, self.ndim))
+        new.sort_stack((axis, *axs_rem), inplace=True)
 
         # keys coming from remaining axes
         ka = repeat(
@@ -815,7 +894,9 @@ class AbelianArrayFlat(AbelianCommon):
         kb = repeat(kb, "B Bu s -> (B x Bu) s", x=new.num_blocks // fi.ncharge)
 
         # concatenate into the full new keys!
-        new_keys = ar.do("concatenate", (ka[:, :ax], kb, ka[:, ax:]), axis=-1)
+        new_keys = ar.do(
+            "concatenate", (ka[:, :axis], kb, ka[:, axis:]), axis=-1
+        )
 
         # now we need to unfuse the actual blocks an example pattern:
         #     B p0 ( Bu u0 u1 u2 ) p2 p3 -> (B Bu) p0 u0 u1 u2 p2 p3
@@ -824,7 +905,7 @@ class AbelianArrayFlat(AbelianCommon):
         pattern = ["B "]
         rhs = ["(B Bu) "]
         sizes = {}
-        for i in range(ax):
+        for i in range(axis):
             pattern.append(f"p{i} ")
             rhs.append(f"p{i} ")
         pattern.append("( Bu ")
@@ -833,7 +914,7 @@ class AbelianArrayFlat(AbelianCommon):
             rhs.append(f"u{g} ")
             sizes[f"u{g}"] = sz
         pattern.append(") ")
-        for i in range(ax + 1, new.ndim):
+        for i in range(axis + 1, new.ndim):
             pattern.append(f"p{i} ")
             rhs.append(f"p{i} ")
         pattern.append("-> ")
@@ -845,9 +926,9 @@ class AbelianArrayFlat(AbelianCommon):
 
         # unpack sub indices
         new_indices = (
-            *new.indices[:ax],
+            *new.indices[:axis],
             *fi.indices,
-            *new.indices[ax + 1 :],
+            *new.indices[axis + 1 :],
         )
 
         new._sectors = new_keys
@@ -856,9 +937,19 @@ class AbelianArrayFlat(AbelianCommon):
 
         return new
 
-    def conj(self, inplace=False):
+    def conj(self, inplace=False) -> "AbelianArrayFlat":
         """Return the complex conjugate of this block array, including the
-        indices."""
+        indices and any subindex fusing information.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
         new_sectors = self._sectors
         new_blocks = ar.do("conj", self._blocks, like=self.backend)
         new_indices = tuple(ix.conj() for ix in self._indices)
@@ -869,8 +960,21 @@ class AbelianArrayFlat(AbelianCommon):
             inplace=inplace,
         )
 
-    def transpose(self, axes=None, inplace=False):
-        """Transpose this flat abelian array."""
+    def transpose(self, axes=None, inplace=False) -> "AbelianArrayFlat":
+        """Transpose this flat abelian array.
+
+        Parameters
+        ----------
+        axes : tuple[int, ...] | None, optional
+            A permutation of the axes to transpose the array by. If None,
+            the axes will be reversed.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
         if axes is None:
             # reverse the axes
             axes = tuple(range(self.ndim - 1, -1, -1))
@@ -895,7 +999,11 @@ class AbelianArrayFlat(AbelianCommon):
             inplace=inplace,
         )
 
-    def __matmul__(self, other, preserve_array=False):
+    def __matmul__(
+        self: "AbelianArrayFlat",
+        other: "AbelianArrayFlat",
+        preserve_array=False,
+    ):
         # sort shared axis to align sectors
         a = self.sort_stack((-1,))
         b = other.sort_stack((0,))
