@@ -73,7 +73,7 @@ class FlatSubIndexInfo:
     Parameters
     ----------
     indices : tuple[FlatIndex]
-        The indices that are being fused.
+        The indices that have been fused.
     subkeys : array_like
         The subkeys for the fused index, with shape
         (ncharge, nsectors, nsubcharges). I.e. the first axis selects the
@@ -85,44 +85,78 @@ class FlatSubIndexInfo:
     """
 
     __slots__ = (
-        "indices",
-        "subkeys",
-        "extents",
-        "ncharge",
-        "nsectors",
-        "nsubcharges",
+        "_indices",
+        "_subkeys",
+        "_extents",
+        "_ncharge",
+        "_nsectors",
+        "_nsubcharges",
     )
 
     def __init__(self, indices, subkeys, extents):
-        self.indices = tuple(
+        self._indices = tuple(
             x if isinstance(x, FlatIndex) else FlatIndex(x) for x in indices
         )
-        self.subkeys = subkeys
+        self._subkeys = subkeys
         subkey_shape = ar.do("shape", subkeys)
         # number of overall charges, e.g. {0, 1} -> 2
         # number of subsectors e.g. [000, 011, 101, 110] -> 4
         # number of subcharges, e.g. 3 for above
-        self.ncharge, self.nsectors, self.nsubcharges = subkey_shape
-        self.extents = tuple(extents)
+        self._ncharge, self._nsectors, self._nsubcharges = subkey_shape
+        self._extents = tuple(extents)
+
+    @property
+    def indices(self):
+        """The subkeys for the fused index, with shape
+        (ncharge, nsectors, nsubcharges). I.e. the first axis selects the
+        overall fused charge, the second axis selects the subsector within
+        that charge, and the third axis selects the individual charge within
+        that subsector."""
+        return self._indices
+
+    @property
+    def extents(self):
+        """The extents of the fused index."""
+        return self._extents
+
+    @property
+    def subkeys(self):
+        """The subkeys for the fused index."""
+        return self._subkeys
+
+    @property
+    def ncharge(self):
+        """Number of overall charges in this subindex."""
+        return self._ncharge
+
+    @property
+    def nsectors(self):
+        """Number of subsectors in this subindex."""
+        return self._nsectors
+
+    @property
+    def nsubcharges(self):
+        """Number of subcharges in this subindex."""
+        return self._nsubcharges
 
     def check(self):
-        assert len(self.indices) == len(self.subkeys[0])
-        assert len(self.indices) == len(self.extents)
+        assert len(self._indices) == len(self._subkeys[0])
+        assert len(self._indices) == len(self._extents)
 
     def conj(self):
         return FlatSubIndexInfo(
-            indices=tuple(ix.conj() for ix in self.indices),
-            subkeys=self.subkeys,
-            extents=self.extents,
+            indices=tuple(ix.conj() for ix in self._indices),
+            subkeys=self._subkeys,
+            extents=self._extents,
         )
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
-            f"ncharge={self.ncharge}, "
-            f"nsectors={self.nsectors}, "
-            f"nsubcharges={self.nsubcharges}, "
-            f"extents={self.extents})"
+            f"ncharge={self._ncharge}, "
+            f"nsectors={self._nsectors}, "
+            f"nsubcharges={self._nsubcharges}, "
+            f"extents={self._extents})"
         )
 
 
