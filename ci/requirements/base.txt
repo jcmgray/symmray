@@ -1,4 +1,5 @@
 autoray
+cotengra
 coverage
 einops
 numpy
