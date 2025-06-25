@@ -423,12 +423,14 @@ class AbelianArrayFlat(AbelianCommon):
         sectors = []
         full_blocks = None
         fshape = None
+        like = None
         for i, key in enumerate(sorted(blocks)):
             block = blocks[key]
             bshape = ar.do("shape", block)
             if full_blocks is None:
                 fshape = (len(blocks), *bshape)
-                full_blocks = ar.do("empty", fshape, like=block)
+                like = ar.infer_backend(block)
+                full_blocks = ar.do("empty", fshape, like=like)
             sectors.append(list(key))
             full_blocks[i] = block
         return cls(sectors, full_blocks, indices)
