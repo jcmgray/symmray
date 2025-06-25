@@ -4,9 +4,9 @@ import autoray as ar
 
 from .abelian_core import (
     AbelianArray,
+    parse_tensordot_axes,
     permuted,
     tensordot_abelian,
-    without,
 )
 from .fermionic_local_operators import FermionicOperator
 from .interface import tensordot
@@ -839,22 +839,11 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
         else:
             raise TypeError(f"Expected FermionicArray, got {type(b)}.")
 
-    ndim_a = a.ndim
-    ndim_b = b.ndim
+    ndim_a, ndim_b = a.ndim, b.ndim
+    left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+        axes, ndim_a, ndim_b
+    )
 
-    # parse the axes argument for single integer and also negative indices
-    if isinstance(axes, int):
-        axes_a = tuple(range(ndim_a - axes, ndim_a))
-        axes_b = tuple(range(0, axes))
-    else:
-        axes_a, axes_b = axes
-        axes_a = tuple(x % ndim_a for x in axes_a)
-        axes_b = tuple(x % ndim_b for x in axes_b)
-        if not len(axes_a) == len(axes_b):
-            raise ValueError("Axes must have same length.")
-
-    left_axes = without(range(ndim_a), axes_a)
-    right_axes = without(range(ndim_b), axes_b)
     ncon = len(axes_a)
 
     # permute a & b so we have axes like

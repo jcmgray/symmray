@@ -16,7 +16,7 @@ from autoray.lazy.core import find_full_reshape
 
 from .block_core import BlockBase
 from .interface import tensordot
-from .symmetries import get_symmetry, Symmetry
+from .symmetries import Symmetry, get_symmetry
 from .utils import DEBUG
 
 
@@ -2370,8 +2370,8 @@ class AbelianArray(AbelianCommon, BlockBase):
 
     def to_flat(self):
         """ """
-        from .symmetries import ZN
         from .flat_core import get_zn_array_flat_cls
+        from .symmetries import ZN
 
         if not isinstance(self.symmetry, ZN):
             raise ValueError("Only ZN symmetry supported.")
@@ -2674,6 +2674,27 @@ def default_tensordot_mode(mode):
         _DEFAULT_TENSORDOT_MODE = old_mode
 
 
+def parse_tensordot_axes(axes, ndim_a, ndim_b):
+    """Parse the axes argument for single integer and also negative indices.
+    Returning the 4 axes groups that can be used for fusing.
+    """
+    if isinstance(axes, int):
+        axes_a = tuple(range(ndim_a - axes, ndim_a))
+        axes_b = tuple(range(0, axes))
+    else:
+        axes_a, axes_b = axes
+        axes_a = tuple(x % ndim_a for x in axes_a)
+        axes_b = tuple(x % ndim_b for x in axes_b)
+        if not len(axes_a) == len(axes_b):
+            raise ValueError("Axes must have same length.")
+
+    # axes left on the left and right tensors respectively
+    left_axes = without(range(ndim_a), axes_a)
+    right_axes = without(range(ndim_b), axes_b)
+
+    return left_axes, axes_a, axes_b, right_axes
+
+
 @tensordot.register(AbelianArray)
 def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     """Tensordot between two block sparse abelian symmetric arrays.
@@ -2703,25 +2724,12 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
         a.check()
         b.check()
 
-    ndim_a = a.ndim
-    ndim_b = b.ndim
-
-    # parse the axes argument for single integer and also negative indices
-    if isinstance(axes, int):
-        axes_a = tuple(range(ndim_a - axes, ndim_a))
-        axes_b = tuple(range(0, axes))
-    else:
-        axes_a, axes_b = axes
-        axes_a = tuple(x % ndim_a for x in axes_a)
-        axes_b = tuple(x % ndim_b for x in axes_b)
-        if not len(axes_a) == len(axes_b):
-            raise ValueError("Axes must have same length.")
+    left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+        axes, a.ndim, b.ndim
+    )
 
     if DEBUG:
         a.check_with(b, axes_a, axes_b)
-
-    left_axes = without(range(ndim_a), axes_a)
-    right_axes = without(range(ndim_b), axes_b)
 
     if mode is None:
         mode = _DEFAULT_TENSORDOT_MODE
