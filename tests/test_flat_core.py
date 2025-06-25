@@ -1,6 +1,7 @@
 import random
 
 import pytest
+
 import symmray as sr
 
 
@@ -192,3 +193,63 @@ def test_vecmat(symmetry, seed, charge_x, charge_y):
     fz = fx @ fy
     fz.check()
     fz.to_blocksparse().allclose(sz)
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4])
+@pytest.mark.parametrize("order", [2, 3, 4])
+@pytest.mark.parametrize("seed", range(5))
+def test_build_cyclic_keys_conserve(ndim, order, seed):
+    import numpy as np
+
+    from symmray.flat_core import (
+        build_cyclic_keys_conserve,
+        lexsort_sectors,
+        zn_combine,
+    )
+
+    rng = random.Random(seed)
+    charge = rng.randint(0, order - 1)
+    duals = [rng.choice([True, False]) for _ in range(ndim)]
+
+    sectors = build_cyclic_keys_conserve(
+        ndim,
+        order=order,
+        charge=charge,
+        duals=duals,
+        flat=True,
+    )
+    scharges = zn_combine(sectors, duals=duals, order=order)
+
+    assert set(map(int, scharges)) == {charge}
+    assert np.all(lexsort_sectors(sectors) == np.arange(order ** (ndim - 1)))
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4])
+@pytest.mark.parametrize("order", [2, 3, 4])
+@pytest.mark.parametrize("seed", range(5))
+def test_build_cyclic_keys_by_charge(ndim, order, seed):
+    import numpy as np
+
+    from symmray.flat_core import (
+        build_cyclic_keys_by_charge,
+        lexsort_sectors,
+        zn_combine,
+    )
+
+    rng = random.Random(seed)
+    duals = [rng.choice([True, False]) for _ in range(ndim)]
+
+    sectors = build_cyclic_keys_by_charge(
+        ndim,
+        order=order,
+        duals=duals,
+    )
+    scharges = zn_combine(sectors, duals=duals, order=order)
+
+    for i in range(order):
+        # all have matching charge
+        assert np.all(scharges[i] == i)
+        # and are sorted within that charge
+        assert np.all(
+            lexsort_sectors(sectors[i]) == np.arange(order ** (ndim - 1))
+        )

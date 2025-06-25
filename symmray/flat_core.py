@@ -1300,7 +1300,7 @@ def build_cyclic_keys_conserve(
         last_sign = signs[-1]
         signs = ar.do("reshape", signs, (1,) * ndim + (-1,), like=keys)
         keys[..., -1] = (
-            charge - last_sign * (ar.do("sum", signs * keys, axis=-1))
+            last_sign * (charge - ar.do("sum", signs * keys, axis=-1))
         ) % order
     else:
         keys[..., -1] = (charge - (ar.do("sum", keys, axis=-1))) % order
@@ -1363,8 +1363,8 @@ def build_cyclic_keys_by_charge(ndim, order=2, duals=None, like=None):
         last_sign = signs[-1]
         signs = ar.do("reshape", signs, (1,) * (ndim + 1) + (-1,), like=keys)
         c_last = (
-            c_total
-            - last_sign * ar.do("sum", signs * keys, axis=-1, like=like)
+            last_sign
+            * (c_total - ar.do("sum", signs * keys, axis=-1, like=like))
         ) % order
     else:
         c_last = (c_total - ar.do("sum", keys, axis=-1, like=like)) % order
