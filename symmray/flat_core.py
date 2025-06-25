@@ -14,8 +14,8 @@ from itertools import repeat
 import autoray as ar
 
 from .abelian_core import (
-    AbelianCommon,
     AbelianArray,
+    AbelianCommon,
     calc_fuse_group_info,
     get_zn_array_cls,
 )
@@ -64,6 +64,14 @@ class FlatIndex:
             dual=not self._dual,
             subinfo=None if self._subinfo is None else self._subinfo.conj(),
         )
+
+    def __repr__(self):
+        s = [f"{self.__class__.__name__}("]
+        s.append(f"dual={self._dual}")
+        if self._subinfo is not None:
+            s.append(f", subinfo={self._subinfo!r}")
+        s.append(")")
+        return "".join(s)
 
 
 class FlatSubIndexInfo:
@@ -686,10 +694,11 @@ class AbelianArrayFlat(AbelianCommon):
 
         # then we take slices across these to strore subcharge information
         # for unfusing
-        subkeys = {}
+        subkeys = []
         for g in range(num_groups):
             if g in group_singlets:
                 # no need to record subcharges
+                subkeys.append(None)
                 continue
 
             subkey_selector = []
@@ -745,8 +754,7 @@ class AbelianArrayFlat(AbelianCommon):
                 kord = ar.do("argsort", gcharges, like=self.backend)
                 subkey = subkey[kord]
 
-            # store
-            subkeys[g] = subkey
+            subkeys.append(subkey)
 
         # reflatten new keys into stack
         new_sectors = ar.do(
@@ -807,10 +815,14 @@ class AbelianArrayFlat(AbelianCommon):
 
         # if num_groups == 1 and len(axes_groups[0]) == self.ndim:
         #     # full fuse, only one overall charge, subkeys are all current keys
-        #     subkeys = {0: ar.do("reshape", self._sectors, (1, -1, self.ndim))}
+        #     # but we do need to take into account possible permutation
+        #     subkeys0 = ar.do(
+        #         "reshape", old_sectors[..., axes_groups[0]], (1, -1, self.ndim)
+        #     )
+        #     subkeys = [subkeys0]
         # else:
-        #     subkeys = {
-        #         g: build_cyclic_keys_by_charge(
+        #     subkeys = [
+        #         build_cyclic_keys_by_charge(
         #             ndim=len(axs),
         #             order=self.order,
         #             duals=[self.duals[ax] != group_duals[g] for ax in axs],
@@ -818,7 +830,7 @@ class AbelianArrayFlat(AbelianCommon):
         #             like=self._sectors,
         #         )
         #         for g, axs in enumerate(axes_groups)
-        #     }
+        #     ]
 
         # finally we construct info, including for unfusing
         new_indices = []
