@@ -319,6 +319,11 @@ class AbelianArrayFlat(AbelianCommon):
         return self._indices
 
     @property
+    def charge(self):
+        """Compute the overall charge of the array."""
+        return zn_combine(self._sectors[[0], :], self.duals, self.order)[0]
+
+    @property
     def duals(self) -> tuple[bool]:
         """Get the dualness of each index."""
         return tuple(index.dual for index in self._indices)
@@ -997,14 +1002,71 @@ class AbelianArrayFlat(AbelianCommon):
             inplace=inplace,
         )
 
+    def select_charge(self, axis, charge, inplace=False):
+        """Drop all but the specified charge along the specified axis."""
+        new = self.sort_stack(axis, inplace=inplace)
+
+        shp_sectors = ar.do("shape", new.sectors, like=self.backend)
+        shp_blocks = ar.do("shape", new.blocks, like=self.backend)
+
+        dc = self.order
+        dB = shp_sectors[0]
+
+        new_sectors = ar.do(
+            "reshape", new.sectors, (dc, dB // dc, *shp_sectors[1:])
+        )[charge]
+
+        new_blocks = ar.do(
+            "reshape", new.blocks, (dc, dB // dc, *shp_blocks[1:])
+        )[charge]
+
+        new._sectors = new_sectors
+        new._blocks = new_blocks
+        return new
+
+    def align_axes(
+        self: "AbelianArrayFlat",
+        other: "AbelianArrayFlat",
+        axes: tuple[tuple[int, ...], tuple[int, ...]],
+        inplace=False,
+    ) -> tuple["AbelianArrayFlat", "AbelianArrayFlat"]:
+        """Align the axes of two arrays for contraction."""
+        ndim_a = self.ndim
+        ndim_b = other.ndim
+
+        if ndim_a >= 2 and ndim_b >= 2:
+            # ~ matmat: just need to sort sectors along common axes
+            return (
+                self.sort_stack(axes[0], inplace=inplace),
+                other.sort_stack(axes[1], inplace=inplace),
+            )
+
+        elif ndim_a >= 2 and ndim_b == 1:
+            # ~matvec: b has locked axis and only one charge
+            (axis,) = axes[0]
+            a = self.select_charge(axis, other.charge, inplace=inplace)
+            return a, other
+
+        elif ndim_a == 1 and ndim_b >= 2:
+            # vec~mat: a has locked axis and only one charge
+            (axis,) = axes[1]
+            b = other.select_charge(axis, self.charge, inplace=inplace)
+            return self, b
+
+        else:
+            raise NotImplementedError(
+                "Cannot align axes for arrays with shapes: "
+                f"{self.shape} and {other.shape} yet."
+            )
+
     def __matmul__(
         self: "AbelianArrayFlat",
         other: "AbelianArrayFlat",
         preserve_array=False,
     ):
-        # sort shared axis to align sectors
-        a = self.sort_stack((-1,))
-        b = other.sort_stack((0,))
+        import cotengra as ctg
+
+        a, b = self.align_axes(other, axes=((-1,), (0,)))
 
         # new sectors given by concatenation of the sectors
         new_sectors = ar.do(
@@ -1014,12 +1076,24 @@ class AbelianArrayFlat(AbelianCommon):
             like=self.backend,
         )
 
+        inputs = []
+        output = ["B"]
+        if a.ndim == 1:
+            inputs.append(("B", "x"))
+        else:
+            inputs.append(("B", "l", "x"))
+            output.append("l")
+        if b.ndim == 1:
+            inputs.append(("B", "x"))
+        else:
+            inputs.append(("B", "x", "r"))
+            output.append("r")
+
         # new full block given by batch matrix multiplication
-        new_blocks = ar.do(
-            "matmul",
-            a.blocks,
-            b.blocks,
-            like=self.backend,
+        new_blocks = ctg.array_contract(
+            arrays=(a.blocks, b.blocks),
+            inputs=inputs,
+            output=output,
         )
 
         new_indices = (*a.indices[:-1], *b.indices[1:])
@@ -1034,9 +1108,6 @@ class AbelianArrayFlat(AbelianCommon):
         raise NotImplementedError()
 
     def multiply_diagonal(self, v, axis, inplace=False):
-        raise NotImplementedError()
-
-    def align_axes(self, other, axes):
         raise NotImplementedError()
 
     def einsum(self, eq, preserve_array=False):

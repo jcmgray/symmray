@@ -2499,7 +2499,13 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
     )
 
 
-def drop_misaligned_sectors(a, b, axes_a, axes_b, inplace=False):
+def drop_misaligned_sectors(
+    a: AbelianArray,
+    b: AbelianArray,
+    axes_a: tuple[int, ...],
+    axes_b: tuple[int, ...],
+    inplace=False,
+) -> tuple[AbelianArray, AbelianArray]:
     """Eagerly drop misaligned sectors of ``a`` and ``b`` so that they can be
     contracted via fusing.
 

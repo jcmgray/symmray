@@ -94,8 +94,10 @@ def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4", "Z5"])
-@pytest.mark.parametrize("seed", range(10))
-def test_matmul(symmetry, seed):
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("charge_x", [0, 1])
+@pytest.mark.parametrize("charge_y", [0, 1])
+def test_matmul(symmetry, seed, charge_x, charge_y):
     N = int(symmetry[1:])
     rng = sr.utils.get_rng(seed)
 
@@ -106,8 +108,82 @@ def test_matmul(symmetry, seed):
     a_ind = sr.utils.rand_index(symmetry, N * da, subsizes="equal", seed=rng)
     b_ind = sr.utils.rand_index(symmetry, N * db, subsizes="equal", seed=rng)
     c_ind = sr.utils.rand_index(symmetry, N * dc, subsizes="equal", seed=rng)
-    sx = sr.utils.get_rand(symmetry, (a_ind, b_ind.conj()))
-    sy = sr.utils.get_rand(symmetry, (b_ind, c_ind))
+
+    if charge_x:
+        charge_x = rng.integers(1, N)
+    if charge_y:
+        charge_y = rng.integers(1, N)
+
+    sx = sr.utils.get_rand(
+        symmetry, (a_ind, b_ind.conj()), charge=charge_x, seed=rng
+    )
+    sy = sr.utils.get_rand(symmetry, (b_ind, c_ind), charge=charge_y, seed=rng)
+    sz = sx @ sy
+    fx = sx.to_flat()
+    fx.check()
+    fy = sy.to_flat()
+    fy.check()
+    fz = fx @ fy
+    fz.check()
+    fz.to_blocksparse().allclose(sz)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4", "Z5"])
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("charge_x", [0, 1])
+@pytest.mark.parametrize("charge_y", [0, 1])
+def test_matvec(symmetry, seed, charge_x, charge_y):
+    N = int(symmetry[1:])
+    rng = sr.utils.get_rng(seed)
+
+    da = rng.integers(1, 5)
+    db = rng.integers(1, 5)
+
+    a_ind = sr.utils.rand_index(symmetry, N * da, subsizes="equal", seed=rng)
+    b_ind = sr.utils.rand_index(symmetry, N * db, subsizes="equal", seed=rng)
+
+    if charge_x:
+        charge_x = rng.integers(1, N)
+    if charge_y:
+        charge_y = rng.integers(1, N)
+
+    sx = sr.utils.get_rand(
+        symmetry, (a_ind, b_ind.conj()), charge=charge_x, seed=rng
+    )
+    sy = sr.utils.get_rand(symmetry, (b_ind,), charge=charge_y, seed=rng)
+    sz = sx @ sy
+    fx = sx.to_flat()
+    fx.check()
+    fy = sy.to_flat()
+    fy.check()
+    fz = fx @ fy
+    fz.check()
+    fz.to_blocksparse().allclose(sz)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4", "Z5"])
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("charge_x", [0, 1])
+@pytest.mark.parametrize("charge_y", [0, 1])
+def test_vecmat(symmetry, seed, charge_x, charge_y):
+    N = int(symmetry[1:])
+    rng = sr.utils.get_rng(seed)
+
+    da = rng.integers(1, 5)
+    db = rng.integers(1, 5)
+
+    a_ind = sr.utils.rand_index(symmetry, N * da, subsizes="equal", seed=rng)
+    b_ind = sr.utils.rand_index(symmetry, N * db, subsizes="equal", seed=rng)
+
+    if charge_x:
+        charge_x = rng.integers(1, N)
+    if charge_y:
+        charge_y = rng.integers(1, N)
+
+    sx = sr.utils.get_rand(symmetry, (a_ind,), charge=charge_x, seed=rng)
+    sy = sr.utils.get_rand(
+        symmetry, (a_ind.conj(), b_ind), charge=charge_y, seed=rng
+    )
     sz = sx @ sy
     fx = sx.to_flat()
     fx.check()
