@@ -1158,6 +1158,44 @@ class AbelianCommon:
                 new.unfuse(ax, inplace=True)
         return new
 
+    def __str__(self):
+        lines = [
+            (
+                f"{self.__class__.__name__}(ndim={self.ndim}, "
+                f"charge={self.charge}, indices=["
+            )
+        ]
+        for i in range(self.ndim):
+            lines.extend(
+                f"    {line}" for line in str(self.indices[i]).split("\n")
+            )
+        lines.append(
+            (
+                f"], num_blocks={self.num_blocks}, backend={self.backend}, "
+                f"dtype={self.dtype})"
+            )
+        )
+        return "\n".join(lines)
+
+    def __repr__(self):
+        if self.static_symmetry is not None:
+            c = f"{self.__class__.__name__}("
+        else:
+            c = f"{self.__class__.__name__}{self.symmetry}("
+
+        return "".join(
+            [
+                c,
+                (
+                    f"shape~{self.shape}:[{self.signature}]"
+                    if self.indices
+                    else f"{self.get_any_array()}"
+                ),
+                f", charge={self.charge}",
+                f", num_blocks={self.num_blocks})",
+            ]
+        )
+
 
 class AbelianArray(AbelianCommon, BlockBase):
     """A block sparse array with symmetry constraints.
@@ -2378,44 +2416,6 @@ class AbelianArray(AbelianCommon, BlockBase):
 
         cls = get_zn_array_flat_cls(self.symmetry.N)
         return cls.from_blocksparse(self)
-
-    def __str__(self):
-        lines = [
-            (
-                f"{self.__class__.__name__}(ndim={self.ndim}, "
-                f"charge={self.charge}, indices=["
-            )
-        ]
-        for i in range(self.ndim):
-            lines.extend(
-                f"    {line}" for line in str(self.indices[i]).split("\n")
-            )
-        lines.append(
-            (
-                f"], num_blocks={self.num_blocks}, backend={self.backend}, "
-                f"dtype={self.dtype})"
-            )
-        )
-        return "\n".join(lines)
-
-    def __repr__(self):
-        if self.static_symmetry is not None:
-            c = f"{self.__class__.__name__}("
-        else:
-            c = f"{self.__class__.__name__}{self.symmetry}("
-
-        return "".join(
-            [
-                c,
-                (
-                    f"shape~{self.shape}:[{self.signature}]"
-                    if self.indices
-                    else f"{self.get_any_array()}"
-                ),
-                f", charge={self.charge}",
-                f", num_blocks={self.num_blocks})",
-            ]
-        )
 
 
 # --------------------------------------------------------------------------- #

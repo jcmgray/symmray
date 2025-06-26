@@ -18,7 +18,9 @@ from .abelian_core import (
     AbelianCommon,
     calc_fuse_group_info,
     get_zn_array_cls,
+    parse_tensordot_axes,
 )
+from .interface import tensordot
 from .symmetries import get_symmetry
 
 
@@ -64,6 +66,12 @@ class FlatIndex:
             dual=not self._dual,
             subinfo=None if self._subinfo is None else self._subinfo.conj(),
         )
+
+    def select_charge(self, charge):
+        if self._subinfo is not None:
+            new_subinfo = self._subinfo.select_charge(charge)
+            return FlatIndex(dual=self._dual, subinfo=new_subinfo)
+        return self
 
     def __repr__(self):
         s = [f"{self.__class__.__name__}("]
@@ -150,11 +158,19 @@ class FlatSubIndexInfo:
         assert len(self._indices) == len(self._subkeys[0])
         assert len(self._indices) == len(self._extents)
 
-    def conj(self) -> "FlatSubIndexInfo":
+    def conj(self):
         return FlatSubIndexInfo(
             indices=tuple(ix.conj() for ix in self._indices),
             subkeys=self._subkeys,
             extents=self._extents,
+        )
+
+    def select_charge(self, charge):
+        new_subkeys = self.subkeys[[charge]]
+        return FlatSubIndexInfo(
+            indices=self.indices,
+            subkeys=new_subkeys,
+            extents=self.extents,
         )
 
     def __repr__(self):
@@ -379,6 +395,10 @@ class AbelianArrayFlat(AbelianCommon):
         """Get the full shape of the stacked blocks, including the number of
         blocks."""
         return ar.do("shape", self._blocks, like=self.backend)
+
+    def get_any_array(self):
+        """Get an arbitrary (the first) block from the stack."""
+        return self._blocks[0]
 
     @property
     def shape_block(self) -> tuple[int, ...]:
@@ -1018,24 +1038,56 @@ class AbelianArrayFlat(AbelianCommon):
 
     def select_charge(self, axis, charge, inplace=False):
         """Drop all but the specified charge along the specified axis."""
+        if axis < 0:
+            axis += self.ndim
+
         new = self.sort_stack(axis, inplace=inplace)
 
-        shp_sectors = ar.do("shape", new.sectors, like=self.backend)
-        shp_blocks = ar.do("shape", new.blocks, like=self.backend)
+        shape_sectors = ar.do("shape", new.sectors, like=self.backend)
+        shape_blocks = ar.do("shape", new.blocks, like=self.backend)
 
         dc = self.order
-        dB = shp_sectors[0]
+        dB = shape_sectors[0]
 
         new_sectors = ar.do(
-            "reshape", new.sectors, (dc, dB // dc, *shp_sectors[1:])
+            "reshape",
+            new.sectors,
+            (dc, dB // dc, *shape_sectors[1:]),
+            like=self.backend,
         )[charge]
 
         new_blocks = ar.do(
-            "reshape", new.blocks, (dc, dB // dc, *shp_blocks[1:])
+            "reshape",
+            new.blocks,
+            (dc, dB // dc, *shape_blocks[1:]),
+            like=self.backend,
         )[charge]
+
+        if self.ndim == 2:
+            # axes are locked to each other -> select both
+            if axis == 0:
+                other_charge = new.sectors[0, 1]
+                new_indices = (
+                    self.indices[0].select_charge(charge),
+                    self.indices[1].select_charge(other_charge),
+                )
+            else:  # axis == 1
+                other_charge = new.sectors[0, 0]
+                new_indices = (
+                    self.indices[0].select_charge(other_charge),
+                    self.indices[1].select_charge(charge),
+                )
+        else:
+            new_indices = (
+                *self.indices[:axis],
+                self.indices[axis].select_charge(charge),
+                *self.indices[axis + 1 :],
+            )
 
         new._sectors = new_sectors
         new._blocks = new_blocks
+        new._indices = new_indices
+
         return new
 
     def align_axes(
@@ -1045,33 +1097,70 @@ class AbelianArrayFlat(AbelianCommon):
         inplace=False,
     ) -> tuple["AbelianArrayFlat", "AbelianArrayFlat"]:
         """Align the axes of two arrays for contraction."""
-        ndim_a = self.ndim
-        ndim_b = other.ndim
+        a, b = (self, other) if inplace else (self.copy(), other.copy())
+
+        ndim_a = a.ndim
+        ndim_b = b.ndim
 
         if ndim_a >= 2 and ndim_b >= 2:
             # ~ matmat: just need to sort sectors along common axes
             return (
-                self.sort_stack(axes[0], inplace=inplace),
-                other.sort_stack(axes[1], inplace=inplace),
+                a.sort_stack(axes[0], inplace=True),
+                b.sort_stack(axes[1], inplace=True),
             )
 
         elif ndim_a >= 2 and ndim_b == 1:
             # ~matvec: b has locked axis and only one charge
             (axis,) = axes[0]
-            a = self.select_charge(axis, other.charge, inplace=inplace)
-            return a, other
+            a = a.select_charge(axis, b.charge, inplace=True)
+            return a, b
 
         elif ndim_a == 1 and ndim_b >= 2:
-            # vec~mat: a has locked axis and only one charge
+            # ~vecmat: a has locked axis and only one charge
             (axis,) = axes[1]
-            b = other.select_charge(axis, self.charge, inplace=inplace)
-            return self, b
+            b = b.select_charge(axis, a.charge, inplace=True)
+            return a, b
 
         else:
-            raise NotImplementedError(
-                "Cannot align axes for arrays with shapes: "
-                f"{self.shape} and {other.shape} yet."
-            )
+            # ~vecvec: both must have the same charge
+            matching = a.charge == b.charge
+            # branchless set to zero
+            a._blocks = a._blocks * matching
+            b._blocks = b._blocks * matching
+            return a, b
+
+    def outer(self, other: "AbelianArrayFlat") -> "AbelianArrayFlat":
+        """Perform the outer product of two flat abelian arrays."""
+        import einops
+
+        shape_a = self._get_shape_blocks_full()
+        num_blocks_a = shape_a[0]
+        shape_b = other._get_shape_blocks_full()
+        num_blocks_b = shape_b[0]
+
+        # do outer via broadcasted multiplication
+        new_shape_a = (num_blocks_a, 1, *shape_a[1:], *repeat(1, other.ndim))
+        new_shape_b = (1, num_blocks_b, *repeat(1, self.ndim), *shape_b[1:])
+        new_blocks = ar.do("reshape", self.blocks, new_shape_a) * ar.do(
+            "reshape", other.blocks, new_shape_b
+        )
+        # remerge batch index
+        new_blocks = ar.do(
+            "reshape",
+            new_blocks,
+            (num_blocks_a * num_blocks_b, *shape_a[1:], *shape_b[1:]),
+        )
+
+        # get new keys from 'broadcasted' concatenation
+        ka = einops.repeat(self.sectors, "b r -> (b x) r", x=num_blocks_b)
+        kb = einops.repeat(other.sectors, "b r -> (x b) r", x=num_blocks_a)
+        new_sectors = ar.do("concatenate", (ka, kb), axis=1)
+
+        new_indices = self.indices + other.indices
+
+        return self.__class__(
+            sectors=new_sectors, indices=new_indices, blocks=new_blocks
+        )
 
     def __matmul__(
         self: "AbelianArrayFlat",
@@ -1112,11 +1201,16 @@ class AbelianArrayFlat(AbelianCommon):
 
         new_indices = (*a.indices[:-1], *b.indices[1:])
 
-        return a.__class__(
-            blocks=new_blocks,
-            sectors=new_sectors,
-            indices=new_indices,
-        )
+        if new_indices or preserve_array:
+            # array output, wrap in a new class
+            return a.__class__(
+                blocks=new_blocks,
+                sectors=new_sectors,
+                indices=new_indices,
+            )
+
+        # scalar output
+        return new_blocks[0]
 
     def trace(self):
         raise NotImplementedError()
@@ -1130,12 +1224,35 @@ class AbelianArrayFlat(AbelianCommon):
     def __reduce__(self):
         return (get_zn_array_flat_cls, (self.order,))
 
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}("
-            f"shape~{self.shape}:[{self.signature}], "
-            f"num_blocks={self.num_blocks})"
-        )
+
+@tensordot.register(AbelianArrayFlat)
+def tensordot_flat(
+    self: AbelianArrayFlat,
+    other: AbelianArrayFlat,
+    axes=2,
+    preserve_array=False,
+):
+    left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+        axes, self.ndim, other.ndim
+    )
+
+    if not axes_a:
+        # other product
+        return self.outer(other)
+
+    if left_axes:
+        af = self.fuse(left_axes, axes_a)
+    else:
+        af = self.fuse(axes_a)
+
+    if right_axes:
+        bf = other.fuse(axes_b, right_axes)
+    else:
+        bf = other.fuse(axes_b)
+
+    cf = af.__matmul__(bf, preserve_array=preserve_array)
+
+    return cf.unfuse_all()
 
 
 def print_charge_fusions(keys, duals, axes_groups):
