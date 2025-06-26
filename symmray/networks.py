@@ -101,11 +101,12 @@ def TN_abelian_from_edges_rand(
     subsizes="maximal",
     **kwargs,
 ):
-    """Build a random abelian symmetric `quimb.tensor` PEPS from edges.
+    """Build a random abelian symmetric `quimb.tensor` amplitude or PEPS from
+    edges.
 
-    Paramters
-    ---------
-    symmetry : {"Z2", "U1"}
+    Parameters
+    ----------
+    symmetry : {"Z2", "U1", "Z2Z2", "U1U1", ZN}
         The symmetry of the PEPS. Currently only "Z2" and "U1" are supported.
     edges : list of tuples
         The edges of the PEPS. Each edge is a tuple of the form `(cooa, coob)`
@@ -244,9 +245,9 @@ def TN_fermionic_from_edges_rand(
     """Create a random fermionic tensor network from edges. This is a wrapper
     around :func:`TN_abelian_from_edges_rand` with `fermionic=True`.
 
-    Paramters
-    ---------
-    symmetry : {"Z2", "U1"}
+    Parameters
+    ----------
+    symmetry : {"Z2", "U1", "Z2Z2", "U1U1", ZN}
         The symmetry of the PEPS. Currently only "Z2" and "U1" are supported.
     edges : list of tuples
         The edges of the PEPS. Each edge is a tuple of the form `(cooa, coob)`

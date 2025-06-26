@@ -715,9 +715,10 @@ def get_rand(
     ----------
     symmetry : str
         The symmetry of the array.
-    shape : tuple[int | dict]
+    shape : tuple[int | dict | BlockIndex, ...]
         The desired overall effective shape of the array. Each element can be
-        an int or an explicit dict of charge sizes.
+        an int, in which case the charge sizes will be generated automatically,
+        or an explicit dict of charge sizes, or a BlockIndex.
     duals : None, "equals", or Sequence[bool], optional
         The dualness of each index. If None, the dualnesses are chosen
         randomly. If "equal", they are chosen so the first half of the

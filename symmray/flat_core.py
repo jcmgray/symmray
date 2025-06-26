@@ -1252,7 +1252,11 @@ def tensordot_flat(
 
     cf = af.__matmul__(bf, preserve_array=preserve_array)
 
-    return cf.unfuse_all()
+    if isinstance(cf, AbelianArrayFlat):
+        # if we got a new flat array, unfuse all axes
+        cf.unfuse_all(inplace=True)
+
+    return cf
 
 
 def print_charge_fusions(keys, duals, axes_groups):
