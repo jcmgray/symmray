@@ -179,6 +179,8 @@ def TN_abelian_from_edges_rand(
         phys_chargemap = None
 
     if site_charge is None:
+        from symmray.symmetries import get_symmetry, ZN
+
         if symmetry == "U1":
             sites = sorted(site_info.keys())
             even_sites = set(sites[::2])
@@ -186,7 +188,7 @@ def TN_abelian_from_edges_rand(
             def site_charge(site):
                 return 0 if site in even_sites else 1
 
-        elif symmetry == "Z2":
+        elif isinstance(get_symmetry(symmetry), ZN):
 
             def site_charge(site):
                 return 0

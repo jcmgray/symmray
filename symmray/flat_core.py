@@ -2,9 +2,10 @@
 
 TODO:
 
-- [ ] cache properties
+- [ ] cache properties, funcs
 - [ ] cache patterns and reshapers/slicers
-- [ ] store size in FlatIndex and remove extents?
+- [ ] store size,ncharges in FlatIndex and remove extents?
+- [ ] implement tensordot without fusing?
 
 """
 
@@ -224,13 +225,33 @@ def lexsort_sectors(sectors, stable=True):
 
     n = ar.do("shape", sectors, like=backend)[1]
     limits = ar.do("max", sectors, axis=0, like=backend) + 1
-    ws = ar.do("ones", (1, n), dtype=sectors.dtype, like=backend)
+
+    # ws = ar.do("ones", (1, n), dtype=sectors.dtype, like=backend)
+
+    ws = [ar.do("array", 1, like=sectors)] * n
     for ax in range(n - 2, -1, -1):
         # reverse cumulative product to get 'strides'
-        ws[0, ax] = ws[0, ax + 1] * limits[ax]
+        ws[ax] = ws[ax + 1] * limits[ax]
+    ws = ar.do("stack", tuple(ws), like=sectors)
+    ws = ar.do("reshape", ws, (1, n))
 
     ranks = ar.do("sum", ws * sectors, axis=1, like=backend)
     return ar.do("argsort", ranks, stable=stable, like=backend)
+
+
+@ar.compose
+def select_slice(x, c):
+    return x[c]
+
+
+@select_slice.register("torch")
+def select_slice_torch(x, c):
+    """`torch` doesn't support vmapping the above operation."""
+    import torch
+
+    i = torch.unsqueeze(c, 0)
+    xc = torch.index_select(x, 0, i)
+    return torch.squeeze(xc, 0)
 
 
 def zn_combine(sectors, duals=None, order=2, like=None):
@@ -300,11 +321,13 @@ class AbelianArrayFlat(AbelianCommon):
         indices,
         symmetry=None,
     ):
-        self._sectors = (
-            sectors if hasattr(sectors, "shape") else ar.do("array", sectors)
-        )
         self._blocks = (
             blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
+        )
+        self._sectors = (
+            sectors
+            if hasattr(sectors, "shape")
+            else ar.do("array", sectors, like=self._blocks)
         )
         self._indices = tuple(
             # allow sequence of duals to be supplied directly
@@ -442,15 +465,15 @@ class AbelianArrayFlat(AbelianCommon):
         """
         sectors = []
         full_blocks = None
-        fshape = None
-        like = None
+        shape_blocks = None
+        backend = None
         for i, key in enumerate(sorted(blocks)):
             block = blocks[key]
-            bshape = ar.do("shape", block)
+            bshape = ar.do("shape", block, like=backend)
             if full_blocks is None:
-                fshape = (len(blocks), *bshape)
-                like = ar.infer_backend(block)
-                full_blocks = ar.do("empty", fshape, like=like)
+                shape_blocks = (len(blocks), *bshape)
+                backend = ar.infer_backend(block)
+                full_blocks = ar.do("empty", shape_blocks, like=backend)
             sectors.append(list(key))
             full_blocks[i] = block
         return cls(sectors, full_blocks, indices)
@@ -475,6 +498,13 @@ class AbelianArrayFlat(AbelianCommon):
             blocks[sector] = block
         cls = get_zn_array_cls(self.order)
         return cls.from_blocks(blocks, duals=self.duals)
+
+    def get_params(self):
+        return self._sectors, self._blocks
+
+    def set_params(self, params):
+        self._sectors, self._blocks = params
+        self.backend = ar.infer_backend(self._blocks)
 
     def is_fused(self, ax: int) -> bool:
         """Does axis `ax` carry subindex information, i.e., is it a fused
@@ -1037,7 +1067,21 @@ class AbelianArrayFlat(AbelianCommon):
         )
 
     def select_charge(self, axis, charge, inplace=False):
-        """Drop all but the specified charge along the specified axis."""
+        """Drop all but the specified charge along the specified axis.
+
+        Parameters
+        ----------
+        axis : int
+            The axis along which to select the charge.
+        charge : int
+            The charge to select along the specified axis.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
         if axis < 0:
             axis += self.ndim
 
@@ -1054,14 +1098,16 @@ class AbelianArrayFlat(AbelianCommon):
             new.sectors,
             (dc, dB // dc, *shape_sectors[1:]),
             like=self.backend,
-        )[charge]
+        )
+        new_sectors = select_slice(new_sectors, charge)
 
         new_blocks = ar.do(
             "reshape",
             new.blocks,
             (dc, dB // dc, *shape_blocks[1:]),
             like=self.backend,
-        )[charge]
+        )
+        new_blocks = select_slice(new_blocks, charge)
 
         if self.ndim == 2:
             # axes are locked to each other -> select both
@@ -1089,6 +1135,56 @@ class AbelianArrayFlat(AbelianCommon):
         new._indices = new_indices
 
         return new
+
+    def squeeze(self, axis, inplace=False):
+        """Assuming `axis` has total size 1, remove it from this array."""
+        axs_rem = tuple(i for i in range(self.ndim) if i != axis)
+
+        new_sectors = self.sectors[:, axs_rem]
+        new_indices = tuple(self._indices[i] for i in axs_rem)
+        block_selector = tuple(
+            slice(None) if i != axis + 1 else 0 for i in range(self.ndim + 1)
+        )
+        new_blocks = self.blocks[block_selector]
+
+        return self._modify_or_copy(
+            sectors=new_sectors,
+            indices=new_indices,
+            blocks=new_blocks,
+            inplace=inplace,
+        )
+
+    def isel(self, axis, idx, inplace=False):
+        """ """
+        new = self if inplace else self.copy()
+        if axis < 0:
+            axis += self.ndim
+        new.select_charge(axis, idx, inplace=True)
+        return new.squeeze(axis, inplace=True)
+
+    def __getitem__(self, item):
+        axis = None
+        idx = None
+
+        if not isinstance(item, tuple):
+            raise TypeError(
+                f"Expected a tuple for indexing, got {type(item)}: {item}"
+            )
+
+        for i, s in enumerate(item):
+            if isinstance(s, slice):
+                if not s.start is s.stop is s.step is None:
+                    raise NotImplementedError("Can only slice whole axes.")
+            else:
+                if axis is not None:
+                    raise ValueError(
+                        "Can only index one axis at a time, "
+                        f"got {item} with multiple indices."
+                    )
+                axis = i
+                idx = s
+
+        return self.select_charge(axis, idx).squeeze(axis, inplace=True)
 
     def align_axes(
         self: "AbelianArrayFlat",
