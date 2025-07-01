@@ -1,4 +1,4 @@
-from . import linalg, scipy, utils
+from . import flat_linalg, linalg, scipy, utils
 from .abelian_core import (
     AbelianArray,
     BlockIndex,
@@ -109,12 +109,13 @@ __all__ = (
     "fermi_spin_operator_local_array",
     "FermionicArray",
     "FermionicOperator",
+    "flat_linalg",
     "fuse",
     "get_default_tensordot_mode",
     "get_symmetry",
     "get_zn_array_cls",
-    "get_zn_symmetry_cls",
     "get_zn_fermionic_array_cls",
+    "get_zn_symmetry_cls",
     "ham_fermi_hubbard_from_edges",
     "ham_fermi_hubbard_spinless_from_edges",
     "ham_heisenberg_from_edges",

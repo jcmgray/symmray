@@ -1,4 +1,5 @@
-"""Flat Abelian array implementation.
+"""Flat Abelian array implementation, branchless design to allow static
+computational graphs that can be easily compiled and vectorized etc.
 
 TODO:
 
@@ -240,18 +241,19 @@ def lexsort_sectors(sectors, stable=True):
 
 
 @ar.compose
-def select_slice(x, c):
-    return x[c]
+def select_slice(x, i):
+    """Select the i'th slice of the input array."""
+    return x[i]
 
 
 @select_slice.register("torch")
-def select_slice_torch(x, c):
+def select_slice_torch(x, i):
     """`torch` doesn't support vmapping the above operation."""
     import torch
 
-    i = torch.unsqueeze(c, 0)
-    xc = torch.index_select(x, 0, i)
-    return torch.squeeze(xc, 0)
+    i = torch.unsqueeze(i, 0)
+    xi = torch.index_select(x, 0, i)
+    return torch.squeeze(xi, 0)
 
 
 def zn_combine(sectors, duals=None, order=2, like=None):
@@ -463,20 +465,9 @@ class AbelianArrayFlat(AbelianCommon):
         -------
         AbelianArrayFlat
         """
-        sectors = []
-        full_blocks = None
-        shape_blocks = None
-        backend = None
-        for i, key in enumerate(sorted(blocks)):
-            block = blocks[key]
-            bshape = ar.do("shape", block, like=backend)
-            if full_blocks is None:
-                shape_blocks = (len(blocks), *bshape)
-                backend = ar.infer_backend(block)
-                full_blocks = ar.do("empty", shape_blocks, like=backend)
-            sectors.append(list(key))
-            full_blocks[i] = block
-        return cls(sectors, full_blocks, indices)
+        sectors = list(map(list, blocks.keys()))
+        blocks = ar.do("stack", tuple(blocks.values()))
+        return cls(sectors, blocks, indices)
 
     @classmethod
     def from_blocksparse(cls, x: AbelianArray) -> "AbelianArrayFlat":
@@ -961,7 +952,7 @@ class AbelianArrayFlat(AbelianCommon):
         kb = repeat(kb, "B Bu s -> (B x Bu) s", x=new.num_blocks // fi.ncharge)
 
         # concatenate into the full new keys!
-        new_keys = ar.do(
+        new_sectors = ar.do(
             "concatenate", (ka[:, :axis], kb, ka[:, axis:]), axis=-1
         )
 
@@ -998,9 +989,12 @@ class AbelianArrayFlat(AbelianCommon):
             *new.indices[axis + 1 :],
         )
 
-        new._sectors = new_keys
-        new._blocks = new_blocks
-        new._indices = new_indices
+        new._modify_or_copy(
+            sectors=new_sectors,
+            blocks=new_blocks,
+            indices=new_indices,
+            inplace=True,
+        )
 
         return new
 
@@ -1130,9 +1124,12 @@ class AbelianArrayFlat(AbelianCommon):
                 *self.indices[axis + 1 :],
             )
 
-        new._sectors = new_sectors
-        new._blocks = new_blocks
-        new._indices = new_indices
+        new._modify_or_copy(
+            sectors=new_sectors,
+            blocks=new_blocks,
+            indices=new_indices,
+            inplace=True,
+        )
 
         return new
 
@@ -1307,6 +1304,22 @@ class AbelianArrayFlat(AbelianCommon):
 
         # scalar output
         return new_blocks[0]
+
+    def allclose(self, other: "AbelianArrayFlat", **allclose_opts):
+        """Check if two flat abelian arrays are equal to within some tolerance,
+        including their sectors and signature.
+        """
+        # blocks might not be stored in the same order
+        a = self.sort_stack()
+        b = other.sort_stack()
+
+        if a.duals != b.duals:
+            return False
+
+        if not ar.do("allclose", a.sectors, b.sectors, **allclose_opts):
+            return False
+
+        return ar.do("allclose", a.blocks, b.blocks, **allclose_opts)
 
     def trace(self):
         raise NotImplementedError()

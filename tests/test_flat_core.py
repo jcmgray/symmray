@@ -8,14 +8,10 @@ import symmray as sr
 def get_zn_blocksparse_flat_compat(symmetry, shape, charge, seed=42):
     rng = random.Random(seed)
 
-    if symmetry == "Z3":
-        shape = [3 * d // 2 for d in shape]
-        if charge:
-            charge = rng.choice([1, 2])
-    elif symmetry == "Z4":
-        shape = [4 * d // 2 for d in shape]
-        if charge:
-            charge = rng.choice([1, 2, 3])
+    N = int(symmetry[1:])
+    shape = [N * d // 2 for d in shape]
+    if charge:
+        charge = rng.choice(range(1, N))
 
     return sr.utils.get_rand(
         symmetry, shape=shape, subsizes="equal", charge=charge, seed=seed
