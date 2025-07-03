@@ -367,13 +367,14 @@ class BlockVector(BlockBase):
 
     @property
     def size(self):
-        """The total size of the arrays blocks."""
+        """The total size of all elements in the vector."""
         # compute lazily
         _size = ar.get_lib_fn(self.backend, "size")
         return sum(_size(x) for x in self.blocks.values())
 
     @property
     def shape(self):
+        """Get the effective shape of the vector."""
         return (self.size,)
 
     def __add__(self, other):

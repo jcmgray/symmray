@@ -14,7 +14,7 @@ from collections import OrderedDict, defaultdict
 import autoray as ar
 from autoray.lazy.core import find_full_reshape
 
-from .block_core import BlockBase
+from .block_core import BlockBase, BlockVector
 from .interface import tensordot
 from .symmetries import Symmetry, get_symmetry
 from .utils import DEBUG
@@ -1492,8 +1492,6 @@ class AbelianArray(AbelianCommon, BlockBase):
             with. If ``other`` is an array, then `axes_a` and `axes_b` should
             be given as if for a tensordot.
         """
-        from .block_core import BlockVector
-
         if isinstance(other, BlockVector):
             (ax,) = args
             for sector, array in self.blocks.items():
@@ -2277,7 +2275,7 @@ class AbelianArray(AbelianCommon, BlockBase):
             if sector[0] == sector[1]
         )
 
-    def multiply_diagonal(self, v, axis, inplace=False):
+    def multiply_diagonal(self, v: BlockVector, axis, inplace=False):
         """Multiply this block array by a vector as if contracting a diagonal
         matrix along the given axis.
 

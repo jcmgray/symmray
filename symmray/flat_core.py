@@ -292,7 +292,96 @@ def zn_combine(sectors, duals=None, order=2, like=None):
     return ar.do("sum", signed_sectors, axis=-1, like=like) % order
 
 
-class AbelianArrayFlat(AbelianCommon):
+class FlatCommon:
+    """Mixin class for flat arrays."""
+
+    @property
+    def sectors(self):
+        """The stack of sector keys, with shape (num_blocks, ndim). Each row
+        represents a sector of a corresponding block, and each column
+        represents a charge in a given axis."""
+        return self._sectors
+
+    @property
+    def blocks(self):
+        """The stack of array blocks, with shape (num_blocks, *shape_block),
+        i.e. `ndim + 1` dimensions, where the first dimension is the block
+        index, which should match the first dimension of `sectors`, and the
+        rest are the dimensions of individual blocks."""
+        return self._blocks
+
+    @property
+    def dtype(self):
+        """Get the dtype name for the blocks."""
+        return ar.get_dtype_name(self._blocks)
+
+    def _get_shape_blocks_full(self) -> tuple[int, ...]:
+        """Get the full shape of the stacked blocks, including the number of
+        blocks."""
+        return ar.do("shape", self._blocks, like=self.backend)
+
+    @property
+    def num_blocks(self) -> int:
+        """Get the number of blocks in the array."""
+        return self._get_shape_blocks_full()[0]
+
+    def get_params(self):
+        """Interface for getting underlying arrays."""
+        return self._sectors, self._blocks
+
+    def set_params(self, params):
+        """Interface for setting underlying arrays."""
+        self._sectors, self._blocks = params
+        self.backend = ar.infer_backend(self._blocks)
+
+
+class FlatVector(FlatCommon):
+    """Class for storing block vectors with flat storage, e.g. for the
+    singular- or eigen- values of a matrix.
+
+    Parameters
+    ----------
+    sectors : array_like
+        The vector of charges, with shape (num_blocks,).
+    blocks : array_like
+        The stack of vectors, with shape (num_blocks, charge_extent).
+    """
+
+    __slots__ = ("_blocks", "_sectors", "backend")
+
+    def __init__(self, sectors, blocks):
+        self._blocks = (
+            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
+        )
+        self._sectors = (
+            sectors
+            if hasattr(sectors, "shape")
+            else ar.do("array", sectors, like=blocks)
+        )
+        self.backend = ar.infer_backend(self._blocks)
+
+    @property
+    def size(self):
+        """The total size of all elements in the vector."""
+        db, dv = self._get_shape_blocks_full()
+        return db * dv
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Get the effective shape of the vector."""
+        return (self.size,)
+
+    def __repr__(self):
+        return "".join(
+            [
+                f"{self.__class__.__name__}(",
+                f"total_size={self.size}, ",
+                f"num_blocks={self.num_blocks})",
+            ]
+        )
+
+
+class AbelianArrayFlat(FlatCommon, AbelianCommon):
     """Base class for abelian arrays with flat storage and cyclic symmetry.
 
     Parameters
@@ -312,6 +401,14 @@ class AbelianArrayFlat(AbelianCommon):
         to a FlatIndex with the corresponding dualness, and no subindex
         information.
     """
+
+    __slots__ = (
+        "_blocks",
+        "_sectors",
+        "_indices",
+        "_symmetry",
+        "backend",
+    )
 
     fermionic = False
     static_symmetry = None
@@ -345,21 +442,6 @@ class AbelianArrayFlat(AbelianCommon):
     def order(self) -> int:
         """Get the order of the symmetry group."""
         return self._symmetry.N
-
-    @property
-    def sectors(self):
-        """The stack of sector keys, with shape (num_blocks, ndim). Each row
-        represents a sector of a corresponding block, and each column
-        represents a charge in a given axis."""
-        return self._sectors
-
-    @property
-    def blocks(self):
-        """The stack of array blocks, with shape (num_blocks, *shape_block),
-        i.e. `ndim + 1` dimensions, where the first dimension is the block
-        index, which should match the first dimension of `sectors`, and the
-        rest are the dimensions of individual blocks."""
-        return self._blocks
 
     @property
     def indices(self) -> tuple[FlatIndex]:
@@ -416,11 +498,6 @@ class AbelianArrayFlat(AbelianCommon):
                 indices=indices,
             )
 
-    def _get_shape_blocks_full(self) -> tuple[int, ...]:
-        """Get the full shape of the stacked blocks, including the number of
-        blocks."""
-        return ar.do("shape", self._blocks, like=self.backend)
-
     def get_any_array(self):
         """Get an arbitrary (the first) block from the stack."""
         return self._blocks[0]
@@ -439,11 +516,6 @@ class AbelianArrayFlat(AbelianCommon):
     def shape(self) -> tuple[int, ...]:
         """Get the effective shape of the array."""
         return tuple(self.order * d for d in self.shape_block)
-
-    @property
-    def num_blocks(self) -> int:
-        """Get the number of blocks in the array."""
-        return self._get_shape_blocks_full()[0]
 
     @classmethod
     def from_blocks(cls, blocks, indices) -> "AbelianArrayFlat":
@@ -489,13 +561,6 @@ class AbelianArrayFlat(AbelianCommon):
             blocks[sector] = block
         cls = get_zn_array_cls(self.order)
         return cls.from_blocks(blocks, duals=self.duals)
-
-    def get_params(self):
-        return self._sectors, self._blocks
-
-    def set_params(self, params):
-        self._sectors, self._blocks = params
-        self.backend = ar.infer_backend(self._blocks)
 
     def is_fused(self, ax: int) -> bool:
         """Does axis `ax` carry subindex information, i.e., is it a fused
@@ -1324,8 +1389,41 @@ class AbelianArrayFlat(AbelianCommon):
     def trace(self):
         raise NotImplementedError()
 
-    def multiply_diagonal(self, v, axis, inplace=False):
-        raise NotImplementedError()
+    def multiply_diagonal(self, v: FlatVector, axis, inplace=False):
+        """Multiply this flat array by a vector as if contracting a diagonal
+        matrix along the given axis.
+
+        Parameters
+        ----------
+        v : FlatVector
+            The vector to contract with.
+        axis : int
+            The axis along which to contract.
+        inplace : bool, optional
+            Whether to perform the operation inplace.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
+        # find the order that sorts the sectors of `v` to match
+        k = ar.do("argsort", self._sectors[:, axis])[v.sectors]
+        vblocks_aligned = v.blocks[k]
+
+        # expand with new dimensions
+        reshaper = (
+            slice(None),
+            *repeat(None, axis),
+            slice(None),
+            *repeat(None, self.ndim - axis - 1),
+        )
+
+        new_blocks = self._blocks * vblocks_aligned[reshaper]
+
+        return self._modify_or_copy(
+            blocks=new_blocks,
+            inplace=inplace,
+        )
 
     def einsum(self, eq, preserve_array=False):
         raise NotImplementedError()
