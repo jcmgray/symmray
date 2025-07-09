@@ -371,6 +371,13 @@ class FlatVector(FlatCommon):
         """Get the effective shape of the vector."""
         return (self.size,)
 
+    def to_blockvector(self):
+        from .block_core import BlockVector
+
+        return BlockVector(
+            {k.item(): b for k, b in zip(self.sectors, self.blocks)}
+        )
+
     def __repr__(self):
         return "".join(
             [

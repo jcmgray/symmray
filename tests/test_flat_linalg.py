@@ -57,6 +57,7 @@ def test_flat_svd(symmetry, d1, d2, charge, seed):
     fVh.check()
 
     assert fU.charge == fx.charge
+    assert fS.to_blockvector().allclose(sS)
 
     assert fU.to_blocksparse().allclose(sU)
     assert fVh.to_blocksparse().allclose(sVh)

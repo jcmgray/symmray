@@ -348,6 +348,29 @@ class BlockBase:
             ** 0.5
         )
 
+    def allclose(self, other, **allclose_opts):
+        _allclose = ar.get_lib_fn(self.backend, "allclose")
+
+        # all shared blocks must be close
+        shared = self.blocks.keys() & other.blocks.keys()
+        for sector in shared:
+            if not _allclose(
+                self.blocks[sector], other.blocks[sector], **allclose_opts
+            ):
+                return False
+
+        # all missing blocks must be zero
+        left = self.blocks.keys() - other.blocks.keys()
+        right = other.blocks.keys() - self.blocks.keys()
+        for sector in left:
+            if not _allclose(self.blocks[sector], 0.0, **allclose_opts):
+                return False
+        for sector in right:
+            if not _allclose(other.blocks[sector], 0.0, **allclose_opts):
+                return False
+
+        return True
+
     def __repr__(self):
         return "".join(
             [

@@ -8,6 +8,7 @@ from .abelian_core import (
     permuted,
     tensordot_abelian,
 )
+from .block_core import BlockBase
 from .fermionic_local_operators import FermionicOperator
 from .interface import tensordot
 from .symmetries import calc_phase_permutation, get_symmetry
@@ -146,8 +147,12 @@ class FermionicArray(AbelianArray):
         oddpos=None,
         symmetry=None,
     ):
-        super().__init__(
-            indices=indices, charge=charge, blocks=blocks, symmetry=symmetry
+        AbelianArray.__init__(
+            self,
+            indices=indices,
+            charge=charge,
+            blocks=blocks,
+            symmetry=symmetry,
         )
         self._phases = dict(phases)
         self._oddpos = oddpos_parse(oddpos, self.parity)
@@ -187,7 +192,7 @@ class FermionicArray(AbelianArray):
         FermionicArray
             The copied array.
         """
-        new = super().copy()
+        new = AbelianArray.copy(self)
         new._phases = self.phases.copy()
         new._oddpos = self.oddpos
         return new
@@ -206,7 +211,9 @@ class FermionicArray(AbelianArray):
         phases : dict, optional
             The new phases, if None, the original phases are used.
         """
-        new = super().copy_with(indices=indices, blocks=blocks, charge=charge)
+        new = AbelianArray.copy_with(
+            self, indices=indices, blocks=blocks, charge=charge
+        )
         new._phases = self.phases.copy() if phases is None else phases
         new._oddpos = self.oddpos
         return new
@@ -239,7 +246,9 @@ class FermionicArray(AbelianArray):
             self._phases = phases
         if oddpos is not None:
             self._oddpos = oddpos
-        return super().modify(indices=indices, blocks=blocks, charge=charge)
+        return AbelianArray.modify(
+            self, indices=indices, blocks=blocks, charge=charge
+        )
 
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations."""
@@ -250,12 +259,12 @@ class FermionicArray(AbelianArray):
             if other.phases:
                 other = other.phase_sync()
 
-        return super(FermionicArray, xy)._binary_blockwise_op(
-            other, fn, inplace=True, **kwargs
+        return BlockBase._binary_blockwise_op(
+            xy, other, fn, inplace=True, **kwargs
         )
 
     def _map_blocks(self, fn_block=None, fn_sector=None):
-        super()._map_blocks(fn_block, fn_sector)
+        BlockBase._map_blocks(self, fn_block, fn_sector)
         if fn_sector is not None:
             # need to update phase keys as well
             self.modify(
