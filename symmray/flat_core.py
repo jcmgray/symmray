@@ -14,6 +14,7 @@ import functools
 import math
 import operator
 from itertools import repeat
+from re import sub
 
 import autoray as ar
 
@@ -490,6 +491,228 @@ class FlatVector(FlatCommon):
         )
 
 
+def _calc_fused_sectors_subkeys_slice(
+    num_groups,
+    axes_groups,
+    new_sectors,
+    old_sectors,
+    pos,
+    ndim,
+    new_ndim,
+    order,
+    group_singlets,
+    backend,
+):
+    """Calculate new sectors and group subkeys, by slicing the existing
+    sectors.
+    """
+    # now we compute subcharge information for each group
+    # first we reshape the old sectors given the sort above:
+    #     (*fused_charges, *unfused_charges, --locked dim, *subcharges)
+    # whichever is the last charge of the first two groups is locked,
+    # and so taken away from the reshaping.
+    keys_reshaper = []
+    axes_seen = 0
+    g_locked_map = {}
+
+    for g in range(num_groups):
+        axes_seen += len(axes_groups[g])
+        if axes_seen == ndim:
+            # if all axes are being fused, the last one is locked
+            keys_reshaper.append(1)
+            if num_groups > 1:
+                # all axes are fused, multiple new charges, last of which
+                # is locked to prev, so we can't take a slice across it
+                # directly, nor will it be sorted
+                g_locked_map[g] = g - 1
+        else:
+            # one dimension for each fused charge
+            keys_reshaper.append(order)
+    # one dimension for all the unfused axes
+    keys_reshaper.append(-1)
+    # then one dimension for each *extra* subcharge in each group
+    nsubaxes = 0
+    for group in axes_groups:
+        # each group has one locked charge within it
+        nsub = len(group) - 1
+        keys_reshaper.extend([order] * nsub)
+        nsubaxes += nsub
+
+    # reshape! including finally one dimension for the row of charges
+    new_sectors = ar.do("reshape", new_sectors, (*keys_reshaper, new_ndim))
+    old_sectors = ar.do("reshape", old_sectors, (*keys_reshaper, ndim))
+
+    # drop sub charge axes from new_sectors
+    new_sectors = new_sectors[
+        (
+            *repeat(slice(None), num_groups),  # fused charges
+            slice(None),  # unfused axes
+            *repeat(0, nsubaxes),  # sub charges, take first (arbitrary)
+            slice(None),  # row of charges
+        )
+    ]
+
+    # then we take slices across these to strore subcharge information
+    # for unfusing
+    subkeys = []
+    for g in range(num_groups):
+        if g in group_singlets:
+            # no need to record subcharges
+            subkeys.append(None)
+            continue
+
+        subkey_selector = []
+
+        # is this group is locked, need to slice over previous group
+        g_lock = g_locked_map.get(g, g)
+
+        # fix other grouped charges to any value, take slice across g
+        for go in range(num_groups):
+            if go == g_lock:
+                subkey_selector.append(slice(None))
+            else:
+                subkey_selector.append(0)
+
+        # fix stack of unfused axes to any value
+        subkey_selector.append(0)
+
+        # then we fix the subcharges for other groups to any value
+        # and slice across fused subcharges
+        for go in range(num_groups):
+            m = len(axes_groups[go]) - 1
+            if go == g:
+                subkey_selector.extend([slice(None)] * m)
+            else:
+                subkey_selector.extend([0] * m)
+
+        # finally we take the slice across the legs
+        # i.e. the row of charges making up the sector
+        subkey_selector.append(slice(None))
+
+        # take the slice!
+        subkey_selector = tuple(subkey_selector)
+        subkey = old_sectors[subkey_selector]
+        # flatten into (overall_charge, subcharges, row)
+        subkey = ar.do("reshape", subkey, (keys_reshaper[g_lock], -1, ndim))
+        # just get axes relevant to this group
+        subkey = subkey[:, :, axes_groups[g]]
+
+        if g_lock != g:
+            # this group axis is locked to the previous group,
+            # so we need to do an additional sort the overall charge axis
+            gcharges = new_sectors[
+                (
+                    *repeat(0, g - 1),  # other groups
+                    slice(None),  # group we are locked to
+                    0,  # locked g axis
+                    0,  # unfused axes
+                    pos + g,
+                )
+            ]
+            kord = ar.do("argsort", gcharges, like=backend)
+            subkey = subkey[kord]
+
+        subkeys.append(subkey)
+
+    # reflatten new keys into stack
+    new_sectors = ar.do("reshape", new_sectors, (-1, new_ndim), like=backend)
+
+    return new_sectors, subkeys
+
+
+def _calc_fused_sectors_subkeys_create(
+    unmerged_batch_sizes,
+    num_groups,
+    axes_groups,
+    new_sectors,
+    old_sectors,
+    group_duals,
+    ndim,
+    order,
+    duals,
+    like,
+):
+    """Calculate new sectors and group subkeys, by explicit generation."""
+    # then we update the sectors, these have been sorted already by
+    # grouped charge, each group being of equal size / stride:
+    stride = math.prod(unmerged_batch_sizes.values())
+    new_sectors = new_sectors[::stride]
+
+    if num_groups == 1 and len(axes_groups[0]) == ndim:
+        # full fuse, only one overall charge, subkeys are all current keys
+        # but we do need to take into account possible permutation
+        subkeys0 = ar.do(
+            "reshape", old_sectors[..., axes_groups[0]], (1, -1, ndim)
+        )
+        subkeys = [subkeys0] 
+    else:
+        subkeys = [
+            build_cyclic_keys_by_charge(
+                ndim=len(gaxes),
+                order=order,
+                duals=[duals[ax] != group_duals[g] for ax in gaxes],
+                like=like,
+            )
+            for g, gaxes in enumerate(axes_groups)
+        ]
+
+    return new_sectors, subkeys
+
+
+def _calc_fuse_rearrange_pattern(
+    num_groups,
+    axes_groups,
+    axes_before,
+    axes_after,
+    order,
+    ndim,
+):
+    # now we create the unmerge/merge pattern for einops:
+    # heres a full example for 2 groups and 6 axes:
+    # axes_groups = ((5, 2), (4, 1))
+    # '(B B0 B1) p0 p1 p2 p3 p4 p5 -> B p0 (B0 p5 p2) (B1 p4 p1) p3'
+
+    # LHS, first we 'unfuse' the block index
+    # with one new axis for each group, `ax0 -> (B B0 B1 B2 ...)`
+    pattern = ["(B"]
+    for g in range(num_groups):
+        pattern.append(f" B{g}")
+    pattern.append(")")
+
+    # then we label each of the input axes `... p0 p1 p2 ...`
+    for ax in range(ndim):
+        pattern.append(f" p{ax}")
+
+    # RHS, start with the new block index
+    pattern.append(" -> B")
+
+    # then add the unfused output axes before the groups
+    for ax in axes_before:
+        pattern.append(f" p{ax}")
+
+    # then the groups, each looks like `(B0 p5 p2 ...)`, one dimension
+    # coming from the batch index, and the rest real axis fusions
+    unmerged_batch_sizes = {}
+    for g, gaxes in enumerate(axes_groups):
+        pattern.append(f" (B{g}")
+        for ax in gaxes:
+            pattern.append(f" p{ax}")
+            bax = f"B{g}"
+            # keep track of the unmerged
+            if bax in unmerged_batch_sizes:
+                unmerged_batch_sizes[bax] *= order
+            else:
+                unmerged_batch_sizes[bax] = 1
+        pattern.append(")")
+
+    # then add the unfused output axes after the groups
+    for ax in axes_after:
+        pattern.append(f" p{ax}")
+
+    pattern = "".join(pattern)
+    return pattern, unmerged_batch_sizes
+
+
 class AbelianArrayFlat(FlatCommon, AbelianCommon):
     """Base class for abelian arrays with flat storage and cyclic symmetry.
 
@@ -880,193 +1103,44 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         # XXX: only optionally store the fusing information
         old_sectors = self._sectors[kord]
 
-        # now we compute subcharge information for each group
-        # first we reshape the old sectors given the sort above:
-        #     (*fused_charges, *unfused_charges, --locked dim, *subcharges)
-        # whichever is the last charge of the first two groups is locked,
-        # and so taken away from the reshaping.
-        keys_reshaper = []
-        axes_seen = 0
-        g_locked_map = {}
-
-        for g in range(num_groups):
-            axes_seen += len(axes_groups[g])
-            if axes_seen == self.ndim:
-                # if all axes are being fused, the last one is locked
-                keys_reshaper.append(1)
-                if num_groups > 1:
-                    # all axes are fused, multiple new charges, last of which
-                    # is locked to prev, so we can't take a slice across it
-                    # directly, nor will it be sorted
-                    g_locked_map[g] = g - 1
-            else:
-                # one dimension for each fused charge
-                keys_reshaper.append(self.order)
-        # one dimension for all the unfused axes
-        keys_reshaper.append(-1)
-        # then one dimension for each *extra* subcharge in each group
-        nsubaxes = 0
-        for group in axes_groups:
-            # each group has one locked charge within it
-            nsub = len(group) - 1
-            keys_reshaper.extend([self.order] * nsub)
-            nsubaxes += nsub
-
-        # reshape! including finally one dimension for the row of charges
-        new_sectors = ar.do("reshape", new_sectors, (*keys_reshaper, new_ndim))
-        old_sectors = ar.do(
-            "reshape", old_sectors, (*keys_reshaper, self.ndim)
+        # get the einops rearrangement pattern for the new blocks
+        pattern, unmerged_batch_sizes = _calc_fuse_rearrange_pattern(
+            num_groups,
+            axes_groups,
+            axes_before,
+            axes_after,
+            self.order,
+            self.ndim,
         )
-
-        # drop sub charge axes from new_sectors
-        new_sectors = new_sectors[
-            (
-                *repeat(slice(None), num_groups),  # fused charges
-                slice(None),  # unfused axes
-                *repeat(0, nsubaxes),  # sub charges, take first (arbitrary)
-                slice(None),  # row of charges
-            )
-        ]
-
-        # then we take slices across these to strore subcharge information
-        # for unfusing
-        subkeys = []
-        for g in range(num_groups):
-            if g in group_singlets:
-                # no need to record subcharges
-                subkeys.append(None)
-                continue
-
-            subkey_selector = []
-
-            # is this group is locked, need to slice over previous group
-            g_lock = g_locked_map.get(g, g)
-
-            # fix other grouped charges to any value, take slice across g
-            for go in range(num_groups):
-                if go == g_lock:
-                    subkey_selector.append(slice(None))
-                else:
-                    subkey_selector.append(0)
-
-            # fix stack of unfused axes to any value
-            subkey_selector.append(0)
-
-            # then we fix the subcharges for other groups to any value
-            # and slice across fused subcharges
-            for go in range(num_groups):
-                m = len(axes_groups[go]) - 1
-                if go == g:
-                    subkey_selector.extend([slice(None)] * m)
-                else:
-                    subkey_selector.extend([0] * m)
-
-            # finally we take the slice across the legs
-            # i.e. the row of charges making up the sector
-            subkey_selector.append(slice(None))
-
-            # take the slice!
-            subkey_selector = tuple(subkey_selector)
-            subkey = old_sectors[subkey_selector]
-            # flatten into (overall_charge, subcharges, row)
-            subkey = ar.do(
-                "reshape", subkey, (keys_reshaper[g_lock], -1, self.ndim)
-            )
-            # just get axes relevant to this group
-            subkey = subkey[:, :, axes_groups[g]]
-
-            if g_lock != g:
-                # this group axis is locked to the previous group,
-                # so we need to do an additional sort the overall charge axis
-                gcharges = new_sectors[
-                    (
-                        *repeat(0, g - 1),  # other groups
-                        slice(None),  # group we are locked to
-                        0,  # locked g axis
-                        0,  # unfused axes
-                        pos + g,
-                    )
-                ]
-                kord = ar.do("argsort", gcharges, like=self.backend)
-                subkey = subkey[kord]
-
-            subkeys.append(subkey)
-
-        # reflatten new keys into stack
-        new_sectors = ar.do(
-            "reshape", new_sectors, (-1, new_ndim), like=self.backend
-        )
-
-        # now we create the unmerge/merge pattern for einops:
-        # heres a full example for 2 groups and 6 axes:
-        # axes_groups = ((5, 2), (4, 1))
-        # '(B B0 B1) p0 p1 p2 p3 p4 p5 -> B p0 (B0 p5 p2) (B1 p4 p1) p3'
-
-        # LHS, first we 'unfuse' the block index
-        # with one new axis for each group, `ax0 -> (B B0 B1 B2 ...)`
-        pattern = ["(B"]
-        for g in range(num_groups):
-            pattern.append(f" B{g}")
-        pattern.append(")")
-
-        # then we label each of the input axes `... p0 p1 p2 ...`
-        for ax in range(self.ndim):
-            pattern.append(f" p{ax}")
-
-        # RHS, start with the new block index
-        pattern.append(" -> B")
-
-        # then add the unfused output axes before the groups
-        for ax in axes_before:
-            pattern.append(f" p{ax}")
-
-        # then the groups, each looks like `(B0 p5 p2 ...)`, one dimension
-        # coming from the batch index, and the rest real axis fusions
-        unmerged_batch_sizes = {}
-        for g in range(num_groups):
-            pattern.append(f" (B{g}")
-            for ax in axes_groups[g]:
-                pattern.append(f" p{ax}")
-                bax = f"B{g}"
-                # keep track of the unmerged
-                if bax in unmerged_batch_sizes:
-                    unmerged_batch_sizes[bax] *= self.order
-                else:
-                    unmerged_batch_sizes[bax] = 1
-            pattern.append(")")
-
-        # then add the unfused output axes after the groups
-        for ax in axes_after:
-            pattern.append(f" p{ax}")
-
-        pattern = "".join(pattern)
-
         # perform the rearrangement!
         new_blocks = rearrange(new_blocks, pattern, **unmerged_batch_sizes)
 
-        # # then we update the sectors, these have been sorted already by
-        # # grouped charge, each group being of equal size / stride:
-        # stride = math.prod(unmerged_batch_sizes.values())
-        # new_sectors = new_sectors[::stride]
-
-        # if num_groups == 1 and len(axes_groups[0]) == self.ndim:
-        #     # full fuse, only one overall charge, subkeys are all current keys
-        #     # but we do need to take into account possible permutation
-        #     subkeys0 = ar.do(
-        #         "reshape", old_sectors[..., axes_groups[0]], (1, -1, self.ndim)
-        #     )
-        #     subkeys = [subkeys0]
-        # else:
-        #     subkeys = [
-        #         build_cyclic_keys_by_charge(
-        #             ndim=len(gaxes),
-        #             order=self.order,
-        #             duals=[self.duals[ax] != group_duals[g] for ax in gaxes],
-        #             # duals=[self.duals[ax] for ax in gaxes],
-        #             like=self._sectors,
-        #         )
-        #         for g, gaxes in enumerate(axes_groups)
-        #     ]
+        # now we calculate the new sectors and subkeys, either by slicing
+        # the existing sectors, or by creating them from scratch
+        new_sectors, subkeys = _calc_fused_sectors_subkeys_slice(
+            num_groups,
+            axes_groups,
+            new_sectors,
+            old_sectors,
+            pos,
+            self.ndim,
+            new_ndim,
+            self.order,
+            group_singlets,
+            self.backend,
+        )
+        # new_sectors, subkeys = _calc_fused_sectors_subkeys_create(
+        #     unmerged_batch_sizes,
+        #     num_groups,
+        #     axes_groups,
+        #     new_sectors,
+        #     old_sectors,
+        #     group_duals,
+        #     self.ndim,
+        #     self.order,
+        #     self.duals,
+        #     like=self._sectors,
+        # )
 
         # finally we construct info, including for unfusing
         new_indices = []
