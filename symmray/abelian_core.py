@@ -643,8 +643,8 @@ def calc_fuse_group_info(axes_groups, duals):
     for g, gaxes in enumerate(axes_groups):
         for ax in gaxes:
             new_axes[ax] = position + g
-    for g, ax in enumerate(axes_after):
-        new_axes[ax] = position + num_groups + g
+    for i, ax in enumerate(axes_after):
+        new_axes[ax] = position + num_groups + i
     new_ndim = len(axes_before) + num_groups + len(axes_after)
 
     return (

@@ -3,14 +3,16 @@ computational graphs that can be easily compiled and vectorized etc.
 
 TODO:
 
-- [ ] cache properties, funcs
-- [ ] cache patterns and reshapers/slicers
-- [ ] store size,ncharges in FlatIndex and remove extents?
+- [x] store size,ncharges in FlatIndex and remove subshape?
 - [ ] implement tensordot without fusing?
+- [ ] cache patterns and reshapers/slicers
+- [ ] cache properties, funcs
 
 """
 
 import functools
+import math
+import operator
 from itertools import repeat
 
 import autoray as ar
@@ -39,11 +41,23 @@ class FlatIndex:
         Default is None, which means the index is not fused.
     """
 
-    __slots__ = ("_dual", "_subinfo")
+    __slots__ = ("_num_charges", "_charge_size", "_dual", "_subinfo")
 
-    def __init__(self, dual=False, subinfo=None):
+    def __init__(self, num_charges, charge_size, dual=False, subinfo=None):
+        self._num_charges = int(num_charges)
+        self._charge_size = int(charge_size)
         self._dual = dual
         self._subinfo = subinfo
+
+    @property
+    def num_charges(self) -> int:
+        """The number of charges associated with this index."""
+        return self._num_charges
+
+    @property
+    def charge_size(self) -> int:
+        """The size of the charges associated with this index."""
+        return self._charge_size
 
     @property
     def dual(self) -> bool:
@@ -55,29 +69,51 @@ class FlatIndex:
 
     @property
     def subinfo(self) -> "FlatSubIndexInfo | None":
-        """Information about the subindices of this index and their extents if
+        """Information about the subindices of this index and their subshape if
         this index was formed from fusing.
         """
         return self._subinfo
+
+    @property
+    def subshape(self):
+        if self._subinfo is None:
+            return None
+        return self._subinfo.subshape
+
+    @property
+    def size_total(self) -> int:
+        return self._num_charges * self._charge_size
 
     def conj(self) -> "FlatIndex":
         """Return the conjugate of the index, i.e., flip the dualness and
         subinfo.
         """
         return FlatIndex(
+            num_charges=self._num_charges,
+            charge_size=self._charge_size,
             dual=not self._dual,
             subinfo=None if self._subinfo is None else self._subinfo.conj(),
         )
 
     def select_charge(self, charge):
+        """Drop all but the specified charge from this index."""
         if self._subinfo is not None:
             new_subinfo = self._subinfo.select_charge(charge)
-            return FlatIndex(dual=self._dual, subinfo=new_subinfo)
+            return FlatIndex(
+                num_charges=1,
+                charge_size=self._charge_size,
+                dual=self._dual,
+                subinfo=new_subinfo,
+            )
         return self
 
     def __repr__(self):
         s = [f"{self.__class__.__name__}("]
-        s.append(f"dual={self._dual}")
+        s.append(
+            f"num_charges={self._num_charges}, "
+            f"charge_size={self._charge_size}, "
+            f"dual={self._dual}"
+        )
         if self._subinfo is not None:
             s.append(f", subinfo={self._subinfo!r}")
         s.append(")")
@@ -97,20 +133,17 @@ class FlatSubIndexInfo:
         overall fused charge, the second axis selects the subsector within
         that charge, and the third axis selects the individual charge within
         that subsector.
-    extents : tuple[int]
-        The size of each subindex, i.e. 'sub shape'.
     """
 
     __slots__ = (
         "_indices",
         "_subkeys",
-        "_extents",
         "_ncharge",
         "_nsectors",
         "_nsubcharges",
     )
 
-    def __init__(self, indices, subkeys, extents):
+    def __init__(self, indices, subkeys):
         self._indices = tuple(
             x if isinstance(x, FlatIndex) else FlatIndex(x) for x in indices
         )
@@ -120,7 +153,6 @@ class FlatSubIndexInfo:
         # number of subsectors e.g. [000, 011, 101, 110] -> 4
         # number of subcharges, e.g. 3 for above
         self._ncharge, self._nsectors, self._nsubcharges = subkey_shape
-        self._extents = tuple(extents)
 
     @property
     def indices(self) -> tuple[FlatIndex]:
@@ -132,9 +164,9 @@ class FlatSubIndexInfo:
         return self._indices
 
     @property
-    def extents(self) -> tuple[int]:
-        """The extents of the fused index."""
-        return self._extents
+    def subshape(self) -> tuple[int]:
+        """The subshape of the fused index."""
+        return tuple(ix.size_total for ix in self._indices)
 
     @property
     def subkeys(self):
@@ -158,13 +190,11 @@ class FlatSubIndexInfo:
 
     def check(self):
         assert len(self._indices) == len(self._subkeys[0])
-        assert len(self._indices) == len(self._extents)
 
     def conj(self):
         return FlatSubIndexInfo(
             indices=tuple(ix.conj() for ix in self._indices),
             subkeys=self._subkeys,
-            extents=self._extents,
         )
 
     def select_charge(self, charge):
@@ -172,7 +202,6 @@ class FlatSubIndexInfo:
         return FlatSubIndexInfo(
             indices=self.indices,
             subkeys=new_subkeys,
-            extents=self.extents,
         )
 
     def __repr__(self):
@@ -180,8 +209,7 @@ class FlatSubIndexInfo:
             f"{self.__class__.__name__}("
             f"ncharge={self._ncharge}, "
             f"nsectors={self._nsectors}, "
-            f"nsubcharges={self._nsubcharges}, "
-            f"extents={self._extents})"
+            f"nsubcharges={self._nsubcharges})"
         )
 
 
@@ -295,6 +323,8 @@ def zn_combine(sectors, duals=None, order=2, like=None):
 class FlatCommon:
     """Mixin class for flat arrays."""
 
+    __slots__ = ("_blocks", "_sectors", "backend")
+
     @property
     def sectors(self):
         """The stack of sector keys, with shape (num_blocks, ndim). Each row
@@ -334,6 +364,78 @@ class FlatCommon:
         self._sectors, self._blocks = params
         self.backend = ar.infer_backend(self._blocks)
 
+    def item(self):
+        """Convert the block array to a scalar if it is a scalar block array."""
+        return self._blocks.item()
+
+    def __float__(self):
+        return float(self.item())
+
+    def __complex__(self):
+        return complex(self.item())
+
+    def __int__(self):
+        return int(self.item())
+
+    def __bool__(self):
+        return bool(self.item())
+
+    def _do_unary_op(self, fn, inplace=False):
+        """Perform a unary operation on blocks of the array."""
+        new = self if inplace else self.copy()
+        if isinstance(fn, str):
+            fn = ar.get_lib_fn(self.backend, fn)
+        new._blocks = fn(new._blocks)
+        return new
+
+    def abs(self):
+        """Get the absolute value of all elements in the array."""
+        return self._do_unary_op("abs")
+
+    def isfinite(self):
+        """Check if all elements in the array are finite."""
+        return self._do_unary_op("isfinite")
+
+    def sqrt(self):
+        """Get the square root of all elements in the array."""
+        return self._do_unary_op("sqrt")
+
+    def clip(self, a_min, a_max):
+        """Clip the values in the array."""
+        new = self.copy()
+        _clip = ar.get_lib_fn(self.backend, "clip")
+        new._blocks = _clip(new._blocks, a_min, a_max)
+        return new
+
+    def max(self):
+        """Get the maximum element from any block in the array."""
+        _max = ar.get_lib_fn(self.backend, "max")
+        return _max(self._blocks)
+
+    def min(self):
+        """Get the minimum element from any block in the array."""
+        _min = ar.get_lib_fn(self.backend, "min")
+        return _min(self._blocks)
+
+    def sum(self):
+        """Get the sum of all elements in the array."""
+        _sum = ar.get_lib_fn(self.backend, "sum")
+        return _sum(self._blocks)
+
+    def all(self):
+        """Check if all elements in the array are True."""
+        _all = ar.get_lib_fn(self.backend, "all")
+        return _all(self._blocks)
+
+    def any(self):
+        """Check if any element in the array is True."""
+        _any = ar.get_lib_fn(self.backend, "any")
+        return _any(self._blocks)
+
+    def norm(self):
+        _norm = ar.get_lib_fn(self.backend, "norm")
+        return _norm(self._blocks)
+
 
 class FlatVector(FlatCommon):
     """Class for storing block vectors with flat storage, e.g. for the
@@ -344,7 +446,7 @@ class FlatVector(FlatCommon):
     sectors : array_like
         The vector of charges, with shape (num_blocks,).
     blocks : array_like
-        The stack of vectors, with shape (num_blocks, charge_extent).
+        The stack of vectors, with shape (num_blocks, charge_subsize).
     """
 
     __slots__ = ("_blocks", "_sectors", "backend")
@@ -427,9 +529,14 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         indices,
         symmetry=None,
     ):
+        self._symmetry = self.get_class_symmetry(symmetry)
+
         self._blocks = (
             blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
         )
+        # infer the backend to reuse for efficiency
+        self.backend = ar.infer_backend(self._blocks)
+
         self._sectors = (
             sectors
             if hasattr(sectors, "shape")
@@ -437,13 +544,15 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
         self._indices = tuple(
             # allow sequence of duals to be supplied directly
-            x if isinstance(x, FlatIndex) else FlatIndex(x)
-            for x in indices
+            x
+            if isinstance(x, FlatIndex)
+            else FlatIndex(
+                num_charges=1 if self.ndim == 1 else self.order,
+                charge_size=d,
+                dual=x,
+            )
+            for x, d in zip(indices, self.shape_block)
         )
-        self._symmetry = self.get_class_symmetry(symmetry)
-
-        # infer the backend to reuse for efficiency
-        self.backend = ar.infer_backend(self._blocks)
 
     @property
     def order(self) -> int:
@@ -475,6 +584,8 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             "unique", zn_combine(self._sectors, self.duals, self.order)
         )
         assert ar.do("size", sector_charges) == 1
+        for ix, ds in zip(self._indices, self.shape_block):
+            assert ds == ix.charge_size
 
     def copy(self, deep=False) -> "AbelianArrayFlat":
         """Create a copy of the array."""
@@ -522,7 +633,13 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
     @property
     def shape(self) -> tuple[int, ...]:
         """Get the effective shape of the array."""
-        return tuple(self.order * d for d in self.shape_block)
+        return tuple(ix.size_total for ix in self._indices)
+
+    @property
+    def size(self) -> int:
+        """Get the total size of the array, i.e., the product of all dimensions
+        in the effective shape."""
+        return functools.reduce(operator.mul, self.shape, 1)
 
     @classmethod
     def from_blocks(cls, blocks, indices) -> "AbelianArrayFlat":
@@ -694,7 +811,11 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         # expand the index information
         new_indices = (
             *self._indices[:axis],
-            FlatIndex(dual),
+            FlatIndex(
+                num_charges=1,
+                charge_size=1,
+                dual=dual,
+            ),
             *self._indices[axis:],
         )
 
@@ -938,13 +1059,13 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         # else:
         #     subkeys = [
         #         build_cyclic_keys_by_charge(
-        #             ndim=len(axs),
+        #             ndim=len(gaxes),
         #             order=self.order,
-        #             duals=[self.duals[ax] != group_duals[g] for ax in axs],
-        #             # duals=[self.duals[ax] for ax in axs],
+        #             duals=[self.duals[ax] != group_duals[g] for ax in gaxes],
+        #             # duals=[self.duals[ax] for ax in gaxes],
         #             like=self._sectors,
         #         )
-        #         for g, axs in enumerate(axes_groups)
+        #         for g, gaxes in enumerate(axes_groups)
         #     ]
 
         # finally we construct info, including for unfusing
@@ -954,27 +1075,38 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             new_indices.append(self.indices[ax])
 
         old_indices = self.indices
-        old_shape_block = self.shape_block
 
-        for g in range(num_groups):
+        for g, gaxes in enumerate(axes_groups):
             if g in group_singlets:
-                # no new fuse -> just propagate any current info
-                new_indices.append(old_indices[axes_groups[g][0]])
+                # no new fuse -> just propagate current index
+                new_indices.append(old_indices[gaxes[0]])
             else:
                 # create a new subinfo for this group
-                sub_indices = []
-                sub_extents = []
+                subindices = [old_indices[ax] for ax in gaxes]
+                subinfo = FlatSubIndexInfo(subindices, subkeys[g])
 
-                for ax in axes_groups[g]:
-                    sub_indices.append(old_indices[ax])
-                    sub_extents.append(old_shape_block[ax])
+                if num_groups > 1 or axes_before or axes_after:
+                    num_charges = self.order
+                else:
+                    # output is 1D
+                    num_charges = 1
 
-                subinfo = FlatSubIndexInfo(
-                    indices=sub_indices,
-                    subkeys=subkeys[g],
-                    extents=sub_extents,
+                charge_size = (
+                    # this is contribution from fusing the actual blocks
+                    math.prod(ix.charge_size for ix in subindices)
+                    # & this is contribution from grouping sectors
+                    # e.g. 01 and 10 both fuse to 1
+                    * self.order ** (len(gaxes) - 1)
                 )
-                new_indices.append(FlatIndex(group_duals[g], subinfo=subinfo))
+
+                ix = FlatIndex(
+                    num_charges=num_charges,
+                    charge_size=charge_size,
+                    dual=group_duals[g],
+                    subinfo=subinfo,
+                )
+
+                new_indices.append(ix)
 
         for ax in axes_after:
             new_indices.append(self.indices[ax])
@@ -1039,7 +1171,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             pattern.append(f"p{i} ")
             rhs.append(f"p{i} ")
         pattern.append("( Bu ")
-        for g, sz in enumerate(fi.extents):
+        for g, sz in enumerate(ix.charge_size for ix in fi.indices):
             pattern.append(f"u{g} ")
             rhs.append(f"u{g} ")
             sizes[f"u{g}"] = sz

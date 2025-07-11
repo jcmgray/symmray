@@ -237,6 +237,7 @@ def calc_sub_max_bonds(sizes, max_bond):
     return tuple(sub_max_bonds)
 
 
+@functools.singledispatch
 def svd_truncated(
     x, cutoff=-1.0, cutoff_mode=4, max_bond=-1, absorb=0, renorm=0
 ):
