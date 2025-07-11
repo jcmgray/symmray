@@ -644,7 +644,7 @@ def _calc_fused_sectors_subkeys_create(
         subkeys0 = ar.do(
             "reshape", old_sectors[..., axes_groups[0]], (1, -1, ndim)
         )
-        subkeys = [subkeys0] 
+        subkeys = [subkeys0]
     else:
         subkeys = [
             build_cyclic_keys_by_charge(

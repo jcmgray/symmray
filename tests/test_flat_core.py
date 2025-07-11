@@ -5,11 +5,20 @@ import pytest
 import symmray as sr
 
 
-def get_zn_blocksparse_flat_compat(symmetry, shape, charge, seed=42):
+def get_zn_blocksparse_flat_compat(
+    symmetry,
+    shape,
+    charge,
+    seed=42,
+    shape_relative_to_z2=True,
+):
     rng = random.Random(seed)
 
     N = int(symmetry[1:])
-    shape = [N * d // 2 for d in shape]
+
+    if shape_relative_to_z2:
+        shape = [N * d // 2 for d in shape]
+
     if charge:
         charge = rng.choice(range(1, N))
 
@@ -88,6 +97,45 @@ def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
     sxt = sx.transpose(new_axes)
     fxus = xu.to_blocksparse()
     assert fxus.allclose(sxt)
+
+
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize(
+    "symmetry,shape,newshape",
+    [
+        ["Z2", (2, 2, 2, 2), (4, 2, 2)],
+        ["Z2", (2, 2, 2, 2), (2, 4, 2)],
+        ["Z2", (2, 2, 2, 2), (2, 2, 4)],
+        ["Z2", (2, 2, 2, 2), (4, 4)],
+        ["Z3", (3, 3, 3, 3), (9, 3, 3)],
+        ["Z3", (3, 3, 3, 3), (3, 9, 3)],
+        ["Z3", (3, 3, 3, 3), (3, 3, 9)],
+        ["Z3", (3, 3, 3, 3), (9, 9)],
+        ["Z4", (4, 4, 4, 4), (16, 4, 4)],
+        ["Z4", (4, 4, 4, 4), (4, 16, 4)],
+        ["Z4", (4, 4, 4, 4), (4, 4, 16)],
+        ["Z4", (4, 4, 4, 4), (16, 16)],
+        ["Z4", (4, 4, 4, 4, 4), (64, 4, 4)],
+        ["Z4", (4, 4, 4, 4, 4), (4, 64, 4)],
+        ["Z4", (4, 4, 4, 4, 4), (4, 4, 64)],
+    ],
+)
+def test_reshape_roundtrip(symmetry, charge, shape, newshape):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape,
+        charge,
+        seed=42,
+        shape_relative_to_z2=False,
+    )
+    fx = sx.to_flat()
+    sy = sx.reshape(newshape)
+    fy = fx.reshape(newshape)
+    fy.check()
+    assert fy.to_blocksparse().allclose(sy)
+    fz = fy.reshape(shape)
+    fz.check()
+    assert fz.to_blocksparse().allclose(sx)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4", "Z5"])
