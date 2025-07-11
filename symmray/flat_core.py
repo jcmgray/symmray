@@ -14,7 +14,6 @@ import functools
 import math
 import operator
 from itertools import repeat
-from re import sub
 
 import autoray as ar
 
@@ -27,6 +26,7 @@ from .abelian_core import (
 )
 from .interface import tensordot
 from .symmetries import get_symmetry
+from .utils import DEBUG
 
 
 class FlatIndex:
@@ -108,6 +108,16 @@ class FlatIndex:
             )
         return self
 
+    def check(self):
+        """Check that the index is valid."""
+        assert self._num_charges > 0, "Number of charges must be positive."
+        assert self._charge_size > 0, "Charge size must be positive."
+        if self._subinfo is not None:
+            assert isinstance(self._subinfo, FlatSubIndexInfo), (
+                "Subindex info must be an instance of FlatSubIndexInfo."
+            )
+            self._subinfo.check()
+
     def __repr__(self):
         s = [f"{self.__class__.__name__}("]
         s.append(
@@ -155,6 +165,9 @@ class FlatSubIndexInfo:
         # number of subcharges, e.g. 3 for above
         self._ncharge, self._nsectors, self._nsubcharges = subkey_shape
 
+        if DEBUG:
+            self.check()
+
     @property
     def indices(self) -> tuple[FlatIndex]:
         """The subkeys for the fused index, with shape
@@ -190,7 +203,9 @@ class FlatSubIndexInfo:
         return self._nsubcharges
 
     def check(self):
-        assert len(self._indices) == len(self._subkeys[0])
+        assert len(self._indices) == len(self._subkeys[0, 0])
+        for ix in self._indices:
+            ix.check()
 
     def conj(self):
         return FlatSubIndexInfo(
@@ -777,6 +792,9 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             for x, d in zip(indices, self.shape_block)
         )
 
+        if DEBUG:
+            self.check()
+
     @property
     def order(self) -> int:
         """Get the order of the symmetry group."""
@@ -808,6 +826,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
         assert ar.do("size", sector_charges) == 1
         for ix, ds in zip(self._indices, self.shape_block):
+            ix.check()
             assert ds == ix.charge_size
 
     def copy(self, deep=False) -> "AbelianArrayFlat":
@@ -828,16 +847,21 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         indices = self._indices if indices is None else indices
 
         if inplace:
-            self._sectors = sectors
-            self._blocks = blocks
-            self._indices = indices
-            return self
+            new = self
+            new._sectors = sectors
+            new._blocks = blocks
+            new._indices = indices
         else:
-            return self.__class__(
+            new = self.__class__(
                 sectors=sectors,
                 blocks=blocks,
                 indices=indices,
             )
+
+        if DEBUG:
+            new.check()
+
+        return new
 
     def get_any_array(self):
         """Get an arbitrary (the first) block from the stack."""
@@ -1475,22 +1499,18 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
         if ndim_a >= 2 and ndim_b >= 2:
             # ~ matmat: just need to sort sectors along common axes
-            return (
-                a.sort_stack(axes[0], inplace=True),
-                b.sort_stack(axes[1], inplace=True),
-            )
+            a.sort_stack(axes[0], inplace=True)
+            b.sort_stack(axes[1], inplace=True)
 
         elif ndim_a >= 2 and ndim_b == 1:
             # ~matvec: b has locked axis and only one charge
             (axis,) = axes[0]
-            a = a.select_charge(axis, b.charge, inplace=True)
-            return a, b
+            a.select_charge(axis, b.charge, inplace=True)
 
         elif ndim_a == 1 and ndim_b >= 2:
             # ~vecmat: a has locked axis and only one charge
             (axis,) = axes[1]
-            b = b.select_charge(axis, a.charge, inplace=True)
-            return a, b
+            b.select_charge(axis, a.charge, inplace=True)
 
         else:
             # ~vecvec: both must have the same charge
@@ -1498,7 +1518,12 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             # branchless set to zero
             a._blocks = a._blocks * matching
             b._blocks = b._blocks * matching
-            return a, b
+
+        if DEBUG:
+            a.check()
+            b.check()
+
+        return a, b
 
     def outer(self, other: "AbelianArrayFlat") -> "AbelianArrayFlat":
         """Perform the outer product of two flat abelian arrays."""

@@ -1921,9 +1921,6 @@ class AbelianArray(AbelianCommon, BlockBase):
             charge=self.symmetry.sign(self._charge),
         )
 
-        if DEBUG:
-            new.check()
-
         return new
 
     def transpose(self, axes=None, inplace=False):
