@@ -50,6 +50,16 @@ class FlatIndex:
         self._dual = dual
         self._subinfo = subinfo
 
+    def copy_with(
+        self, num_charges=None, charge_size=None, dual=None, subinfo=None
+    ):
+        return FlatIndex(
+            num_charges if num_charges is not None else self._num_charges,
+            charge_size if charge_size is not None else self._charge_size,
+            dual if dual is not None else self._dual,
+            subinfo if subinfo is not None else self._subinfo,
+        )
+
     @property
     def num_charges(self) -> int:
         """The number of charges associated with this index."""
@@ -489,6 +499,9 @@ class FlatVector(FlatCommon):
         """Get the effective shape of the vector."""
         return (self.size,)
 
+    def check(self):
+        assert ar.do("ndim", self._blocks, like=self.backend) == 2
+
     def to_blockvector(self):
         from .block_core import BlockVector
 
@@ -839,29 +852,51 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             blocks = self._blocks
         return self.__class__(sectors, blocks, self._indices)
 
-    def _modify_or_copy(
-        self, sectors=None, blocks=None, indices=None, inplace=False
+    def copy_with(
+        self, sectors=None, blocks=None, indices=None
     ) -> "AbelianArrayFlat":
-        sectors = self._sectors if sectors is None else sectors
-        blocks = self._blocks if blocks is None else blocks
-        indices = self._indices if indices is None else indices
-
-        if inplace:
-            new = self
-            new._sectors = sectors
-            new._blocks = blocks
-            new._indices = indices
-        else:
-            new = self.__class__(
-                sectors=sectors,
-                blocks=blocks,
-                indices=indices,
-            )
+        """A copy of this flat array with some attributes replaced. Note that
+        checks are not performed on the new properties, this is intended for
+        internal use.
+        """
+        new = self.__new__(self.__class__)
+        new._sectors = self._sectors if sectors is None else sectors
+        new._indices = self._indices if indices is None else indices
+        new._blocks = self._blocks if blocks is None else blocks
+        new._symmetry = self._symmetry
+        new.backend = self.backend
 
         if DEBUG:
             new.check()
 
         return new
+
+    def modify(
+        self, sectors=None, blocks=None, indices=None
+    ) -> "AbelianArrayFlat":
+        """Modify this flat array in place with some attributes replaced. Note
+        that checks are not performed on the new properties, this is intended
+        for internal use.
+        """
+        if sectors is not None:
+            self._sectors = sectors
+        if blocks is not None:
+            self._blocks = blocks
+        if indices is not None:
+            self._indices = indices
+
+        if DEBUG:
+            self.check()
+
+        return self
+
+    def _modify_or_copy(
+        self, sectors=None, blocks=None, indices=None, inplace=False
+    ) -> "AbelianArrayFlat":
+        if inplace:
+            return self.modify(sectors, blocks, indices)
+        else:
+            return self.copy_with(sectors, blocks, indices)
 
     def get_any_array(self):
         """Get an arbitrary (the first) block from the stack."""
@@ -1291,14 +1326,11 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             *new.indices[axis + 1 :],
         )
 
-        new._modify_or_copy(
+        return new.modify(
             sectors=new_sectors,
             blocks=new_blocks,
             indices=new_indices,
-            inplace=True,
         )
-
-        return new
 
     def conj(self, inplace=False) -> "AbelianArrayFlat":
         """Return the complex conjugate of this block array, including the
@@ -1426,14 +1458,11 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
                 *self.indices[axis + 1 :],
             )
 
-        new._modify_or_copy(
+        return new.modify(
             sectors=new_sectors,
             blocks=new_blocks,
             indices=new_indices,
-            inplace=True,
         )
-
-        return new
 
     def squeeze(self, axis, inplace=False):
         """Assuming `axis` has total size 1, remove it from this array."""
@@ -1658,10 +1687,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
         new_blocks = self._blocks * vblocks_aligned[reshaper]
 
-        return self._modify_or_copy(
-            blocks=new_blocks,
-            inplace=inplace,
-        )
+        return self._modify_or_copy(blocks=new_blocks, inplace=inplace)
 
     def einsum(self, eq, preserve_array=False):
         raise NotImplementedError()

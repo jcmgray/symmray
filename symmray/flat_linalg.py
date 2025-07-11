@@ -2,6 +2,7 @@ import autoray as ar
 
 from .flat_core import AbelianArrayFlat, FlatIndex, FlatVector
 from .linalg import qr, svd, svd_truncated
+from .utils import DEBUG
 
 
 @qr.register(AbelianArrayFlat)
@@ -42,6 +43,10 @@ def qr_flat(x, stabilized=False):
         indices=(bond_ind.conj(), ixr),
     )
 
+    if DEBUG:
+        q.check()
+        r.check()
+
     return q, r
 
 
@@ -81,6 +86,11 @@ def svd_flat(x: AbelianArrayFlat):
         indices=(bond_ind.conj(), ixr),
     )
 
+    if DEBUG:
+        u.check()
+        s.check()
+        vh.check()
+
     return u, s, vh
 
 
@@ -106,24 +116,43 @@ def svd_truncated(
     U, s, VH = svd_flat(x)
 
     if max_bond > 0:
-        U._blocks = U._blocks[:, :, :max_bond]
+        U.modify(
+            blocks=U._blocks[:, :, :max_bond],
+            indices=(
+                U.indices[0],
+                U.indices[1].copy_with(charge_size=max_bond),
+            ),
+        )
         s._blocks = s._blocks[:, :max_bond]
-        VH._blocks = VH._blocks[:, :max_bond, :]
+        VH.modify(
+            blocks=VH._blocks[:, :max_bond, :],
+            indices=(
+                VH.indices[0].copy_with(charge_size=max_bond),
+                VH.indices[1],
+            ),
+        )
 
     if absorb is None:
-        return U, s, VH
+        if DEBUG:
+            s.check()
     elif absorb == 0:
         s_sqrt = s.sqrt()
         U.multiply_diagonal(s_sqrt, axis=1, inplace=True)
         VH.multiply_diagonal(s_sqrt, axis=0, inplace=True)
-        return U, None, VH
+        s = None
     elif absorb == -1:
         U.multiply_diagonal(s, axis=1, inplace=True)
-        return U, None, VH
+        s = None
     elif absorb == 1:
         VH.multiply_diagonal(s, axis=0, inplace=True)
-        return U, None, VH
+        s = None
     else:
         raise ValueError(
             f"absorb must be 0, -1, 1, or None. Got {absorb} instead."
         )
+
+    if DEBUG:
+        U.check()
+        VH.check()
+
+    return U, s, VH

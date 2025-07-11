@@ -1370,6 +1370,16 @@ class AbelianArray(AbelianCommon, BlockBase):
 
         return self
 
+    def _modify_or_copy(
+        self, indices=None, charge=None, blocks=None, inplace=False
+    ):
+        if inplace:
+            return self.modify(indices=indices, charge=charge, blocks=blocks)
+        else:
+            return self.copy_with(
+                indices=indices, charge=charge, blocks=blocks
+            )
+
     @property
     def indices(self):
         """The indices of the array."""
@@ -1430,10 +1440,7 @@ class AbelianArray(AbelianCommon, BlockBase):
             for ix, cs_drop in zip(self.indices, charges_drop)
         )
 
-        if inplace:
-            return self.modify(indices=new_indices)
-        else:
-            return self.copy_with(indices=new_indices)
+        return self._modify_or_copy(indices=new_indices, inplace=inplace)
 
     def is_valid_sector(self, sector):
         """Check if a sector is valid for the block array, i.e., whether the
@@ -2145,10 +2152,9 @@ class AbelianArray(AbelianCommon, BlockBase):
         else:
             raise ValueError(f"Unknown mode {mode}.")
 
-        if inplace:
-            return self.modify(indices=new_indices, blocks=new_blocks)
-        else:
-            return self.copy_with(indices=new_indices, blocks=new_blocks)
+        return self._modify_or_copy(
+            indices=new_indices, blocks=new_blocks, inplace=inplace
+        )
 
     def unfuse(self, axis, inplace=False):
         """Unfuse the ``axis`` index, which must carry subindex information,
@@ -2207,10 +2213,9 @@ class AbelianArray(AbelianCommon, BlockBase):
         new_indices = replace_with_seq(self.indices, axis, subinfo.indices)
         new_blocks = new_blocks
 
-        if inplace:
-            return self.modify(indices=new_indices, blocks=new_blocks)
-        else:
-            return self.copy_with(indices=new_indices, blocks=new_blocks)
+        return self._modify_or_copy(
+            indices=new_indices, blocks=new_blocks, inplace=inplace
+        )
 
     def __matmul__(self, other, preserve_array=False):
         if self.ndim > 2 or other.ndim > 2:
@@ -2547,16 +2552,12 @@ def drop_misaligned_sectors(
         for ix, cs in zip(b.indices, charges_drop)
     )
 
-    if inplace:
-        a.modify(blocks=new_blocks_a, indices=new_indices_a)
-        b.modify(blocks=new_blocks_b, indices=new_indices_b)
-    else:
-        a = a.copy_with(blocks=new_blocks_a, indices=new_indices_a)
-        b = b.copy_with(blocks=new_blocks_b, indices=new_indices_b)
-
-    if DEBUG:
-        a.check()
-        b.check()
+    a = a._modify_or_copy(
+        blocks=new_blocks_a, indices=new_indices_a, inplace=inplace
+    )
+    b = b._modify_or_copy(
+        blocks=new_blocks_b, indices=new_indices_b, inplace=inplace
+    )
 
     return a, b
 
