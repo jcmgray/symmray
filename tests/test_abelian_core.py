@@ -135,7 +135,7 @@ def test_calc_reshape_args_edgecase():
     from symmray.abelian_core import calc_reshape_args
 
     axs_unfuse, axs_fuse_groupings, axs_expand = calc_reshape_args(
-        shape=(4, 4, 4), newshape=(16, 4), subsizes=(None, None, (4, 4))
+        shape=(4, 4, 4), newshape=(16, 4), subshapes=(None, None, (4, 4))
     )
     assert axs_unfuse == ()
     assert axs_expand == ()

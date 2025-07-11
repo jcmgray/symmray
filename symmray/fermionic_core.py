@@ -267,9 +267,7 @@ class FermionicArray(AbelianArray):
         BlockBase._map_blocks(self, fn_block, fn_sector)
         if fn_sector is not None:
             # need to update phase keys as well
-            self.modify(
-                phases={fn_sector(s): p for s, p in self._phases.items()}
-            )
+            self._phases = {fn_sector(s): p for s, p in self._phases.items()}
 
     def transpose(self, axes=None, phase=True, inplace=False):
         """Transpose the fermionic array, by default accounting for the phases

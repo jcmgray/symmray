@@ -158,6 +158,9 @@ def rand_zn_index(
         # charges and sizes given explicitly
         return sr.BlockIndex(chargemap=d, dual=dual)
 
+    # convert from possible numpy.int etc.
+    d = int(d)
+
     if d == 1:
         # can only have one charge sector
         if subsizes is None:

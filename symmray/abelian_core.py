@@ -75,6 +75,12 @@ class BlockIndex:
         return self._subinfo
 
     @property
+    def subshape(self):
+        if self._subinfo is None:
+            return None
+        return self._subinfo.subshape
+
+    @property
     def charges(self):
         """The charges of this index."""
         return self._chargemap.keys()
@@ -282,6 +288,10 @@ class SubIndexInfo:
         """
         return self._extents
 
+    @property
+    def subshape(self):
+        return tuple(ix.size_total for ix in self._indices)
+
     def copy_with(self, indices=None, extents=None):
         """A copy of this subindex information with some attributes replaced.
         Note that checks are not performed on the new properties, this is
@@ -396,9 +406,9 @@ def accum_for_split(sizes):
 
 
 @functools.lru_cache(maxsize=2**15)
-def calc_reshape_args(shape, newshape, subsizes):
+def calc_reshape_args(shape, newshape, subshapes):
     """Given a current block sparse shape ``shape`` a target shape ``newshape``
-    and current sub index sizes ``subsizes`` (i.e. previously fused dimensions)
+    and current sub index sizes ``subshapes`` (i.e. previously fused dimensions)
     compute the sequence of axes to unfuse, fuse and expand to reshape the
     array.
 
@@ -408,7 +418,7 @@ def calc_reshape_args(shape, newshape, subsizes):
         The current shape of the array.
     newshape : tuple[int]
         The target shape of the array.
-    subsizes : tuple[None or tuple[int]]
+    subshapes : tuple[None or tuple[int]]
         The sizes of the subindices that were previously fused.
 
     Returns
@@ -442,13 +452,13 @@ def calc_reshape_args(shape, newshape, subsizes):
         di = shape[i]
         dj = newshape[j]
 
-        if (subsizes[i] is not None) and (
-            subsizes[i] == newshape[j : j + len(subsizes[i])]
+        if (subshapes[i] is not None) and (
+            subshapes[i] == newshape[j : j + len(subshapes[i])]
         ):
             # unfuse, check first
             label = f"u{len(unfuse_sizes)}"
             s = 0
-            for ds in subsizes[i]:
+            for ds in subshapes[i]:
                 dj = newshape[j]
                 if ds != dj:
                     raise ValueError("Shape mismatch for unfuse.")
@@ -1157,6 +1167,76 @@ class AbelianCommon:
             if new.is_fused(ax):
                 new.unfuse(ax, inplace=True)
         return new
+
+    def reshape(self, newshape, inplace=False):
+        """Reshape this abelian array to ``newshape``, assuming it can be done
+        by any mix of fusing, unfusing, and expanding new axes.
+
+        Restrictions and complications vs normal array reshaping arise from the
+        fact that
+
+            A) only previously fused axes can be unfused, and their total size
+               may not be the product of the individual sizes due to sparsity.
+            B) the indices carry information beyond size and how they are
+               grouped potentially matters, relevant for singleton dimensions.
+
+        Accordingly the approach here is as follows:
+
+            1. Unfuse any axes that match the new shape.
+
+            2. If there are singleton dimensions that don't appear in the new
+               shape, (i.e. are being 'squeezed') these are grouped with the
+               axis to the their left to then be fused. If they are already
+               left-most, they are grouped with the right.
+
+            3. Fuse any groups of axes required to match the new shape.
+               Adjacent groups are fused simultaneously for efficiency.
+
+            4. Expand new axes required to match singlet dimensions in the new
+               shape. By default these will have zero charge and dual-ness
+               iherited from whichever axis is to their left, or right if they
+               are the left-most axis already.
+
+        To avoid the effective grouping of 'squeezed' axes you can explicitly
+        squeeze them before reshaping. Similarly use ``expand_dims`` to add
+        new axes with specific charges and dual-ness.
+
+        Parameters
+        ----------
+        newshape : tuple[int]
+            The new shape to reshape to.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+
+        See Also
+        --------
+        fuse, unfuse, squeeze, expand_dims
+        """
+        x = self if inplace else self.copy()
+
+        if not isinstance(newshape, tuple):
+            newshape = tuple(newshape)
+        newshape = find_full_reshape(newshape, self.size)
+
+        subshapes = tuple(ix.subshape for ix in x.indices)
+
+        # cached parsing of reshape arguments
+        axs_unfuse, axs_fuse_groupings, axs_expand = calc_reshape_args(
+            x.shape, newshape, subshapes
+        )
+
+        for ax in axs_unfuse:
+            x.unfuse(ax, inplace=True)
+        for grouping in axs_fuse_groupings:
+            x.fuse(*grouping, inplace=True)
+        for ax in axs_expand:
+            x.expand_dims(ax, inplace=True)
+
+        return x
 
     def __str__(self):
         lines = [
@@ -2134,81 +2214,6 @@ class AbelianArray(AbelianCommon, BlockBase):
             return self.modify(indices=new_indices, blocks=new_blocks)
         else:
             return self.copy_with(indices=new_indices, blocks=new_blocks)
-
-    def reshape(self, newshape, inplace=False):
-        """Reshape this abelian array to ``newshape``, assuming it can be done
-        by any mix of fusing, unfusing, and expanding new axes.
-
-        Restrictions and complications vs normal array reshaping arise from the
-        fact that
-
-            A) only previously fused axes can be unfused, and their total size
-               may not be the product of the individual sizes due to sparsity.
-            B) the indices carry information beyond size and how they are
-               grouped potentially matters, relevant for singleton dimensions.
-
-        Accordingly the approach here is as follows:
-
-            1. Unfuse any axes that match the new shape.
-
-            2. If there are singleton dimensions that don't appear in the new
-               shape, (i.e. are being 'squeezed') these are grouped with the
-               axis to the their left to then be fused. If they are already
-               left-most, they are grouped with the right.
-
-            3. Fuse any groups of axes required to match the new shape.
-               Adjacent groups are fused simultaneously for efficiency.
-
-            4. Expand new axes required to match singlet dimensions in the new
-               shape. By default these will have zero charge and dual-ness
-               iherited from whichever axis is to their left, or right if they
-               are the left-most axis already.
-
-        To avoid the effective grouping of 'squeezed' axes you can explicitly
-        squeeze them before reshaping. Similarly use ``expand_dims`` to add
-        new axes with specific charges and dual-ness.
-
-        Parameters
-        ----------
-        newshape : tuple[int]
-            The new shape to reshape to.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-
-        See Also
-        --------
-        fuse, unfuse, squeeze, expand_dims
-        """
-        x = self if inplace else self.copy()
-
-        if not isinstance(newshape, tuple):
-            newshape = tuple(newshape)
-        newshape = find_full_reshape(newshape, self.size)
-
-        subsizes = tuple(
-            None
-            if ix.subinfo is None
-            else tuple(subix.size_total for subix in ix.subinfo.indices)
-            for ix in x.indices
-        )
-
-        # cached parsing of reshape arguments
-        axs_unfuse, axs_fuse_groupings, axs_expand = calc_reshape_args(
-            x.shape, newshape, subsizes
-        )
-
-        for ax in axs_unfuse:
-            x.unfuse(ax, inplace=True)
-        for grouping in axs_fuse_groupings:
-            x.fuse(*grouping, inplace=True)
-        for ax in axs_expand:
-            x.expand_dims(ax, inplace=True)
-
-        return x
 
     def __matmul__(self, other, preserve_array=False):
         if self.ndim > 2 or other.ndim > 2:
