@@ -8,7 +8,7 @@ from .abelian_core import (
     permuted,
     tensordot_abelian,
 )
-from .block_core import BlockBase
+from .block_core import BlockCommon
 from .fermionic_local_operators import FermionicOperator
 from .interface import tensordot
 from .symmetries import calc_phase_permutation, get_symmetry
@@ -259,12 +259,12 @@ class FermionicArray(AbelianArray):
             if other.phases:
                 other = other.phase_sync()
 
-        return BlockBase._binary_blockwise_op(
+        return BlockCommon._binary_blockwise_op(
             xy, other, fn, inplace=True, **kwargs
         )
 
     def _map_blocks(self, fn_block=None, fn_sector=None):
-        BlockBase._map_blocks(self, fn_block, fn_sector)
+        BlockCommon._map_blocks(self, fn_block, fn_sector)
         if fn_sector is not None:
             # need to update phase keys as well
             self._phases = {fn_sector(s): p for s, p in self._phases.items()}

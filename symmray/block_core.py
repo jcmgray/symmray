@@ -5,12 +5,14 @@ import operator
 
 import autoray as ar
 
+from .common import SymmrayCommon
+
 
 def _identity(x):
     return x
 
 
-class BlockBase:
+class BlockCommon(SymmrayCommon):
     """Mixin class for arrays consisting of dicts of blocks."""
 
     __slots__ = ("_blocks",)
@@ -186,7 +188,7 @@ class BlockBase:
         return xy
 
     def __add__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other,
                 fn=operator.add,
@@ -200,7 +202,7 @@ class BlockBase:
         )
 
     def __iadd__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other, fn=operator.add, missing="outer", inplace=True
             )
@@ -211,7 +213,7 @@ class BlockBase:
         )
 
     def __sub__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other,
                 fn=operator.sub,
@@ -224,7 +226,7 @@ class BlockBase:
         )
 
     def __isub__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other, fn=operator.sub, inplace=True
             )
@@ -235,7 +237,7 @@ class BlockBase:
         )
 
     def __mul__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other, fn=operator.mul, missing="inner"
             )
@@ -244,7 +246,7 @@ class BlockBase:
         return new
 
     def __imul__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other, fn=operator.mul, missing="inner", inplace=True
             )
@@ -255,7 +257,7 @@ class BlockBase:
         return self * other
 
     def __truediv__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             if self.shape == other.shape and all(d == 1 for d in self.shape):
                 return self._binary_blockwise_op(other, fn=operator.truediv)
             # deviding by implicit zeros not defined
@@ -267,7 +269,7 @@ class BlockBase:
         return new
 
     def __itruediv__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # deviding by implicit zeros not defined
             return NotImplemented
 
@@ -381,10 +383,10 @@ class BlockBase:
         )
 
 
-class BlockVector(BlockBase):
+class BlockVector(BlockCommon):
     """A vector stored as a dict of blocks."""
 
-    __slots__ = BlockBase.__slots__
+    __slots__ = BlockCommon.__slots__
 
     ndim = 1
 
@@ -408,7 +410,7 @@ class BlockVector(BlockBase):
                 missing="outer",
             )
 
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # block structure not preserved
             return NotImplemented
 
@@ -426,7 +428,7 @@ class BlockVector(BlockBase):
                 missing="outer",
             )
 
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # block structure not preserved
             return NotImplemented
 
@@ -444,7 +446,7 @@ class BlockVector(BlockBase):
         if isinstance(other, BlockVector):
             return self._binary_blockwise_op(other, fn=operator.sub)
 
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # block structure not preserved
             return NotImplemented
 
@@ -459,7 +461,7 @@ class BlockVector(BlockBase):
                 other, fn=operator.sub, inplace=True
             )
 
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # block structure not preserved
             return NotImplemented
 
@@ -477,7 +479,7 @@ class BlockVector(BlockBase):
         if isinstance(other, BlockVector):
             return self._binary_blockwise_op(other, fn=operator.truediv)
 
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # deviding by implicit zeros not defined
             return NotImplemented
 
@@ -492,7 +494,7 @@ class BlockVector(BlockBase):
                 other, fn=operator.truediv, inplace=True
             )
 
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             # deviding by implicit zeros not defined
             return NotImplemented
 
@@ -507,7 +509,7 @@ class BlockVector(BlockBase):
         return new
 
     def __pow__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(other, fn=operator.pow)
 
         # assume scalar
@@ -516,7 +518,7 @@ class BlockVector(BlockBase):
         return new
 
     def __ipow__(self, other):
-        if isinstance(other, BlockBase):
+        if isinstance(other, BlockCommon):
             return self._binary_blockwise_op(
                 other, fn=operator.pow, inplace=True
             )

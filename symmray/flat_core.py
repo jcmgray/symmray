@@ -24,6 +24,7 @@ from .abelian_core import (
     get_zn_array_cls,
     parse_tensordot_axes,
 )
+from .common import SymmrayCommon
 from .interface import tensordot
 from .symmetries import get_symmetry
 from .utils import DEBUG
@@ -346,7 +347,7 @@ def zn_combine(sectors, duals=None, order=2, like=None):
     return ar.do("sum", signed_sectors, axis=-1, like=like) % order
 
 
-class FlatCommon:
+class FlatCommon(SymmrayCommon):
     """Mixin class for flat arrays."""
 
     __slots__ = ("_blocks", "_sectors", "backend")
@@ -508,6 +509,9 @@ class FlatVector(FlatCommon):
         return BlockVector(
             {k.item(): b for k, b in zip(self.sectors, self.blocks)}
         )
+
+    def to_dense(self):
+        return ar.do("reshape", self._blocks, (-1,), like=self.backend)
 
     def __repr__(self):
         return "".join(

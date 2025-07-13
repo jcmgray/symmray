@@ -14,7 +14,7 @@ from collections import OrderedDict, defaultdict
 import autoray as ar
 from autoray.lazy.core import find_full_reshape
 
-from .block_core import BlockBase, BlockVector
+from .block_core import BlockCommon, BlockVector
 from .interface import tensordot
 from .symmetries import Symmetry, get_symmetry
 from .utils import DEBUG
@@ -1277,7 +1277,7 @@ class AbelianCommon:
         )
 
 
-class AbelianArray(AbelianCommon, BlockBase):
+class AbelianArray(AbelianCommon, BlockCommon):
     """A block sparse array with symmetry constraints.
 
     Parameters
@@ -1616,7 +1616,7 @@ class AbelianArray(AbelianCommon, BlockBase):
             return False
 
         # defined on BlockBase:
-        return BlockBase.allclose(self, other)
+        return BlockCommon.allclose(self, other)
 
     @classmethod
     def from_fill_fn(

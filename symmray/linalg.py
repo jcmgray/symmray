@@ -248,14 +248,14 @@ def svd_truncated(
     cutoff : float
         Singular value cutoff threshold.
     cutoff_mode : {1, 2, 3, 4, 5, 6}
-        How to perform the trim:
+        How to perform the truncation:
 
-            - 1: ['abs'], trim values below ``cutoff``
-            - 2: ['rel'], trim values below ``s[0] * cutoff``
-            - 3: ['sum2'], trim s.t. ``sum(s_trim**2) < cutoff``.
-            - 4: ['rsum2'], trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
-            - 5: ['sum1'], trim s.t. ``sum(s_trim**1) < cutoff``.
-            - 6: ['rsum1'], trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+        - 1: ['abs'], trim values below ``cutoff``
+        - 2: ['rel'], trim values below ``s[0] * cutoff``
+        - 3: ['sum2'], trim s.t. ``sum(s_trim**2) < cutoff``.
+        - 4: ['rsum2'], trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+        - 5: ['sum1'], trim s.t. ``sum(s_trim**1) < cutoff``.
+        - 6: ['rsum1'], trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
 
     max_bond : int
         An explicit maximum bond dimension, use -1 for none.

@@ -51,7 +51,9 @@ def qr_flat(x, stabilized=False):
 
 
 @svd.register(AbelianArrayFlat)
-def svd_flat(x: AbelianArrayFlat):
+def svd_flat(
+    x: AbelianArrayFlat,
+) -> tuple[AbelianArrayFlat, FlatVector, AbelianArrayFlat]:
     if x.ndim != 2:
         raise ValueError(
             "SVD is only defined for 2D AbelianArrayFlat objects."
@@ -116,18 +118,21 @@ def svd_truncated(
     U, s, VH = svd_flat(x)
 
     if max_bond > 0:
+        # we must evenly distribute the bond dimension across charges
+        charge_size = max_bond // x.order
+
         U.modify(
-            blocks=U._blocks[:, :, :max_bond],
+            blocks=U._blocks[:, :, :charge_size],
             indices=(
                 U.indices[0],
-                U.indices[1].copy_with(charge_size=max_bond),
+                U.indices[1].copy_with(charge_size=charge_size),
             ),
         )
-        s._blocks = s._blocks[:, :max_bond]
+        s._blocks = s._blocks[:, :charge_size]
         VH.modify(
-            blocks=VH._blocks[:, :max_bond, :],
+            blocks=VH._blocks[:, :charge_size, :],
             indices=(
-                VH.indices[0].copy_with(charge_size=max_bond),
+                VH.indices[0].copy_with(charge_size=charge_size),
                 VH.indices[1],
             ),
         )
