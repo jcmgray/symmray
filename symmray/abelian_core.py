@@ -1599,7 +1599,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
             for axa, axb in zip(axes_a, axes_b):
                 assert self.indices[axa].matches(other.indices[axb])
 
-    def allclose(self, other, **allclose_opts):
+    def allclose(self, other, check_charge=True, **allclose_opts):
         """Test whether this ``AbelianArray`` is close to another, that is,
         has all the same sectors, and the corresponding arrays are close.
 
@@ -1614,8 +1614,9 @@ class AbelianArray(AbelianCommon, BlockCommon):
         -------
         bool
         """
-        # charge and signature must match
-        if self.charge != other.charge:
+        # charge and signature must match, though if final object is scalar
+        # then charge can not be inferred for flat arrays
+        if check_charge and (self.charge != other.charge):
             return False
 
         if self.duals != other.duals:

@@ -337,8 +337,11 @@ def test_tensordot(symmetry, seed):
                 symmetry, d, subsizes="equal", seed=rng
             )
 
-    a = sr.utils.get_rand(symmetry, indices_a, seed=rng)
-    b = sr.utils.get_rand(symmetry, indices_b, seed=rng)
+    charge_a = int(rng.integers(0, N))
+    charge_b = int(rng.integers(0, N))
+
+    a = sr.utils.get_rand(symmetry, indices_a, charge=charge_a, seed=rng)
+    b = sr.utils.get_rand(symmetry, indices_b, charge=charge_b, seed=rng)
     c = sr.tensordot(a, b, axes, preserve_array=True)
 
     fa = a.to_flat()
@@ -347,4 +350,4 @@ def test_tensordot(symmetry, seed):
     fc = sr.tensordot(fa, fb, axes, preserve_array=True)
     fc.check()
 
-    assert fc.to_blocksparse().allclose(c)
+    assert fc.to_blocksparse().allclose(c, check_charge=c.ndim > 0)

@@ -1445,13 +1445,13 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         if self.ndim == 2:
             # axes are locked to each other -> select both
             if axis == 0:
-                other_charge = new.sectors[0, 1]
+                other_charge = new_sectors[0, 1]
                 new_indices = (
                     self.indices[0].select_charge(charge),
                     self.indices[1].select_charge(other_charge),
                 )
             else:  # axis == 1
-                other_charge = new.sectors[0, 0]
+                other_charge = new_sectors[0, 0]
                 new_indices = (
                     self.indices[0].select_charge(other_charge),
                     self.indices[1].select_charge(charge),
@@ -1538,16 +1538,16 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         elif ndim_a >= 2 and ndim_b == 1:
             # ~matvec: b has locked axis and only one charge
             (axis,) = axes[0]
-            a.select_charge(axis, b.charge, inplace=True)
+            a.select_charge(axis, b._sectors[0, 0], inplace=True)
 
         elif ndim_a == 1 and ndim_b >= 2:
             # ~vecmat: a has locked axis and only one charge
             (axis,) = axes[1]
-            b.select_charge(axis, a.charge, inplace=True)
+            b.select_charge(axis, a._sectors[0, 0], inplace=True)
 
         else:
             # ~vecvec: both must have the same charge
-            matching = a.charge == b.charge
+            matching = a._sectors[0, 0] == b._sectors[0, 0]
             # branchless set to zero
             a._blocks = a._blocks * matching
             b._blocks = b._blocks * matching
@@ -1717,13 +1717,17 @@ def tensordot_flat(
 
     if left_axes:
         af = self.fuse(left_axes, axes_a)
-    else:
+    elif len(axes_a) > 1:
         af = self.fuse(axes_a)
+    else:
+        af = self
 
     if right_axes:
         bf = other.fuse(axes_b, right_axes)
-    else:
+    elif len(axes_b) > 1:
         bf = other.fuse(axes_b)
+    else:
+        bf = other
 
     cf = af.__matmul__(bf, preserve_array=preserve_array)
 
