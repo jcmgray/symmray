@@ -152,6 +152,12 @@ class BlockIndex:
             ),
         )
 
+    def select_charge(self, charge):
+        """Drop all but the specified charge from this index."""
+        drop = set(self._chargemap)
+        drop.remove(charge)
+        return self.drop_charges(drop)
+
     def size_of(self, c):
         """The size of the block with charge ``c``."""
         return self._chargemap[c]
@@ -1961,6 +1967,44 @@ class AbelianArray(AbelianCommon, BlockCommon):
             },
         )
 
+    def select_charge(self, axis, charge, inplace=False):
+        """Drop all but the specified charge along the specified axis. Note the
+        axis is not removed, it is simply restricted to a single charge.
+
+        Parameters
+        ----------
+        axis : int
+            The axis along which to select the charge.
+        charge : int
+            The charge to select along the specified axis.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+        """
+        if axis < 0:
+            axis += self.ndim
+
+        # update indices
+        new_indices = (
+            *self.indices[:axis],
+            self.indices[axis].select_charge(charge),
+            *self.indices[axis + 1 :],
+        )
+
+        # and filter blocks
+        new_blocks = {
+            k: v for k, v in self.blocks.items() if k[axis] == charge
+        }
+
+        return self._modify_or_copy(
+            blocks=new_blocks,
+            indices=new_indices,
+            inplace=inplace,
+        )
+
     def squeeze(self, axis=None, inplace=False):
         """Squeeze the block array, removing axes of size 1.
 
@@ -1984,7 +2028,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         keep = []
         selector = []
         new_indices = []
-        zero_charge = x.symmetry.combine()
+        new_charge = x.charge
 
         for ax, ix in enumerate(x.indices):
             if axis is None:
@@ -1997,8 +2041,10 @@ class AbelianArray(AbelianCommon, BlockCommon):
             if remove:
                 selector.append(0)
                 (charge,) = ix.chargemap
-                if charge != zero_charge:
-                    raise ValueError("Cannot squeeze non-zero charge index.")
+                new_charge = x.symmetry.combine(
+                    new_charge,
+                    x.symmetry.sign(charge, not ix.dual),
+                )
             else:
                 new_indices.append(ix)
                 keep.append(ax)
@@ -2010,7 +2056,41 @@ class AbelianArray(AbelianCommon, BlockCommon):
             fn_sector=lambda sector: tuple(sector[ax] for ax in keep),
             fn_block=lambda block: block[selector],
         )
-        return x.modify(indices=tuple(new_indices))
+        return x.modify(
+            indices=tuple(new_indices),
+            charge=new_charge,
+        )
+
+    def isel(self, axis, idx, inplace=False):
+        """Select a single index along the specified axis."""
+        if axis < 0:
+            axis += self.ndim
+        new = self.select_charge(axis, idx, inplace=inplace)
+        return new.squeeze(axis, inplace=True)
+
+    def __getitem__(self, item):
+        axis = None
+        idx = None
+
+        if not isinstance(item, tuple):
+            raise TypeError(
+                f"Expected a tuple for indexing, got {type(item)}: {item}"
+            )
+
+        for i, s in enumerate(item):
+            if isinstance(s, slice):
+                if not s.start is s.stop is s.step is None:
+                    raise NotImplementedError("Can only slice whole axes.")
+            else:
+                if axis is not None:
+                    raise ValueError(
+                        "Can only index one axis at a time, "
+                        f"got {item} with multiple indices."
+                    )
+                axis = i
+                idx = s
+
+        return self.isel(axis, idx)
 
     def expand_dims(self, axis, c=None, dual=None, inplace=False):
         """Expand the shape of an abelian array.

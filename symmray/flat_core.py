@@ -1399,7 +1399,8 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
     def select_charge(self, axis, charge, inplace=False):
-        """Drop all but the specified charge along the specified axis.
+        """Drop all but the specified charge along the specified axis. Note the
+        axis is not removed, it is simply restricted to a single charge.
 
         Parameters
         ----------
@@ -1487,11 +1488,10 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
     def isel(self, axis, idx, inplace=False):
-        """ """
-        new = self if inplace else self.copy()
+        """Select a single index along the specified axis."""
         if axis < 0:
             axis += self.ndim
-        new.select_charge(axis, idx, inplace=True)
+        new = self.select_charge(axis, idx, inplace=inplace)
         return new.squeeze(axis, inplace=True)
 
     def __getitem__(self, item):
@@ -1516,7 +1516,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
                 axis = i
                 idx = s
 
-        return self.select_charge(axis, idx).squeeze(axis, inplace=True)
+        return self.isel(axis, idx)
 
     def align_axes(
         self: "AbelianArrayFlat",
