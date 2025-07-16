@@ -1,4 +1,4 @@
-from . import flat_linalg, linalg, scipy, utils
+from . import flat_linalg, linalg, scipy, utils, utils_test
 from .abelian_core import (
     AbelianArray,
     BlockIndex,
@@ -152,6 +152,7 @@ __all__ = (
     "U1U1Array",
     "U1U1FermionicArray",
     "utils",
+    "utils_test",
     "Z2",
     "Z2Array",
     "Z2FermionicArray",

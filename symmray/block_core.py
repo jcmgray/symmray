@@ -54,6 +54,12 @@ class BlockCommon(SymmrayCommon):
         """
         return next(iter(self._blocks.values()), 0.0)
 
+    def is_zero(self, tol=1e-12):
+        """Check if all blocks are zero up to a tolerance."""
+        return all(
+            ar.do("allclose", b, 0.0, atol=tol) for b in self._blocks.values()
+        )
+
     @property
     def dtype(self):
         """Get the dtype name from an arbitrary block in the array."""

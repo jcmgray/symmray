@@ -262,7 +262,7 @@ def test_build_cyclic_keys_conserve(ndim, order, seed):
         duals=duals,
         flat=True,
     )
-    scharges = zn_combine(sectors, duals=duals, order=order)
+    scharges = zn_combine(order, sectors, duals=duals)
 
     assert set(map(int, scharges)) == {charge}
     assert np.all(lexsort_sectors(sectors) == np.arange(order ** (ndim - 1)))
@@ -288,7 +288,7 @@ def test_build_cyclic_keys_by_charge(ndim, order, seed):
         order=order,
         duals=duals,
     )
-    scharges = zn_combine(sectors, duals=duals, order=order)
+    scharges = zn_combine(order, sectors, duals=duals)
 
     for i in range(order):
         # all have matching charge
@@ -302,52 +302,39 @@ def test_build_cyclic_keys_by_charge(ndim, order, seed):
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("seed", range(50))
 def test_tensordot(symmetry, seed):
-    import numpy as np
+    from symmray.utils_test import rand_valid_tensordot
 
     N = int(symmetry[1:])
-    rng = np.random.default_rng(seed)
 
-    ndim_a = rng.integers(1, 5)
-    ndim_b = rng.integers(1, 5)
-    ncon = rng.integers(min(ndim_a, ndim_b) + 1)
-
-    axes_a = rng.choice(np.arange(ndim_a), size=ncon, replace=False)
-    axes_b = rng.choice(np.arange(ndim_b), size=ncon, replace=False)
-    axes = (axes_a, axes_b)
-
-    indices_a = [None] * ndim_a
-    indices_b = [None] * ndim_b
-
-    for axa, axb in zip(axes[0], axes[1]):
-        d = int(N * rng.integers(1, 4))
-        ix = sr.utils.rand_index(symmetry, d, subsizes="equal", seed=rng)
-        indices_a[axa] = ix.conj()
-        indices_b[axb] = ix
-
-    for i in range(ndim_a):
-        if indices_a[i] is None:
-            d = int(N * rng.integers(1, 4))
-            indices_a[i] = sr.utils.rand_index(
-                symmetry, d, subsizes="equal", seed=rng
-            )
-    for i in range(ndim_b):
-        if indices_b[i] is None:
-            d = int(N * rng.integers(1, 4))
-            indices_b[i] = sr.utils.rand_index(
-                symmetry, d, subsizes="equal", seed=rng
-            )
-
-    charge_a = int(rng.integers(0, N))
-    charge_b = int(rng.integers(0, N))
-
-    a = sr.utils.get_rand(symmetry, indices_a, charge=charge_a, seed=rng)
-    b = sr.utils.get_rand(symmetry, indices_b, charge=charge_b, seed=rng)
+    a, b, axes = rand_valid_tensordot(
+        symmetry,
+        seed=seed,
+        dimension_multiplier=N,
+        subsizes="equal",
+    )
     c = sr.tensordot(a, b, axes, preserve_array=True)
 
     fa = a.to_flat()
     fb = b.to_flat()
 
-    fc = sr.tensordot(fa, fb, axes, preserve_array=True)
+    fc = sr.tensordot(
+        fa,
+        fb,
+        axes,
+        preserve_array=True,
+    )
     fc.check()
 
-    assert fc.to_blocksparse().allclose(c, check_charge=c.ndim > 0)
+    if c.is_zero() and fc.is_zero():
+        # both are zero, other tests might break
+        return
+
+    assert (
+        len(
+            set(map(float, fc.blocks.round(9).flat))
+            - set(map(float, c.to_flat().blocks.round(9).flat))
+        )
+        == 0
+    )
+
+    assert fc.to_blocksparse().allclose(c)

@@ -16,6 +16,7 @@ import operator
 from itertools import repeat
 
 import autoray as ar
+import cotengra as ctg
 
 from .abelian_core import (
     AbelianArray,
@@ -311,11 +312,14 @@ def select_slice_torch(x, i):
     return torch.squeeze(xi, 0)
 
 
-def zn_combine(sectors, duals=None, order=2, like=None):
+def zn_combine(order, sectors, duals=None, like=None):
     """Implement vectorized addition modulo group order, with signature.
 
     Parameters
     ----------
+    order : int
+        The order of the symmetry group, i.e., the number of distinct charges
+        in each axis. E.g. 2 corresponds to Z2 symmetry.
     sectors : array_like
         The stack of sectors, with shape (num_blocks, num_charges). Each
         row represents a subsector.
@@ -323,9 +327,6 @@ def zn_combine(sectors, duals=None, order=2, like=None):
         The dualness of each index, i.e., whether the charge contributes
         positively or negatively. If not given, it will be assumed that all
         charges are positive.
-    order : int, optional
-        The order of the symmetry group, i.e., the number of distinct charges
-        in each axis. Default is 2, which corresponds to Z2 symmetry.
     like : str or array_like, optional
         The array-like object to use as a reference for the output type and
         backend. If not given, will be inferred..
@@ -826,7 +827,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
     @property
     def charge(self):
         """Compute the overall charge of the array."""
-        return zn_combine(self._sectors[[0], :], self.duals, self.order)[0]
+        return zn_combine(self.order, self._sectors[[0], :], self.duals)[0]
 
     @property
     def duals(self) -> tuple[bool]:
@@ -839,7 +840,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         assert self.ndim == len(self._sectors[0])
         # check blocks all have the same overall charge
         sector_charges = ar.do(
-            "unique", zn_combine(self._sectors, self.duals, self.order)
+            "unique", zn_combine(self.order, self._sectors, self.duals)
         )
         assert ar.do("size", sector_charges) == 1
         for ix, ds in zip(self._indices, self.shape_block):
@@ -906,6 +907,10 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         """Get an arbitrary (the first) block from the stack."""
         return self._blocks[0]
 
+    def is_zero(self, tol=1e-12):
+        """Check if all blocks are zero up to a tolerance."""
+        return ar.do("allclose", self.blocks, 0.0, atol=tol, like=self.backend)
+
     @property
     def shape_block(self) -> tuple[int, ...]:
         """Get the shape of an individual block."""
@@ -948,7 +953,11 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         AbelianArrayFlat
         """
         sectors = list(map(list, blocks.keys()))
-        blocks = ar.do("stack", tuple(blocks.values()))
+
+        if blocks:
+            blocks = ar.do("stack", tuple(blocks.values()))
+        else:
+            blocks = []
         return cls(sectors, blocks, indices)
 
     @classmethod
@@ -961,6 +970,14 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             The blocksparse abelian array to convert.
         """
         return cls.from_blocks(blocks=x.blocks, indices=x.duals)
+
+    @classmethod
+    def from_scalar(cls, x) -> "AbelianArrayFlat":
+        """Create a flat abelian array from a scalar."""
+        sectors = [[]]
+        indices = ()
+        blocks = ar.do("reshape", x, (1,))
+        return cls(sectors, blocks, indices)
 
     def to_blocksparse(self) -> AbelianArray:
         """Create a blocksparse abelian array from this flat abelian array."""
@@ -1143,7 +1160,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             # charges with opposite sign to overall group need to be flipped
             eff_duals = [self.duals[ax] != dg for ax in axs]
             new_sectors.append(
-                zn_combine(self._sectors[:, axs], eff_duals, self.order)
+                zn_combine(self.order, self._sectors[:, axs], eff_duals)
             )
         # then we add the unfused axes after
         new_sectors.extend(self._sectors[:, ax] for ax in axes_after)
@@ -1529,25 +1546,32 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
         ndim_a = a.ndim
         ndim_b = b.ndim
+        ncon = len(axes[0])
 
-        if ndim_a >= 2 and ndim_b >= 2:
+        if ndim_a > ncon and ndim_b > ncon:
             # ~ matmat: just need to sort sectors along common axes
             a.sort_stack(axes[0], inplace=True)
             b.sort_stack(axes[1], inplace=True)
 
-        elif ndim_a >= 2 and ndim_b == 1:
+        elif ndim_a > ncon and ndim_b == ncon:
             # ~matvec: b has locked axis and only one charge
             (axis,) = axes[0]
             a.select_charge(axis, b._sectors[0, 0], inplace=True)
 
-        elif ndim_a == 1 and ndim_b >= 2:
+        elif ndim_a == ncon and ndim_b > ncon:
             # ~vecmat: a has locked axis and only one charge
             (axis,) = axes[1]
             b.select_charge(axis, a._sectors[0, 0], inplace=True)
 
         else:
-            # ~vecvec: both must have the same charge
-            matching = a._sectors[0, 0] == b._sectors[0, 0]
+            # ~vecvec: must have equal charges
+            matching = (a.charge + b.charge) % a.order == 0
+
+            if a.ndim > 1:
+                a.sort_stack(axes[0], inplace=True)
+            if b.ndim > 1:
+                b.sort_stack(axes[1], inplace=True)
+
             # branchless set to zero
             a._blocks = a._blocks * matching
             b._blocks = b._blocks * matching
@@ -1558,8 +1582,58 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
         return a, b
 
-    def outer(self, other: "AbelianArrayFlat") -> "AbelianArrayFlat":
-        """Perform the outer product of two flat abelian arrays."""
+    def tensordot_inner(self, other, axes_a, axes_b, preserve_array=False):
+        """Perform the tensor inner product of two flat abelian arrays along
+        the specified axes.
+
+        Parameters
+        ----------
+        other : AbelianArrayFlat
+            The other array to contract with.
+        axes_a : tuple[int, ...]
+            The axes of this array to contract along.
+        axes_b : tuple[int, ...]
+            The axes of the other array to contract along.
+        preserve_array : bool, optional
+            Whether to always return an array, even if the result is a scalar.
+
+        Returns
+        -------
+        array_like | AbelianArrayFlat
+            The result of the contraction, either as a scalar if
+            `preserve_array=False` or else a new flat abelian array.
+        """
+        a, b = self.align_axes(other, axes=(axes_a, axes_b))
+
+        linput = [-1, *repeat(None, a.ndim)]
+        rinput = [-1, *repeat(None, b.ndim)]
+        for c, (axa, axb) in enumerate(zip(axes_a, axes_b)):
+            linput[axa + 1] = c
+            rinput[axb + 1] = c
+
+        c = ctg.array_contract(
+            arrays=(a.blocks, b.blocks),
+            inputs=(linput, rinput),
+            output=(),
+        )
+
+        if preserve_array:
+            c = a.__class__.from_scalar(c)
+
+        return c
+
+    def tensordot_outer(self, other: "AbelianArrayFlat") -> "AbelianArrayFlat":
+        """Perform the tensor outer product of two flat abelian arrays.
+
+        Parameters
+        ----------
+        other : AbelianArrayFlat
+            The other array to contract with.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
         import einops
 
         shape_a = self._get_shape_blocks_full()
@@ -1596,8 +1670,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         other: "AbelianArrayFlat",
         preserve_array=False,
     ):
-        import cotengra as ctg
-
         a, b = self.align_axes(other, axes=((-1,), (0,)))
 
         # new sectors given by concatenation of the sectors
@@ -1700,34 +1772,28 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         return (get_zn_array_flat_cls, (self.order,))
 
 
-@tensordot.register(AbelianArrayFlat)
-def tensordot_flat(
-    self: AbelianArrayFlat,
-    other: AbelianArrayFlat,
-    axes=2,
+def tensordot_flat_fused(
+    a: AbelianArrayFlat,
+    b: AbelianArrayFlat,
+    left_axes: tuple[int, ...],
+    axes_a: tuple[int, ...],
+    axes_b: tuple[int, ...],
+    right_axes: tuple[int, ...],
     preserve_array=False,
 ):
-    left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
-        axes, self.ndim, other.ndim
-    )
-
-    if not axes_a:
-        # other product
-        return self.outer(other)
-
     if left_axes:
-        af = self.fuse(left_axes, axes_a)
+        af = a.fuse(left_axes, axes_a)
     elif len(axes_a) > 1:
-        af = self.fuse(axes_a)
+        af = a.fuse(axes_a)
     else:
-        af = self
+        af = a
 
     if right_axes:
-        bf = other.fuse(axes_b, right_axes)
+        bf = b.fuse(axes_b, right_axes)
     elif len(axes_b) > 1:
-        bf = other.fuse(axes_b)
+        bf = b.fuse(axes_b)
     else:
-        bf = other
+        bf = b
 
     cf = af.__matmul__(bf, preserve_array=preserve_array)
 
@@ -1736,6 +1802,181 @@ def tensordot_flat(
         cf.unfuse_all(inplace=True)
 
     return cf
+
+
+def tensordot_flat_direct(
+    a: AbelianArrayFlat,
+    b: AbelianArrayFlat,
+    left_axes: tuple[int, ...],
+    axes_a: tuple[int, ...],
+    axes_b: tuple[int, ...],
+    right_axes: tuple[int, ...],
+    preserve_array=False,
+):
+    """Contract two flat abelian arrays without fusing."""
+    import einops
+
+    if not left_axes or not right_axes:
+        raise NotImplementedError(
+            "Currently both `a` and `b` must have kept axes for direct "
+            "tensordot. Consider using mode='fused' instead."
+        )
+
+    _reshape = ar.get_lib_fn(a.backend, "reshape")
+
+    dc = a.order ** (len(axes_a) - 1)
+
+    # sort and reshape left blocks
+    d0 = a.duals[axes_a[0]]
+    lcon_sectors = zn_combine(
+        a.order,
+        a.sectors[:, axes_a],
+        duals=[a.duals[ax] != d0 for ax in axes_a],
+    )
+    lkord = lexsort_sectors(
+        (
+            lcon_sectors,
+            *(a.sectors[:, ax] for ax in left_axes),
+            *(a.sectors[:, ax] for ax in axes_a),
+        )
+    )
+    larray = _reshape(a.blocks[lkord], (a.order, -1, dc, *a.shape_block))
+
+    # sort and reshape right blocks
+    d0 = b.duals[axes_b[0]]
+    rcon_sectors = zn_combine(
+        b.order,
+        b.sectors[:, axes_b],
+        duals=[b.duals[ax] != d0 for ax in axes_b],
+    )
+    rkord = lexsort_sectors(
+        (
+            rcon_sectors,
+            *(b.sectors[:, ax] for ax in right_axes),
+            *(b.sectors[:, ax] for ax in axes_b),
+        )
+    )
+    rarray = _reshape(b.blocks[rkord], (b.order, -1, dc, *b.shape_block))
+
+    linput = ["B0", "Bl", "Bc"]
+    rinput = ["B0", "Br", "Bc"]
+    output = ["B0", "Bl", "Br"]
+
+    aconmap = {}
+    bconmap = {}
+    for c, (axa, axb) in enumerate(zip(axes_a, axes_b)):
+        aconmap[int(axa)] = c
+        bconmap[int(axb)] = c
+
+    for i in range(a.ndim):
+        c = aconmap.get(i, None)
+        if c is None:
+            linput.append(f"a{i}")
+            output.append(f"a{i}")
+        else:
+            linput.append(f"C{c}")
+
+    for i in range(b.ndim):
+        c = bconmap.get(i, None)
+        if c is None:
+            rinput.append(f"b{i}")
+            output.append(f"b{i}")
+        else:
+            rinput.append(f"C{c}")
+
+    new_blocks = ctg.array_contract(
+        (larray, rarray), inputs=(linput, rinput), output=output
+    )
+
+    # flatten all batch indices
+    db, dl, dr, *shape_new_block = new_blocks.shape
+    new_blocks = _reshape(new_blocks, (db * dl * dr, *shape_new_block))
+
+    # XXX: do we need the B axis at all here?
+
+    # now we handle sectors
+    lsectors = _reshape(a.sectors[lkord], (a.order, -1, dc, a.ndim))[
+        :, :, 0, left_axes
+    ]
+    rsectors = _reshape(b.sectors[rkord], (b.order, -1, dc, b.ndim))[
+        :, :, 0, right_axes
+    ]
+
+    new_sectors = ar.do(
+        "concatenate",
+        (
+            einops.repeat(lsectors, "B Bl c -> (B Bl repeat) c", repeat=dr),
+            einops.repeat(rsectors, "B Br c -> (B repeat Br) c", repeat=dl),
+        ),
+        axis=1,
+    )
+
+    new_indices = (
+        *(a.indices[ax] for ax in left_axes),
+        *(b.indices[ax] for ax in right_axes),
+    )
+
+    if new_indices or preserve_array:
+        # array output, wrap in a new class
+        return a.__class__(
+            sectors=new_sectors,
+            blocks=new_blocks,
+            indices=new_indices,
+        )
+
+    # scalar output
+    return new_blocks[0]
+
+
+@tensordot.register(AbelianArrayFlat)
+def tensordot_flat(
+    a: AbelianArrayFlat,
+    b: AbelianArrayFlat,
+    axes=2,
+    preserve_array=False,
+    mode="auto",
+):
+    """Contract two flat abelian arrays along the specified axes."""
+    left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+        axes, a.ndim, b.ndim
+    )
+
+    if not axes_a:
+        # outer product
+        return a.tensordot_outer(b)
+
+    if not (left_axes or right_axes):
+        # inner product
+        return a.tensordot_inner(b, axes_a, axes_b, preserve_array)
+
+    if mode == "auto":
+        if left_axes and right_axes:
+            mode = "direct"
+        else:
+            mode = "fused"
+
+    if mode == "direct":
+        return tensordot_flat_direct(
+            a,
+            b,
+            left_axes=left_axes,
+            axes_a=axes_a,
+            axes_b=axes_b,
+            right_axes=right_axes,
+            preserve_array=preserve_array,
+        )
+    elif mode == "fused":
+        return tensordot_flat_fused(
+            a,
+            b,
+            left_axes=left_axes,
+            axes_a=axes_a,
+            axes_b=axes_b,
+            right_axes=right_axes,
+            preserve_array=preserve_array,
+        )
+    else:
+        raise ValueError(f"Unknown flat tensordot mode: {mode}")
 
 
 def print_charge_fusions(keys, duals, axes_groups):

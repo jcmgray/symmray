@@ -3,6 +3,8 @@
 import functools
 from abc import ABC, abstractmethod
 
+from .utils import get_rng
+
 
 class Symmetry(ABC):
     __slots__ = ()
@@ -25,6 +27,11 @@ class Symmetry(ABC):
     @abstractmethod
     def parity(self, charge):
         """Return the parity, 0 or 1, of a charge according to the symmetry."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def random_charge(self, seed=None):
+        """Return a random valid charge, for testing purposes."""
         raise NotImplementedError
 
     def __eq__(self, other):
@@ -68,6 +75,10 @@ class ZN(Symmetry):
     def parity(self, charge: int) -> int:
         return charge % 2
 
+    def random_charge(self, seed=None) -> int:
+        rng = get_rng(seed)
+        return int(rng.integers(0, self.N))
+
     def __reduce__(self):
         return (get_zn_symmetry_cls, (self.N,))
 
@@ -103,6 +114,10 @@ class U1(Symmetry):
     def parity(self, charge: int) -> int:
         return charge % 2
 
+    def random_charge(self, seed=None) -> int:
+        rng = get_rng(seed)
+        return int(rng.integers(-1, 2))
+
 
 class Z2Z2(Symmetry):
     __slots__ = ()
@@ -129,6 +144,11 @@ class Z2Z2(Symmetry):
     def parity(self, charge: tuple[int, int]) -> int:
         return charge[0] ^ charge[1]
 
+    def random_charge(self, seed=None) -> tuple[int, int]:
+        rng = get_rng(seed)
+        charge = rng.integers(0, 2, size=2)
+        return tuple(map(int, charge))
+
 
 class U1U1(Symmetry):
     __slots__ = ()
@@ -153,6 +173,11 @@ class U1U1(Symmetry):
 
     def parity(self, charge: tuple[int, int]) -> int:
         return (charge[0] + charge[1]) % 2
+
+    def random_charge(self, seed=None) -> tuple[int, int]:
+        rng = get_rng(seed)
+        charge = rng.integers(-1, 2, size=2)
+        return tuple(map(int, charge))
 
 
 @functools.lru_cache(2**14)
