@@ -31,6 +31,17 @@ from .symmetries import get_symmetry
 from .utils import DEBUG
 
 
+try:
+    from einops import rearrange, repeat as _einops_repeat
+except ImportError:
+
+    def not_installed(*args, name, **kwargs):
+        raise ImportError(f"'{name}' required for this function.")
+
+    rearrange = functools.partial(not_installed, name="einops.rearrange")
+    _einops_repeat = functools.partial(not_installed, name="einops.repeat")
+
+
 class FlatIndex:
     """Simple class to store dualness and any fuse information of an index.
 
@@ -396,6 +407,18 @@ class FlatCommon(SymmrayCommon):
         """Convert the block array to a scalar if it is a scalar block array."""
         return self._blocks.item()
 
+    def __mul__(self, other):
+        return self.copy_with(blocks=self._blocks * other)
+
+    def __rmul__(self, other):
+        return self.copy_with(blocks=other * self._blocks)
+
+    def __truediv__(self, other):
+        return self.copy_with(blocks=self._blocks / other)
+
+    def __neg__(self):
+        return self.copy_with(blocks=-self._blocks)
+
     def __float__(self):
         return float(self.item())
 
@@ -461,7 +484,7 @@ class FlatCommon(SymmrayCommon):
         return _any(self._blocks)
 
     def norm(self):
-        _norm = ar.get_lib_fn(self.backend, "norm")
+        _norm = ar.get_lib_fn(self.backend, "linalg.norm")
         return _norm(self._blocks)
 
 
@@ -500,6 +523,21 @@ class FlatVector(FlatCommon):
     def shape(self) -> tuple[int, ...]:
         """Get the effective shape of the vector."""
         return (self.size,)
+
+    def copy_with(self, sectors=None, blocks=None):
+        """Create a copy of the vector with some attributes replaced. Note that
+        checks are not performed on the new properties, this is intended for
+        internal use.
+        """
+        new = self.__new__(self.__class__)
+        new._sectors = self._sectors if sectors is None else sectors
+        new._blocks = self._blocks if blocks is None else blocks
+        new.backend = self.backend
+
+        if DEBUG:
+            new.check()
+
+        return new
 
     def check(self):
         assert ar.do("ndim", self._blocks, like=self.backend) == 2
@@ -1139,8 +1177,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         the new sectors and blocks. The new axes are inserted at the minimum
         axis of any of the groups.
         """
-        from einops import rearrange
-
         (
             num_groups,
             group_singlets,
@@ -1289,8 +1325,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         -------
         AbelianArrayFlat
         """
-        from einops import rearrange, repeat
-
         new = self if inplace else self.copy()
 
         fi = new.indices[axis].subinfo
@@ -1301,13 +1335,15 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         new.sort_stack((axis, *axs_rem), inplace=True)
 
         # keys coming from remaining axes
-        ka = repeat(
+        ka = _einops_repeat(
             new.sectors, "(Bf B) s -> (Bf B x) s", Bf=fi.ncharge, x=fi.nsectors
         )[:, axs_rem]
 
         # keys coming from unfused axis
         kb = fi.subkeys
-        kb = repeat(kb, "B Bu s -> (B x Bu) s", x=new.num_blocks // fi.ncharge)
+        kb = _einops_repeat(
+            kb, "B Bu s -> (B x Bu) s", x=new.num_blocks // fi.ncharge
+        )
 
         # concatenate into the full new keys!
         new_sectors = ar.do(
@@ -1634,8 +1670,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         -------
         AbelianArrayFlat
         """
-        import einops
-
         shape_a = self._get_shape_blocks_full()
         num_blocks_a = shape_a[0]
         shape_b = other._get_shape_blocks_full()
@@ -1655,8 +1689,8 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
         # get new keys from 'broadcasted' concatenation
-        ka = einops.repeat(self.sectors, "b r -> (b x) r", x=num_blocks_b)
-        kb = einops.repeat(other.sectors, "b r -> (x b) r", x=num_blocks_a)
+        ka = _einops_repeat(self.sectors, "b r -> (b x) r", x=num_blocks_b)
+        kb = _einops_repeat(other.sectors, "b r -> (x b) r", x=num_blocks_a)
         new_sectors = ar.do("concatenate", (ka, kb), axis=1)
 
         new_indices = self.indices + other.indices
@@ -1814,8 +1848,6 @@ def tensordot_flat_direct(
     preserve_array=False,
 ):
     """Contract two flat abelian arrays without fusing."""
-    import einops
-
     if not left_axes or not right_axes:
         raise NotImplementedError(
             "Currently both `a` and `b` must have kept axes for direct "
@@ -1905,8 +1937,8 @@ def tensordot_flat_direct(
     new_sectors = ar.do(
         "concatenate",
         (
-            einops.repeat(lsectors, "B Bl c -> (B Bl repeat) c", repeat=dr),
-            einops.repeat(rsectors, "B Br c -> (B repeat Br) c", repeat=dl),
+            _einops_repeat(lsectors, "B Bl c -> (B Bl repeat) c", repeat=dr),
+            _einops_repeat(rsectors, "B Br c -> (B repeat Br) c", repeat=dl),
         ),
         axis=1,
     )
