@@ -1769,7 +1769,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         raise NotImplementedError()
 
     def __reduce__(self):
-        return (get_zn_array_flat_cls, (self.order,))
+        return (get_zn_array_flat_cls(self.order), ())
 
 
 def tensordot_flat_fused(

@@ -80,7 +80,7 @@ class ZN(Symmetry):
         return int(rng.integers(0, self.N))
 
     def __reduce__(self):
-        return (get_zn_symmetry_cls, (self.N,))
+        return (get_zn_symmetry_cls(self.N), ())
 
 
 class Z2(ZN):
