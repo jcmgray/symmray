@@ -34,9 +34,12 @@ class Symmetry(ABC):
         """Return a random valid charge, for testing purposes."""
         raise NotImplementedError
 
+    def __str__(self):
+        return self.__class__.__name__
+
     def __eq__(self, other):
         if isinstance(other, str):
-            return self.__class__.__name__ == other
+            return str(self) == other
         return self.__class__ == other.__class__
 
     def __hash__(self):
@@ -80,7 +83,7 @@ class ZN(Symmetry):
         return int(rng.integers(0, self.N))
 
     def __reduce__(self):
-        return (get_zn_symmetry_cls(self.N), ())
+        return (get_symmetry, (f"Z{self.N}",))
 
 
 class Z2(ZN):
@@ -182,7 +185,7 @@ class U1U1(Symmetry):
 
 @functools.lru_cache(2**14)
 def get_symmetry(symmetry: str | Symmetry) -> Symmetry:
-    """Get a symmetry object by name.
+    """Get a symmetry instance by name.
 
     Parameters
     ----------
@@ -192,7 +195,7 @@ def get_symmetry(symmetry: str | Symmetry) -> Symmetry:
     Returns
     -------
     Symmetry
-        The symmetry object.
+        The symmetry instance.
     """
     import re
 

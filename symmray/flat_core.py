@@ -22,13 +22,12 @@ from .abelian_core import (
     AbelianArray,
     AbelianCommon,
     calc_fuse_group_info,
-    get_zn_array_cls,
     parse_tensordot_axes,
 )
 from .common import SymmrayCommon
 from .interface import tensordot
 from .symmetries import get_symmetry
-from .utils import DEBUG
+from .utils import DEBUG, get_array_cls
 
 
 try:
@@ -893,7 +892,9 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         else:
             sectors = self._sectors
             blocks = self._blocks
-        return self.__class__(sectors, blocks, self._indices)
+        return self.__class__(
+            sectors, blocks, self._indices, symmetry=self._symmetry
+        )
 
     def copy_with(
         self, sectors=None, blocks=None, indices=None
@@ -971,7 +972,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         return functools.reduce(operator.mul, self.shape, 1)
 
     @classmethod
-    def from_blocks(cls, blocks, indices) -> "AbelianArrayFlat":
+    def from_blocks(cls, blocks, indices, symmetry=None) -> "AbelianArrayFlat":
         """Create a flat array from an explicit dictionary of blocks, and
         sequence of indices or duals.
 
@@ -996,10 +997,12 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             blocks = ar.do("stack", tuple(blocks.values()))
         else:
             blocks = []
-        return cls(sectors, blocks, indices)
+        return cls(sectors, blocks, indices, symmetry=symmetry)
 
     @classmethod
-    def from_blocksparse(cls, x: AbelianArray) -> "AbelianArrayFlat":
+    def from_blocksparse(
+        cls, x: AbelianArray, symmetry=None
+    ) -> "AbelianArrayFlat":
         """Create a flat abelian array from a blocksparse abelian array.
 
         Parameters
@@ -1007,15 +1010,17 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         x : AbelianArray
             The blocksparse abelian array to convert.
         """
-        return cls.from_blocks(blocks=x.blocks, indices=x.duals)
+        return cls.from_blocks(
+            blocks=x.blocks, indices=x.duals, symmetry=symmetry
+        )
 
     @classmethod
-    def from_scalar(cls, x) -> "AbelianArrayFlat":
+    def from_scalar(cls, x, symmetry=None) -> "AbelianArrayFlat":
         """Create a flat abelian array from a scalar."""
         sectors = [[]]
         indices = ()
         blocks = ar.do("reshape", x, (1,))
-        return cls(sectors, blocks, indices)
+        return cls(sectors, blocks, indices, symmetry=symmetry)
 
     def to_blocksparse(self) -> AbelianArray:
         """Create a blocksparse abelian array from this flat abelian array."""
@@ -1024,8 +1029,10 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             sector = tuple(map(int, self._sectors[i]))
             block = self._blocks[i]
             blocks[sector] = block
-        cls = get_zn_array_cls(self.order)
-        return cls.from_blocks(blocks, duals=self.duals)
+        cls = get_array_cls(self.symmetry)
+        return cls.from_blocks(
+            blocks, duals=self.duals, symmetry=self.symmetry
+        )
 
     def is_fused(self, ax: int) -> bool:
         """Does axis `ax` carry subindex information, i.e., is it a fused
@@ -1654,7 +1661,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
         if preserve_array:
-            c = a.__class__.from_scalar(c)
+            c = a.__class__.from_scalar(c, symmetry=self._symmetry)
 
         return c
 
@@ -1695,8 +1702,10 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
         new_indices = self.indices + other.indices
 
-        return self.__class__(
-            sectors=new_sectors, indices=new_indices, blocks=new_blocks
+        return self.copy_with(
+            sectors=new_sectors,
+            indices=new_indices,
+            blocks=new_blocks,
         )
 
     def __matmul__(
@@ -1738,7 +1747,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
         if new_indices or preserve_array:
             # array output, wrap in a new class
-            return a.__class__(
+            return a.copy_with(
                 blocks=new_blocks,
                 sectors=new_sectors,
                 indices=new_indices,
@@ -1801,9 +1810,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
     def einsum(self, eq, preserve_array=False):
         raise NotImplementedError()
-
-    def __reduce__(self):
-        return (get_zn_array_flat_cls(self.order), ())
 
 
 def tensordot_flat_fused(
@@ -1950,7 +1956,7 @@ def tensordot_flat_direct(
 
     if new_indices or preserve_array:
         # array output, wrap in a new class
-        return a.__class__(
+        return a.copy_with(
             sectors=new_sectors,
             blocks=new_blocks,
             indices=new_indices,
@@ -2067,19 +2073,6 @@ def print_charge_fusions(keys, duals, axes_groups):
 
 class Z2ArrayFlat(AbelianArrayFlat):
     static_symmetry = get_symmetry("Z2")
-
-
-@functools.cache
-def get_zn_array_flat_cls(n):
-    """Get a block array class with ZN symmetry."""
-    if n == 2:
-        return Z2ArrayFlat
-
-    return type(
-        f"Z{n}ArrayFlat",
-        (AbelianArrayFlat,),
-        {"static_symmetry": get_symmetry(f"Z{n}")},
-    )
 
 
 def build_cyclic_keys_all(ndim, order=2, flat=False, like=None):

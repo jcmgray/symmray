@@ -1,5 +1,3 @@
-import functools
-
 import autoray as ar
 
 from .abelian_core import (
@@ -933,20 +931,6 @@ class Z2FermionicArray(FermionicArray):
         data.shape = self.shape
 
         return data
-
-
-@functools.cache
-def get_zn_fermionic_array_cls(n):
-    """Get a fermionic block array class with ZN symmetry."""
-
-    if n == 2:
-        return Z2FermionicArray
-
-    return type(
-        f"Z{n}FermionicArray",
-        (FermionicArray,),
-        {"static_symmetry": get_symmetry(f"Z{n}")},
-    )
 
 
 class U1FermionicArray(FermionicArray):

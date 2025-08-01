@@ -266,3 +266,33 @@ def test_einsum_single_term(eq, symmetry):
     else:
         dy = y
     assert_allclose(dy, ar.do("einsum", eq, dx))
+
+
+@pytest.mark.parametrize("symm", ["Z2", "U1", "Z3"])
+def test_can_pickle_abelian_array(symm):
+    import tempfile
+    import pickle
+
+    with tempfile.NamedTemporaryFile(suffix=".pkl") as tmpf:
+        tmp_fname = tmpf.name
+        # create dynamic symmetry
+        symm = sr.get_symmetry(symm)
+        # save to disk
+        with open(tmp_fname, "wb") as f:
+            pickle.dump(symm, f)
+        # load from disk
+        with open(tmp_fname, "rb") as f:
+            symm_loaded = pickle.load(f)
+        assert symm == symm_loaded
+
+    with tempfile.NamedTemporaryFile(suffix=".pkl") as tmpf:
+        tmp_fname = tmpf.name
+        # create dynamic symmetry
+        x = sr.utils.get_rand(symm, (2, 3, 4))
+        # save to disk
+        with open(tmp_fname, "wb") as f:
+            pickle.dump(x, f)
+        # load from disk
+        with open(tmp_fname, "rb") as f:
+            x_loaded = pickle.load(f)
+        assert x.allclose(x_loaded)

@@ -17,7 +17,7 @@ from autoray.lazy.core import find_full_reshape
 from .block_core import BlockCommon, BlockVector
 from .interface import tensordot
 from .symmetries import Symmetry, get_symmetry
-from .utils import DEBUG
+from .utils import DEBUG, get_array_cls
 
 
 def hasher(k):
@@ -2479,14 +2479,8 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
     def to_flat(self):
         """ """
-        from .flat_core import get_zn_array_flat_cls
-        from .symmetries import ZN
-
-        if not isinstance(self.symmetry, ZN):
-            raise ValueError("Only ZN symmetry supported.")
-
-        cls = get_zn_array_flat_cls(self.symmetry.N)
-        return cls.from_blocksparse(self)
+        cls = get_array_cls(self.symmetry, flat=True)
+        return cls.from_blocksparse(self, symmetry=self.symmetry)
 
 
 # --------------------------------------------------------------------------- #
@@ -2864,19 +2858,6 @@ class Z2Array(AbelianArray):
         data.shape = self.shape
 
         return data
-
-
-@functools.cache
-def get_zn_array_cls(n):
-    """Get a block array class with ZN symmetry."""
-    if n == 2:
-        return Z2Array
-
-    return type(
-        f"Z{n}Array",
-        (AbelianArray,),
-        {"static_symmetry": get_symmetry(f"Z{n}")},
-    )
 
 
 class U1Array(AbelianArray):

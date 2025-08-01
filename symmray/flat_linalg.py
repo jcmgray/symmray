@@ -30,14 +30,13 @@ def qr_flat(x, stabilized=False):
         dual=ixr.dual,
     )
 
-    q = x.__class__(
-        sectors=x.sectors,
+    q = x.copy_with(
         blocks=qb,
         indices=(ixl, bond_ind),
     )
 
     # R is always charge 0 and thus block diagonal
-    r = x.__class__(
+    r = x.copy_with(
         sectors=x.sectors[:, (1, 1)],
         blocks=rb,
         indices=(bond_ind.conj(), ixr),
@@ -70,8 +69,7 @@ def svd_flat(
         dual=ixr.dual,
     )
 
-    u = x.__class__(
-        sectors=x.sectors,
+    u = x.copy_with(
         blocks=ub,
         indices=(ixl, bond_ind),
     )
@@ -82,16 +80,15 @@ def svd_flat(
     )
 
     # VH is always charge 0 and thus block diagonal
-    vh = x.__class__(
+    vh = x.copy_with(
         sectors=x.sectors[:, (1, 1)],
         blocks=vb,
         indices=(bond_ind.conj(), ixr),
     )
 
     if DEBUG:
-        u.check()
+        # u and vh checked in copy_with
         s.check()
-        vh.check()
 
     return u, s, vh
 

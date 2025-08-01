@@ -397,6 +397,95 @@ def rand_u1u1_index(
     return sr.BlockIndex(chargemap=chargemap, dual=dual)
 
 
+def rand_index(
+    symmetry,
+    d,
+    dual=None,
+    subsizes=None,
+    seed=None,
+):
+    """Get a random index with the given symmetry.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the index.
+    d : int or dict
+        The total size of the index. If a dict, an explicit chargemap.
+    dual : bool, optional
+        The dualness of the index. If None, it is randomly chosen.
+    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+        The sizes of the charge sectors. The choices are as follows:
+
+        - None: the charges and sizes are randomly determined.
+        - "equal": a fixed number of charges 'close to' zero charge are chosen,
+          all with equal size (up to remainders).
+        - "maximal": as many charges as possible are chosen, each with size 1
+          (or more if the total number of charges is less than the total size).
+        - "minimal": only the zero charge sector is chosen, with full size.
+        - tuple: the sizes of the charge sectors, a matching number of charges
+          are chosen automatically, in sequence 'closest to zero'.
+
+    seed : None, int, or numpy.random.Generator, optional
+        The seed for the random number generator.
+
+    Returns
+    -------
+    BlockIndex
+    """
+    import symmray as sr
+
+    symmetry = sr.get_symmetry(symmetry)
+
+    if isinstance(symmetry, sr.ZN):
+        return rand_zn_index(
+            d, order=symmetry.N, dual=dual, subsizes=subsizes, seed=seed
+        )
+    elif symmetry == "Z2Z2":
+        return rand_z2z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    elif symmetry == "U1":
+        return rand_u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    elif symmetry == "U1U1":
+        return rand_u1u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
+    else:
+        raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
+
+
+def get_array_cls(symmetry, fermionic=False, flat=False) -> type:
+    """Get the array class for the given symmetry, fermionic flag, and flat
+    flag.
+
+    Parameters
+    ----------
+
+    """
+    import symmray as sr
+
+    if symmetry in ("Z2", "U1", "Z2Z2", "U1U1"):
+        # statically defined array classes
+        return {
+            # blocksparse abelian arrays
+            ("Z2", False, False): sr.Z2Array,
+            ("U1", False, False): sr.U1Array,
+            ("Z2Z2", False, False): sr.Z2Z2Array,
+            ("U1U1", False, False): sr.U1U1Array,
+            # blocksparse fermionic arrays
+            ("Z2", True, False): sr.Z2FermionicArray,
+            ("U1", True, False): sr.U1FermionicArray,
+            ("Z2Z2", True, False): sr.Z2Z2FermionicArray,
+            ("U1U1", True, False): sr.U1U1FermionicArray,
+            # flat abelian arrays
+            ("Z2", False, True): sr.Z2ArrayFlat,
+        }[str(symmetry), fermionic, flat]
+    else:
+        # symmetry is defined dynamically, and should be supplied as kwarg
+        return {
+            (False, False): sr.AbelianArray,
+            (True, False): sr.FermionicArray,
+            (False, True): sr.AbelianArrayFlat,
+        }[fermionic, flat]
+
+
 def choose_duals(duals, ndim):
     if duals == "equal":
         return [i >= ndim // 2 for i in range(ndim)]
@@ -462,9 +551,10 @@ def get_rand_znarray(
             cls = sr.Z2Array
     else:
         if fermionic:
-            cls = sr.get_zn_fermionic_array_cls(order)
+            cls = sr.FermionicArray
         else:
-            cls = sr.get_zn_array_cls(order)
+            cls = sr.AbelianArray
+        kwargs["symmetry"] = sr.get_symmetry(f"Z{order}")
 
     return cls.random(
         indices=[
@@ -819,87 +909,11 @@ def from_dense(
     fermionic=False,
     charge=None,
 ):
-    from .abelian_core import (
-        U1Array,
-        U1U1Array,
-        Z2Array,
-        Z2Z2Array,
-    )
-    from .fermionic_core import (
-        U1FermionicArray,
-        U1U1FermionicArray,
-        Z2FermionicArray,
-        Z2Z2FermionicArray,
-    )
-
-    cls = {
-        ("Z2", False): Z2Array,
-        ("Z2Z2", False): Z2Z2Array,
-        ("U1", False): U1Array,
-        ("U1U1", False): U1U1Array,
-        ("Z2", True): Z2FermionicArray,
-        ("Z2Z2", True): Z2Z2FermionicArray,
-        ("U1", True): U1FermionicArray,
-        ("U1U1", True): U1U1FermionicArray,
-    }[symmetry, fermionic]
-
+    cls = get_array_cls(symmetry, fermionic=fermionic, flat=False)
     return cls.from_dense(
         array,
         index_maps,
         duals=duals,
         charge=charge,
+        symmetry=symmetry,
     )
-
-
-def rand_index(
-    symmetry,
-    d,
-    dual=None,
-    subsizes=None,
-    seed=None,
-):
-    """Get a random index with the given symmetry.
-
-    Parameters
-    ----------
-    symmetry : str or Symmetry
-        The symmetry of the index.
-    d : int or dict
-        The total size of the index. If a dict, an explicit chargemap.
-    dual : bool, optional
-        The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
-        The sizes of the charge sectors. The choices are as follows:
-
-        - None: the charges and sizes are randomly determined.
-        - "equal": a fixed number of charges 'close to' zero charge are chosen,
-          all with equal size (up to remainders).
-        - "maximal": as many charges as possible are chosen, each with size 1
-          (or more if the total number of charges is less than the total size).
-        - "minimal": only the zero charge sector is chosen, with full size.
-        - tuple: the sizes of the charge sectors, a matching number of charges
-          are chosen automatically, in sequence 'closest to zero'.
-
-    seed : None, int, or numpy.random.Generator, optional
-        The seed for the random number generator.
-
-    Returns
-    -------
-    BlockIndex
-    """
-    import symmray as sr
-
-    symmetry = sr.get_symmetry(symmetry)
-
-    if isinstance(symmetry, sr.ZN):
-        return rand_zn_index(
-            d, order=symmetry.N, dual=dual, subsizes=subsizes, seed=seed
-        )
-    elif symmetry == "Z2Z2":
-        return rand_z2z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
-    elif symmetry == "U1":
-        return rand_u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
-    elif symmetry == "U1U1":
-        return rand_u1u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
-    else:
-        raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")

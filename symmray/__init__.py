@@ -8,7 +8,6 @@ from .abelian_core import (
     Z2Z2Array,
     default_tensordot_mode,
     get_default_tensordot_mode,
-    get_zn_array_cls,
     set_default_tensordot_mode,
 )
 from .block_core import (
@@ -20,7 +19,6 @@ from .fermionic_core import (
     U1U1FermionicArray,
     Z2FermionicArray,
     Z2Z2FermionicArray,
-    get_zn_fermionic_array_cls,
 )
 from .fermionic_local_operators import (
     FermionicOperator,
@@ -33,6 +31,10 @@ from .fermionic_local_operators import (
     fermi_number_operator_spinless_local_array,
     fermi_number_up_local_array,
     fermi_spin_operator_local_array,
+)
+from .flat_core import (
+    AbelianArrayFlat,
+    Z2ArrayFlat,
 )
 from .hamiltonians import (
     ham_fermi_hubbard_from_edges,
@@ -87,6 +89,7 @@ from .symmetries import (
 
 __all__ = (
     "AbelianArray",
+    "AbelianArrayFlat",
     "abs",
     "align_axes",
     "all",
@@ -113,8 +116,6 @@ __all__ = (
     "fuse",
     "get_default_tensordot_mode",
     "get_symmetry",
-    "get_zn_array_cls",
-    "get_zn_fermionic_array_cls",
     "get_zn_symmetry_cls",
     "ham_fermi_hubbard_from_edges",
     "ham_fermi_hubbard_spinless_from_edges",
@@ -151,10 +152,11 @@ __all__ = (
     "U1U1",
     "U1U1Array",
     "U1U1FermionicArray",
-    "utils",
     "utils_test",
+    "utils",
     "Z2",
     "Z2Array",
+    "Z2ArrayFlat",
     "Z2FermionicArray",
     "Z2Z2",
     "Z2Z2Array",
