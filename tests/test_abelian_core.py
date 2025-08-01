@@ -24,7 +24,7 @@ def test_block_index_basics(dual):
 
 
 def test_z2symmetric_array_basics():
-    x = sr.utils.get_rand_z2array((3, 4, 5, 6))
+    x = sr.utils.get_rand("Z2", (3, 4, 5, 6))
     x.check()
     assert x.shape == (3, 4, 5, 6)
     assert x.ndim == 4

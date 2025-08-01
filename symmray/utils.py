@@ -499,298 +499,6 @@ def choose_duals(duals, ndim):
         return duals
 
 
-def get_rand_znarray(
-    shape,
-    duals=None,
-    charge=0,
-    order=2,
-    seed=None,
-    dist="normal",
-    fermionic=False,
-    subsizes=None,
-    **kwargs,
-):
-    """Generate a random Z2Array with the given shape, with charge sectors and
-    duals automatically determined.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        The overall shape of the array. Each element can be an int or an
-        explicit dict of charge sizes.
-    duals : list of bool, optional
-        The dualness of each dimension. If None, the dual is set to False for
-        the first half of the dimensions and True for the second half.
-    charge : int, optional
-        The total charge of the array.
-    order : int, optional
-        The order (i.e. size, N) of the cyclic group ZN.
-    seed : int, optional
-        The seed for the random number generator.
-    dist : str, optional
-        The distribution of the random numbers. Can be "normal" or "uniform".
-    fermionic : bool, optional
-        Whether to generate a fermionic array.
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
-        How to choose the sizes of the charge sectors, see `rand_zn_index`.
-
-    Returns
-    -------
-    Z2Array
-    """
-    import symmray as sr
-
-    rng = get_rng(seed)
-
-    duals = choose_duals(duals, len(shape))
-
-    if order == 2:
-        if fermionic:
-            cls = sr.Z2FermionicArray
-        else:
-            cls = sr.Z2Array
-    else:
-        if fermionic:
-            cls = sr.FermionicArray
-        else:
-            cls = sr.AbelianArray
-        kwargs["symmetry"] = sr.get_symmetry(f"Z{order}")
-
-    return cls.random(
-        indices=[
-            (
-                d
-                if isinstance(d, sr.BlockIndex)
-                else rand_zn_index(
-                    d,
-                    order=order,
-                    dual=f,
-                    subsizes=subsizes,
-                    seed=rng,
-                )
-            )
-            for d, f in zip(shape, duals)
-        ],
-        charge=charge,
-        seed=seed,
-        dist=dist,
-        **kwargs,
-    )
-
-
-get_rand_z2array = functools.partial(get_rand_znarray, order=2)
-
-
-def get_rand_z2z2array(
-    shape,
-    duals=None,
-    charge=None,
-    seed=None,
-    dist="normal",
-    fermionic=False,
-    subsizes=None,
-    **kwargs,
-):
-    """Generate a random Z2Z2Array with the given shape, with charge sectors
-    and duals automatically determined.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        The overall shape of the array. Each element can be an int or an
-        explicit dict of charge sizes.
-    duals : list of bool, optional
-        The dualness of each dimension. If None, the dual is set to False for
-        the first half of the dimensions and True for the second half.
-    charge : tuple of int, optional
-        The total charge of the array.
-    seed : int, optional
-        The seed for the random number generator.
-    dist : str, optional
-        The distribution of the random numbers. Can be "normal" or "uniform".
-
-    Returns
-    -------
-    Z2Z2Array
-    """
-    import symmray as sr
-
-    rng = get_rng(seed)
-
-    duals = choose_duals(duals, len(shape))
-
-    if fermionic:
-        cls = sr.Z2Z2FermionicArray
-    else:
-        cls = sr.Z2Z2Array
-
-    return cls.random(
-        indices=[
-            (
-                d
-                if isinstance(d, sr.BlockIndex)
-                else sr.BlockIndex(d, dual=f)
-                if isinstance(d, dict)
-                else rand_z2z2_index(d, dual=f, subsizes=subsizes, seed=rng)
-            )
-            for d, f in zip(shape, duals)
-        ],
-        charge=charge,
-        seed=seed,
-        dist=dist,
-        **kwargs,
-    )
-
-
-def get_rand_u1array(
-    shape,
-    duals=None,
-    charge=0,
-    seed=None,
-    dist="normal",
-    fermionic=False,
-    subsizes=None,
-    **kwargs,
-):
-    """Generate a random U1Array with the given shape, with charge sectors and
-    duals automatically determined.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        The overall shape of the array. Each element can be an int or an
-        explicit dict of charge sizes.
-    duals : list of bool, optional
-        The dualness of each dimension. If None, then dual is set to False for
-        the first half of the dimensions and True for the second half.
-    charge : int, optional
-        The total charge of the array.
-    seed : int, optional
-        The seed for the random number generator.
-    dist : str, optional
-        The distribution of the random numbers. Can be "normal" or "uniform".
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
-        The sizes of the charge sectors. The choices are as follows:
-
-        - None: the charges and sizes are randomly determined.
-        - "equal": a fixed number of charges 'close to' zero charge are chosen,
-          all with equal size (up to remainders).
-        - "maximal": as many charges as possible are chosen, each with size 1
-          (or more if the total number of charges is less than the total size).
-        - "minimal": only the zero charge sector is chosen, with full size.
-        - tuple: the sizes of the charge sectors, a matching number of charges
-          are chosen automatically, in sequence 'closest to zero'.
-
-    kwargs
-        Additional keyword arguments are passed to the random array
-        generation function.
-
-    Returns
-    -------
-    U1Array
-    """
-    import symmray as sr
-
-    rng = get_rng(seed)
-
-    duals = choose_duals(duals, len(shape))
-
-    if fermionic:
-        cls = sr.U1FermionicArray
-    else:
-        cls = sr.U1Array
-
-    return cls.random(
-        indices=[
-            (
-                d
-                if isinstance(d, sr.BlockIndex)
-                else sr.BlockIndex(d, dual=f)
-                if isinstance(d, dict)
-                else rand_u1_index(d, f, subsizes=subsizes, seed=rng)
-            )
-            for d, f in zip(shape, duals)
-        ],
-        charge=charge,
-        seed=seed,
-        dist=dist,
-        **kwargs,
-    )
-
-
-def get_rand_u1u1array(
-    shape,
-    duals=None,
-    charge=(0, 0),
-    seed=None,
-    dist="normal",
-    fermionic=False,
-    subsizes=None,
-    **kwargs,
-):
-    """Generate a random U1U1Array with the given shape, with charge sectors
-    and duals automatically determined.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        The overall shape of the array. Each element can be an int or an
-        explicit dict of charge sizes.
-    duals : list of bool, optional
-        The dualness of each dimension. If None, then dual is set to False for
-        the first half of the dimensions and True for the second half.
-    charge : tuple of int, optional
-        The total charge of the array.
-    seed : int, optional
-        The seed for the random number generator.
-    dist : str, optional
-        The distribution of the random numbers. Can be "normal" or "uniform".
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
-        The sizes of the charge sectors. The choices are as follows:
-
-        - None: the charges and sizes are randomly determined.
-        - "equal": a fixed number of charges 'close to' zero charge are chosen,
-          all with equal size (up to remainders).
-        - "maximal": as many charges as possible are chosen, each with size 1
-          (or more if the total number of charges is less than the total size).
-        - "minimal": only the zero charge sector is chosen, with full size.
-        - tuple: the sizes of the charge sectors, a matching number of charges
-          are chosen automatically, in sequence 'closest to zero'.
-
-
-    Returns
-    -------
-    U1U1Array
-    """
-    import symmray as sr
-
-    rng = get_rng(seed)
-
-    duals = choose_duals(duals, len(shape))
-
-    if fermionic:
-        cls = sr.U1U1FermionicArray
-    else:
-        cls = sr.U1U1Array
-
-    return cls.random(
-        indices=[
-            (
-                d
-                if isinstance(d, sr.BlockIndex)
-                else sr.BlockIndex(d, dual=f)
-                if isinstance(d, dict)
-                else rand_u1u1_index(d, f, subsizes=subsizes, seed=rng)
-            )
-            for d, f in zip(shape, duals)
-        ],
-        charge=charge,
-        seed=seed,
-        dist=dist,
-        **kwargs,
-    )
-
-
 def get_rand(
     symmetry,
     shape,
@@ -802,7 +510,9 @@ def get_rand(
     subsizes=None,
     **kwargs,
 ):
-    """Get a random symmray array.
+    """Get a random symmray array, with the given symmetry and shape. The
+    duals, charge, and sub charge sizes can be specified or automatically
+    or randomly generated.
 
     Parameters
     ----------
@@ -811,12 +521,14 @@ def get_rand(
     shape : tuple[int | dict | BlockIndex, ...]
         The desired overall effective shape of the array. Each element can be
         an int, in which case the charge sizes will be generated automatically,
-        or an explicit dict of charge sizes, or a BlockIndex.
+        or an explicit dict of charge sizes, or a `BlockIndex`.
     duals : None, "equals", or Sequence[bool], optional
         The dualness of each index. If None, the dualnesses are chosen
         randomly. If "equal", they are chosen so the first half of the
         indices have `dual=False` and the second half have `dual=True`.
-    charge : int, optional
+        If `shape` contains `BlockIndex` objects, the corresponding duals are
+        ignored.
+    charge : int or tuple[int], optional
         The total charge of the array.
     seed : None, int, or numpy.random.Generator, optional
         The seed for the random number generator.
@@ -847,27 +559,27 @@ def get_rand(
     import symmray as sr
 
     symmetry = sr.get_symmetry(symmetry)
+    rng = get_rng(seed)
+    duals = choose_duals(duals, len(shape))
+    cls = get_array_cls(symmetry, fermionic=fermionic, flat=False)
 
-    if isinstance(symmetry, sr.ZN):
-        fn = get_rand_znarray
-        kwargs["order"] = symmetry.N
-    elif symmetry == "Z2Z2":
-        fn = get_rand_z2z2array
-    elif symmetry == "U1":
-        fn = get_rand_u1array
-    elif symmetry == "U1U1":
-        fn = get_rand_u1u1array
-    else:
-        raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
+    indices = [
+        (
+            d
+            if isinstance(d, sr.BlockIndex)
+            else sr.BlockIndex(d, dual=f)
+            if isinstance(d, dict)
+            else rand_index(symmetry, d, dual=f, subsizes=subsizes, seed=rng)
+        )
+        for d, f in zip(shape, duals)
+    ]
 
-    return fn(
-        shape,
-        duals=duals,
+    return cls.random(
+        indices=indices,
         charge=charge,
-        seed=seed,
+        seed=rng,
         dist=dist,
-        fermionic=fermionic,
-        subsizes=subsizes,
+        symmetry=symmetry,
         **kwargs,
     )
 
