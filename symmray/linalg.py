@@ -8,7 +8,7 @@ from .fermionic_core import FermionicArray
 from .utils import DEBUG
 
 
-def norm(x):
+def norm(x: AbelianArray):
     """Compute the frobenius norm of an AbelianArray."""
     return x.norm()
 
@@ -49,7 +49,7 @@ def _get_qr_fn(backend, stabilized=False):
 
 
 @functools.singledispatch
-def qr(x, stabilized=False):
+def qr(x: AbelianArray, stabilized=False):
     """QR decomposition of an AbelianArray.
 
     Parameters
@@ -111,7 +111,7 @@ def qr(x, stabilized=False):
 
 
 @qr.register(FermionicArray)
-def qr_fermionic(x, stabilized=False):
+def qr_fermionic(x: FermionicArray, stabilized=False):
     q, r = qr.dispatch(AbelianArray)(x, stabilized=stabilized)
 
     if r.indices[0].dual:
@@ -121,12 +121,12 @@ def qr_fermionic(x, stabilized=False):
     return q, r
 
 
-def qr_stabilized(x):
+def qr_stabilized(x: AbelianArray):
     q, r = qr(x, stabilized=True)
     return q, None, r
 
 
-def get_numpy_svd_with_fallback(x):
+def get_numpy_svd_with_fallback():
     import numpy as np
 
     def svd_with_fallback(x):
@@ -145,7 +145,7 @@ ar.register_function("symmray", "qr_stabilized", qr_stabilized)
 
 
 @functools.singledispatch
-def svd(x):
+def svd(x: AbelianArray):
     if x.ndim != 2:
         raise NotImplementedError(
             "svd only implemented for 2D AbelianArrays,"
@@ -153,7 +153,7 @@ def svd(x):
         )
 
     if x.backend == "numpy":
-        _svd = get_numpy_svd_with_fallback(x)
+        _svd = get_numpy_svd_with_fallback()
     else:
         _svd = ar.get_lib_fn(x.backend, "linalg.svd")
 
@@ -199,7 +199,7 @@ def svd(x):
 
 
 @svd.register(FermionicArray)
-def svd_fermionic(x):
+def svd_fermionic(x: FermionicArray):
     u, s, vh = svd.dispatch(AbelianArray)(x)
 
     if vh.indices[0].dual:
@@ -237,46 +237,55 @@ def calc_sub_max_bonds(sizes, max_bond):
     return tuple(sub_max_bonds)
 
 
-@functools.singledispatch
-def svd_truncated(
-    x, cutoff=-1.0, cutoff_mode=4, max_bond=-1, absorb=0, renorm=0
+_CUTOFF_MODE_MAP = {
+    1: 1,
+    "abs": 1,
+    2: 2,
+    "rel": 2,
+    3: 3,
+    "sum2": 3,
+    4: 4,
+    "rsum2": 4,
+    5: 5,
+    "sum1": 5,
+    6: 6,
+    "rsum1": 6,
+}
+
+_ABSORB_MAP = {
+    -1: -1,
+    "left": -1,
+    0: 0,
+    "both": 0,
+    1: 1,
+    "right": 1,
+    None: None,
+}
+
+
+def _truncate_svd_result(
+    U: AbelianArray,
+    s: BlockVector,
+    VH: AbelianArray,
+    cutoff: float,
+    cutoff_mode: int,
+    max_bond: int,
+    absorb: int | str | None,
+    renorm: int,
+    backend: str = None,
+    use_abs: bool = False,
 ):
-    """Truncated svd or raw array ``x``.
-
-    Parameters
-    ----------
-    cutoff : float
-        Singular value cutoff threshold.
-    cutoff_mode : {1, 2, 3, 4, 5, 6}
-        How to perform the truncation:
-
-        - 1: ['abs'], trim values below ``cutoff``
-        - 2: ['rel'], trim values below ``s[0] * cutoff``
-        - 3: ['sum2'], trim s.t. ``sum(s_trim**2) < cutoff``.
-        - 4: ['rsum2'], trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
-        - 5: ['sum1'], trim s.t. ``sum(s_trim**1) < cutoff``.
-        - 6: ['rsum1'], trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
-
-    max_bond : int
-        An explicit maximum bond dimension, use -1 for none.
-    absorb : {-1, 0, 1, None}
-        How to absorb the singular values. -1: left, 0: both, 1: right and
-        None: don't absorb (return).
-    renorm : {0, 1}
-        Whether to renormalize the singular values (depends on `cutoff_mode`).
-    """
-    backend = x.backend
-
-    # first perform untruncated svd
-    U, s, VH = svd(x)
-
     if renorm:
         raise NotImplementedError("renorm not implemented yet.")
 
     if cutoff > 0.0:
         # first combine all singular values into a single, sorted array
         sall = s.to_dense()
+        if use_abs:
+            sall = ar.do("abs", sall, like=backend)
         sall = ar.do("sort", sall, like=backend)
+
+        cutoff_mode = _CUTOFF_MODE_MAP[cutoff_mode]
 
         if cutoff_mode == 1:
             # absolute cutoff
@@ -285,7 +294,7 @@ def svd_truncated(
             # relative cutoff
             abs_cutoff = sall[-1] * cutoff
         else:
-            # possible square singular values
+            # possibly square singular values
             power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
             if power == 1:
                 # sum1 or rsum1
@@ -343,25 +352,30 @@ def svd_truncated(
 
     new_inner_chargemap = dict(sorted(new_inner_chargemap.items()))
 
+    # make sure to drop the inner fusing info which is not longer valid
     U.modify(
         indices=(
             U.indices[0],
-            U.indices[1].copy_with(chargemap=new_inner_chargemap),
+            U.indices[1].copy_with(
+                chargemap=new_inner_chargemap,
+                subinfo=None,
+            ),
         )
     )
     VH.modify(
         indices=(
-            VH.indices[0].copy_with(chargemap=new_inner_chargemap),
+            VH.indices[0].copy_with(
+                chargemap=new_inner_chargemap,
+                subinfo=None,
+            ),
             VH.indices[1],
         )
     )
 
     if absorb is None:
         if DEBUG:
-            U.check()
             U.check_with(s, 1)
             s.check()
-            VH.check()
             VH.check_with(s, 0)
             U.check_with(VH, (1,), (0,))
 
@@ -393,6 +407,61 @@ def svd_truncated(
         U.check_with(VH, (1,), (0,))
 
     return U, None, VH
+
+
+@functools.singledispatch
+def svd_truncated(
+    x: AbelianArray,
+    cutoff=-1.0,
+    cutoff_mode=4,
+    max_bond=-1,
+    absorb=0,
+    renorm=0,
+):
+    """Truncated svd or raw array ``x``.
+
+    Parameters
+    ----------
+    cutoff : float, optional
+        Singular value cutoff threshold.
+    cutoff_mode : int or str, optional
+        How to perform the truncation:
+
+        - 1 or 'abs': trim values below ``cutoff``
+        - 2 or 'rel': trim values below ``s[0] * cutoff``
+        - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+        - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+        - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+        - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+    max_bond : int
+        An explicit maximum bond dimension, use -1 for none.
+    absorb : {-1, 0, 1, None}
+        How to absorb the singular values.
+
+        - -1 or 'left': absorb into the left factor (U).
+        - 0 or 'both': absorb the square root into both factors.
+        - 1 or 'right': absorb into the right factor (VH).
+        - None: do not absorb, return singular values as a BlockVector.
+
+    renorm : {0, 1}
+        Whether to renormalize the singular values (depends on `cutoff_mode`).
+    """
+    # raw svd
+    U, s, VH = svd(x)
+
+    # then truncate according to the options
+    return _truncate_svd_result(
+        U,
+        s,
+        VH,
+        cutoff,
+        _CUTOFF_MODE_MAP[cutoff_mode],
+        max_bond,
+        _ABSORB_MAP[absorb],
+        renorm,
+        backend=x.backend,
+    )
 
 
 # used by quimb
@@ -432,7 +501,7 @@ def eigh(a: AbelianArray):
 
 
 @eigh.register(FermionicArray)
-def eigh_fermionic(a):
+def eigh_fermionic(a: FermionicArray):
     eigenvalues, eigenvectors = eigh.dispatch(AbelianArray)(a)
 
     if not a.indices[1].dual:
@@ -449,7 +518,52 @@ def eigh_fermionic(a):
 
 
 @functools.singledispatch
-def solve(a, b):
+def eigh_truncated(
+    a: AbelianArray,
+    cutoff=-1.0,
+    cutoff_mode=4,
+    max_bond=-1,
+    absorb=0,
+    renorm=0,
+):
+    s, U = eigh(a)
+
+    # inplace sort by descending absolute value
+    for sector, charge in zip(U.sectors, s.sectors):
+        evals = s.blocks[charge]
+        evecs = U.blocks[sector]
+
+        idx = ar.do(
+            "argsort", -ar.do("abs", evals, like=a.backend), like=a.backend
+        )
+        s.blocks[charge] = evals[idx]
+        U.blocks[sector] = evecs[:, idx]
+
+    if DEBUG:
+        U.check()
+        s.check()
+        U.check_with(s, 1)
+
+    return _truncate_svd_result(
+        U,
+        s,
+        U.H,
+        cutoff,
+        cutoff_mode,
+        max_bond,
+        absorb,
+        renorm,
+        backend=a.backend,
+        use_abs=True,
+    )
+
+
+# used by quimb
+ar.register_function("symmray", "eigh_truncated", eigh_truncated)
+
+
+@functools.singledispatch
+def solve(a: AbelianArray, b: BlockVector):
     if (a.ndim, b.ndim) != (2, 1):
         raise NotImplementedError(
             "solve only implemented for 2D AbelianArrays and 1D BlockVectors,"
@@ -483,7 +597,7 @@ def solve(a, b):
 
 
 @solve.register(FermionicArray)
-def solve_fermionic(a, b):
+def solve_fermionic(a: FermionicArray, b: BlockVector):
     x = solve.dispatch(AbelianArray)(a, b)
 
     if x.indices[0].dual:

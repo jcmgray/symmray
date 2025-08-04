@@ -66,13 +66,22 @@ class FlatIndex:
             self.check()
 
     def copy_with(
-        self, num_charges=None, charge_size=None, dual=None, subinfo=None
+        self, num_charges=None, charge_size=None, dual=None, **kwargs
     ):
+        # handle subinfo to distinguish between passing None and not passing it
+        if "subinfo" in kwargs:
+            new_subinfo = kwargs.pop("subinfo")
+        else:
+            new_subinfo = self._subinfo
+
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {kwargs}")
+
         return FlatIndex(
             num_charges if num_charges is not None else self._num_charges,
             charge_size if charge_size is not None else self._charge_size,
             dual if dual is not None else self._dual,
-            subinfo if subinfo is not None else self._subinfo,
+            new_subinfo,
         )
 
     @property

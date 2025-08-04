@@ -102,24 +102,40 @@ class BlockIndex:
         """The number of charges."""
         return len(self._chargemap)
 
-    def copy_with(self, chargemap=None, dual=None, subinfo=None):
+    def copy_with(self, **kwargs):
         """A copy of this index with some attributes replaced. Note that checks
         are not performed on the new propoerties, this is intended for internal
         use.
         """
         new = self.__new__(self.__class__)
-        new._chargemap = (
-            self._chargemap.copy()
-            if chargemap is None
-            else (
+
+        if "chargemap" in kwargs:
+            chargemap = kwargs.pop("chargemap")
+            new._chargemap = (
                 dict(sorted(chargemap.items()))
                 if isinstance(chargemap, dict)
                 else dict(sorted(chargemap))
             )
-        )
-        new._dual = self._dual if dual is None else dual
-        new._subinfo = self._subinfo if subinfo is None else subinfo
+        else:
+            new._chargemap = self._chargemap.copy()
+
+        if "dual" in kwargs:
+            new._dual = bool(kwargs.pop("dual"))
+        else:
+            new._dual = self._dual
+
+        # need to pop from kwargs to handle 'not-set' vs 'set-to-None'
+        if "subinfo" in kwargs:
+            new._subinfo = kwargs.pop("subinfo")
+        else:
+            new._subinfo = self._subinfo
+
+        # always recompute this
         new._hashkey = None
+
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {kwargs}")
+
         return new
 
     def conj(self):
