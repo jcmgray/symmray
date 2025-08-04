@@ -11,6 +11,7 @@ def get_zn_blocksparse_flat_compat(
     charge,
     seed=42,
     shape_relative_to_z2=True,
+    **kwargs,
 ):
     rng = random.Random(seed)
 
@@ -23,7 +24,12 @@ def get_zn_blocksparse_flat_compat(
         charge = rng.choice(range(1, N))
 
     return sr.utils.get_rand(
-        symmetry, shape=shape, subsizes="equal", charge=charge, seed=seed
+        symmetry,
+        shape=shape,
+        subsizes="equal",
+        charge=charge,
+        seed=seed,
+        **kwargs,
     )
 
 

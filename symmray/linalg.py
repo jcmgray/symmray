@@ -400,7 +400,7 @@ ar.register_function("symmray", "svd_truncated", svd_truncated)
 
 
 @functools.singledispatch
-def eigh(a):
+def eigh(a: AbelianArray):
     """Perform a hermitian eigendecomposition on a AbelianArray."""
     if a.ndim != 2:
         raise NotImplementedError(
@@ -425,7 +425,6 @@ def eigh(a):
     eigenvectors = a.copy_with(blocks=evec_blocks)
 
     if DEBUG:
-        eigenvectors.check()
         eigenvectors.check_with(eigenvalues, 1)
         eigenvalues.check()
 

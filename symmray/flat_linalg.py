@@ -1,12 +1,15 @@
 import autoray as ar
 
 from .flat_core import AbelianArrayFlat, FlatIndex, FlatVector
-from .linalg import qr, svd, svd_truncated
+from .linalg import qr, svd, svd_truncated, eigh
 from .utils import DEBUG
 
 
 @qr.register(AbelianArrayFlat)
-def qr_flat(x, stabilized=False):
+def qr_flat(
+    x: AbelianArrayFlat,
+    stabilized=False,
+):
     if x.ndim != 2:
         raise ValueError("QR is only defined for 2D AbelianArrayFlat objects.")
 
@@ -14,9 +17,9 @@ def qr_flat(x, stabilized=False):
 
     if stabilized:
         # make each r-factor have positive diagonal
-        rbd = ar.do("diagonal", rb, axis1=1, axis2=2)
+        rbd = ar.do("diagonal", rb, axis1=1, axis2=2, like=x.backend)
         r0 = rbd == 0
-        s = (rbd + r0) / (ar.do("abs", rbd) + r0)
+        s = (rbd + r0) / (ar.do("abs", rbd, like=x.backend) + r0)
 
         qb = qb * s[:, None, :]
         rb = rb * s[:, :, None]
@@ -42,10 +45,6 @@ def qr_flat(x, stabilized=False):
         indices=(bond_ind.conj(), ixr),
     )
 
-    if DEBUG:
-        q.check()
-        r.check()
-
     return q, r
 
 
@@ -58,7 +57,11 @@ def svd_flat(
             "SVD is only defined for 2D AbelianArrayFlat objects."
         )
 
-    ub, sb, vb = ar.do("linalg.svd", x._blocks)
+    ub, sb, vb = ar.do(
+        "linalg.svd",
+        x._blocks,
+        like=x.backend,
+    )
 
     ixl, ixr = x.indices
 
@@ -158,3 +161,24 @@ def svd_truncated(
         VH.check()
 
     return U, s, VH
+
+
+@eigh.register(AbelianArrayFlat)
+def eigh_flat(
+    a: AbelianArrayFlat,
+) -> tuple[AbelianArrayFlat, FlatVector]:
+    if a.ndim != 2:
+        raise NotImplementedError(
+            "Eigendecomposition is only defined for 2D AbelianArrayFlat objects."
+        )
+
+    eval_blocks, evec_blocks = ar.do(
+        "linalg.eigh",
+        a._blocks,
+        like=a.backend,
+    )
+
+    eigenvectors = a.copy_with(blocks=evec_blocks)
+    eigenvalues = FlatVector(sectors=a.sectors[:, -1], blocks=eval_blocks)
+
+    return eigenvectors, eigenvalues

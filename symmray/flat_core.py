@@ -62,6 +62,9 @@ class FlatIndex:
         self._dual = dual
         self._subinfo = subinfo
 
+        if DEBUG:
+            self.check()
+
     def copy_with(
         self, num_charges=None, charge_size=None, dual=None, subinfo=None
     ):
@@ -512,6 +515,9 @@ class FlatVector(FlatCommon):
         )
         self.backend = ar.infer_backend(self._blocks)
 
+        if DEBUG:
+            self.check()
+
     @property
     def size(self):
         """The total size of all elements in the vector."""
@@ -864,7 +870,12 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
     @property
     def charge(self):
         """Compute the overall charge of the array."""
-        return zn_combine(self.order, self._sectors[[0], :], self.duals)[0]
+        return zn_combine(
+            self.order,
+            self._sectors[[0], :],
+            self.duals,
+            like=self.backend,
+        )[0]
 
     @property
     def duals(self) -> tuple[bool]:

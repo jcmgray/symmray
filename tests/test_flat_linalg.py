@@ -73,3 +73,28 @@ def test_flat_svd(symmetry, d1, d2, charge, seed):
     assert fy.charge == fx.charge
     assert fy.allclose(fx)
     assert fy.to_blocksparse().allclose(sx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [4, 8])
+@pytest.mark.parametrize("seed", [42, 34])
+@pytest.mark.parametrize("duals", [(0, 1), (1, 0)])
+def test_eigh_flat(symmetry, d, seed, duals):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d, d],
+        duals=duals,
+        charge=0,
+        seed=seed,
+    )
+    # need to make sure x is hermitian
+    sx.apply_to_arrays(lambda x: (x + x.T) / 2)
+
+    fx = sx.to_flat()
+    fx.check()
+    fvecs, fevals = sr.linalg.eigh(fx)
+    fvecs.check()
+    fevals.check()
+    fy = fvecs.multiply_diagonal(fevals, 1) @ fvecs.H
+    fy.check()
+    assert fy.allclose(fx)
