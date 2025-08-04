@@ -92,7 +92,7 @@ def test_eigh_flat(symmetry, d, seed, duals):
 
     fx = sx.to_flat()
     fx.check()
-    fvecs, fevals = sr.linalg.eigh(fx)
+    fevals, fvecs = sr.linalg.eigh(fx)
     fvecs.check()
     fevals.check()
     fy = fvecs.multiply_diagonal(fevals, 1) @ fvecs.H
