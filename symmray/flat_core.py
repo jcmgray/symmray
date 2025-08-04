@@ -553,6 +553,21 @@ class FlatVector(FlatCommon):
 
         return new
 
+    def modify(self, sectors=None, blocks=None):
+        """Modify the vector in place with some attributes replaced. Note that
+        checks are not performed on the new properties, this is intended for
+        internal use.
+        """
+        if sectors is not None:
+            self._sectors = sectors
+        if blocks is not None:
+            self._blocks = blocks
+
+        if DEBUG:
+            self.check()
+
+        return self
+
     def check(self):
         assert ar.do("ndim", self._blocks, like=self.backend) == 2
 

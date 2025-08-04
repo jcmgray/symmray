@@ -1,7 +1,7 @@
 import autoray as ar
 
 from .flat_core import AbelianArrayFlat, FlatIndex, FlatVector
-from .linalg import qr, svd, svd_truncated, eigh
+from .linalg import qr, svd, svd_truncated, eigh, eigh_truncated
 from .utils import DEBUG
 
 
@@ -96,15 +96,29 @@ def svd_flat(
     return u, s, vh
 
 
-@svd_truncated.register(AbelianArrayFlat)
-def svd_truncated(
-    x: AbelianArrayFlat,
-    cutoff=-1.0,
-    cutoff_mode=4,
-    max_bond=-1,
-    absorb=0,
-    renorm=0,
+_ABSORB_MAP = {
+    -1: -1,
+    "left": -1,
+    0: 0,
+    "both": 0,
+    1: 1,
+    "right": 1,
+    None: None,
+}
+
+
+def _truncate_svd_result(
+    U: AbelianArrayFlat,
+    s: FlatVector,
+    VH: AbelianArrayFlat,
+    cutoff: float,
+    cutoff_mode: int,
+    max_bond: int,
+    absorb: int,
+    renorm: int,
 ):
+    absorb = _ABSORB_MAP[absorb]
+
     if cutoff > 0.0:
         raise NotImplementedError(
             "Cutoff is not implemented for flat SVD yet."
@@ -115,24 +129,34 @@ def svd_truncated(
             "Renormalization is not implemented for flat SVD yet."
         )
 
-    U, s, VH = svd_flat(x)
-
     if max_bond > 0:
         # we must evenly distribute the bond dimension across charges
-        charge_size = max_bond // x.order
+        bond = U.indices[1]
+        # can't make bond larger
+        charge_size = min(
+            bond.charge_size,
+            max_bond // bond.num_charges,
+        )
 
+        # we make sure to drop fusing subinfo from truncated bond
         U.modify(
             blocks=U._blocks[:, :, :charge_size],
             indices=(
                 U.indices[0],
-                U.indices[1].copy_with(charge_size=charge_size),
+                U.indices[1].copy_with(
+                    charge_size=charge_size,
+                    subinfo=None,
+                ),
             ),
         )
         s._blocks = s._blocks[:, :charge_size]
         VH.modify(
             blocks=VH._blocks[:, :charge_size, :],
             indices=(
-                VH.indices[0].copy_with(charge_size=charge_size),
+                VH.indices[0].copy_with(
+                    charge_size=charge_size,
+                    subinfo=None,
+                ),
                 VH.indices[1],
             ),
         )
@@ -141,14 +165,17 @@ def svd_truncated(
         if DEBUG:
             s.check()
     elif absorb == 0:
+        # absorb sqrt(s) into both U and VH
         s_sqrt = s.sqrt()
         U.multiply_diagonal(s_sqrt, axis=1, inplace=True)
         VH.multiply_diagonal(s_sqrt, axis=0, inplace=True)
         s = None
     elif absorb == -1:
+        # absorb s left into U
         U.multiply_diagonal(s, axis=1, inplace=True)
         s = None
     elif absorb == 1:
+        # absorb s right into VH
         VH.multiply_diagonal(s, axis=0, inplace=True)
         s = None
     else:
@@ -161,6 +188,21 @@ def svd_truncated(
         VH.check()
 
     return U, s, VH
+
+
+@svd_truncated.register(AbelianArrayFlat)
+def svd_truncated(
+    x: AbelianArrayFlat,
+    cutoff=-1.0,
+    cutoff_mode=4,
+    max_bond=-1,
+    absorb=0,
+    renorm=0,
+):
+    U, s, VH = svd_flat(x)
+    return _truncate_svd_result(
+        U, s, VH, cutoff, cutoff_mode, max_bond, absorb, renorm
+    )
 
 
 @eigh.register(AbelianArrayFlat)
@@ -181,4 +223,36 @@ def eigh_flat(
     eigenvectors = a.copy_with(blocks=evec_blocks)
     eigenvalues = FlatVector(sectors=a.sectors[:, -1], blocks=eval_blocks)
 
-    return eigenvectors, eigenvalues
+    if DEBUG:
+        eigenvectors.check()
+        eigenvalues.check()
+
+    return eigenvalues, eigenvectors
+
+
+@eigh_truncated.register(AbelianArrayFlat)
+def eigh_truncated(
+    a: AbelianArrayFlat,
+    cutoff=-1.0,
+    cutoff_mode=4,
+    max_bond=-1,
+    absorb=0,
+    renorm=0,
+):
+    s, U = eigh_flat(a)
+
+    # make sure to sort by descending absolute value
+    idx = ar.do("argsort", -ar.do("abs", s._blocks, like=a.backend), axis=1)
+    s.modify(blocks=ar.do("take_along_axis", s._blocks, idx, axis=1))
+    U.modify(
+        blocks=ar.do("take_along_axis", U._blocks, idx[:, None, :], axis=2)
+    )
+
+    if DEBUG:
+        s.check()
+        U.check()
+
+    # then we can truncate as if svd
+    return _truncate_svd_result(
+        U, s, U.H, cutoff, cutoff_mode, max_bond, absorb, renorm
+    )
