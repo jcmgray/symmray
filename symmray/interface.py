@@ -12,32 +12,56 @@ def conj(x, **kwargs):
 
 def max(x):
     """Return the maximum value of a `symmray` array."""
-    return x.max()
+    try:
+        return x.max()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("max", x)
 
 
 def min(x):
     """Return the minimum value of a `symmray` array."""
-    return x.min()
+    try:
+        return x.min()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("min", x)
 
 
 def sum(x):
     """Return the sum of a `symmray` array."""
-    return x.sum()
+    try:
+        return x.sum()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("sum", x)
 
 
 def all(x):
     """Check if all elements of a `symmray` array are true."""
-    return x.all()
+    try:
+        return x.all()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("all", x)
 
 
 def any(x):
     """Check if any elements of a `symmray` array are true."""
-    return x.any()
+    try:
+        return x.any()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("any", x)
 
 
 def isfinite(x):
     """Check if a `symmray` array contains only finite values."""
-    return x.isfinite()
+    try:
+        return x.isfinite()
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("isfinite", x)
 
 
 def abs(x):
