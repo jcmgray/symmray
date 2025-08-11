@@ -31,14 +31,30 @@ from .utils import DEBUG, get_array_cls
 
 
 try:
-    from einops import rearrange, repeat as _einops_repeat
+    from einops import rearrange as _einops_rearrange
+    from einops import repeat as _einops_repeat
+    from einops.array_api import rearrange as _einops_rearrange_api
+    from einops.array_api import repeat as _einops_repeat_api
+
+    # want to support both standard and array_api versions
+
+    def einops_rearrange(tensor, *args, **kwargs):
+        if hasattr(tensor, "__array_namespace__"):
+            return _einops_rearrange_api(tensor, *args, **kwargs)
+        return _einops_rearrange(tensor, *args, **kwargs)
+
+    def einops_repeat(tensor, *args, **kwargs):
+        if hasattr(tensor, "__array_namespace__"):
+            return _einops_repeat_api(tensor, *args, **kwargs)
+        return _einops_repeat(tensor, *args, **kwargs)
+
 except ImportError:
 
-    def not_installed(*args, name, **kwargs):
+    def missinglib(*args, name, **kwargs):
         raise ImportError(f"'{name}' required for this function.")
 
-    rearrange = functools.partial(not_installed, name="einops.rearrange")
-    _einops_repeat = functools.partial(not_installed, name="einops.repeat")
+    einops_rearrange = functools.partial(missinglib, name="einops.rearrange")
+    einops_repeat = functools.partial(missinglib, name="einops.repeat")
 
 
 class FlatIndex:
@@ -1271,7 +1287,9 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             self.ndim,
         )
         # perform the rearrangement!
-        new_blocks = rearrange(new_blocks, pattern, **unmerged_batch_sizes)
+        new_blocks = einops_rearrange(
+            new_blocks, pattern, **unmerged_batch_sizes
+        )
 
         # now we calculate the new sectors and subkeys, either by slicing
         # the existing sectors, or by creating them from scratch
@@ -1377,13 +1395,13 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         new.sort_stack((axis, *axs_rem), inplace=True)
 
         # keys coming from remaining axes
-        ka = _einops_repeat(
+        ka = einops_repeat(
             new.sectors, "(Bf B) s -> (Bf B x) s", Bf=fi.ncharge, x=fi.nsectors
         )[:, axs_rem]
 
         # keys coming from unfused axis
         kb = fi.subkeys
-        kb = _einops_repeat(
+        kb = einops_repeat(
             kb, "B Bu s -> (B x Bu) s", x=new.num_blocks // fi.ncharge
         )
 
@@ -1416,7 +1434,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         pattern = "".join(pattern)
 
         # perform the unfuse!
-        new_blocks = rearrange(new.blocks, pattern, **sizes)
+        new_blocks = einops_rearrange(new.blocks, pattern, **sizes)
 
         # unpack sub indices
         new_indices = (
@@ -1731,8 +1749,8 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
         # get new keys from 'broadcasted' concatenation
-        ka = _einops_repeat(self.sectors, "b r -> (b x) r", x=num_blocks_b)
-        kb = _einops_repeat(other.sectors, "b r -> (x b) r", x=num_blocks_a)
+        ka = einops_repeat(self.sectors, "b r -> (b x) r", x=num_blocks_b)
+        kb = einops_repeat(other.sectors, "b r -> (x b) r", x=num_blocks_a)
         new_sectors = ar.do("concatenate", (ka, kb), axis=1)
 
         new_indices = self.indices + other.indices
@@ -1978,8 +1996,8 @@ def tensordot_flat_direct(
     new_sectors = ar.do(
         "concatenate",
         (
-            _einops_repeat(lsectors, "B Bl c -> (B Bl repeat) c", repeat=dr),
-            _einops_repeat(rsectors, "B Br c -> (B repeat Br) c", repeat=dl),
+            einops_repeat(lsectors, "B Bl c -> (B Bl repeat) c", repeat=dr),
+            einops_repeat(rsectors, "B Br c -> (B repeat Br) c", repeat=dl),
         ),
         axis=1,
     )
