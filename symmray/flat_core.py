@@ -423,12 +423,13 @@ class FlatCommon(SymmrayCommon):
 
     def get_params(self):
         """Interface for getting underlying arrays."""
-        return self._sectors, self._blocks
+        return self._blocks
 
     def set_params(self, params):
         """Interface for setting underlying arrays."""
-        self._sectors, self._blocks = params
+        self._blocks = params
         self.backend = ar.infer_backend(self._blocks)
+        self._sectors = ar.do("array", self._sectors, like=params)
 
     def item(self):
         """Convert the block array to a scalar if it is a scalar block array."""
