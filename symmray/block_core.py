@@ -80,6 +80,10 @@ class BlockCommon(SymmrayCommon):
         """Get the sectors, i.e. keys of the blocks."""
         return tuple(self._blocks.keys())
 
+    def has_sector(self, sector):
+        """Check if the array has a block for the given sector."""
+        return sector in self._blocks
+
     def get_params(self):
         """Get the parameters of this block array as a pytree (dict).
 

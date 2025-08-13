@@ -719,7 +719,7 @@ def calc_fuse_block_info(self, axes_groups):
     # the same but signed for combining into new charges
     grouped_charges = [[] for _ in range(num_groups)]
 
-    for sector in self.blocks:
+    for sector in self.sectors:
         # reset accumulated values
         for g in range(num_groups):
             new_shape[position + g] = 1
@@ -880,7 +880,7 @@ def cached_fuse_block_info(self, axes_groups):
         # cache disabled
         return calc_fuse_block_info(self, axes_groups)
 
-    if len(self.blocks) > _fuseinfo_cache_maxsectors:
+    if self.num_blocks > _fuseinfo_cache_maxsectors:
         # too many sectors to cache
         global _fi_missed_too_long
         _fi_missed_too_long += 1
@@ -889,7 +889,7 @@ def cached_fuse_block_info(self, axes_groups):
     key = hasher(
         (
             tuple(ix.hashkey() for ix in self.indices),
-            tuple(self.blocks),
+            self.sectors,
             self.symmetry,
             axes_groups,
         )
@@ -1453,7 +1453,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         match only those charges present in at least one sector.
         """
         charges_drop = [set(ix.charges) for ix in self.indices]
-        for sector in self.blocks:
+        for sector in self.sectors:
             for i, c in enumerate(sector):
                 charges_drop[i].discard(c)
 
@@ -1523,7 +1523,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         """
         _ex_array = self.get_any_array()
         for sector in self.gen_valid_sectors():
-            if sector not in self.blocks:
+            if not self.has_sector(sector):
                 shape = self.get_block_shape(sector)
                 array = ar.do("zeros", shape, like=_ex_array)
                 self.blocks[sector] = array
@@ -1533,7 +1533,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         possibly less that 1.
         """
         _all = ar.get_lib_fn(self.backend, "all")
-        for sector in list(self.blocks.keys()):
+        for sector in self.sectors:
             if _all(self.blocks[sector] == 0.0):
                 del self.blocks[sector]
 
@@ -1574,11 +1574,11 @@ class AbelianArray(AbelianCommon, BlockCommon):
         """
         actual_charges = [set() for _ in range(self.ndim)]
 
-        for sector in self.blocks:
+        for sector in self.sectors:
             for i, c in enumerate(sector):
                 actual_charges[i].add(c)
 
-        if self.blocks:
+        if self.num_blocks > 0:
             # only check if we have filled anything
             for actual, index in zip(actual_charges, self.indices):
                 expected = set(index.chargemap)
@@ -2674,7 +2674,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     """
     a, b = drop_misaligned_sectors(a, b, axes_a, axes_b)
 
-    if not a.blocks or not b.blocks:
+    if a.num_blocks == 0 or b.num_blocks == 0:
         # no aligned sectors, return empty array
         return a.copy_with(
             indices=without(a.indices, axes_a) + without(b.indices, axes_b),
