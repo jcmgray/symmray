@@ -447,7 +447,7 @@ class FermionicArray(AbelianArray):
             sector, phase = phases.popitem()
             if phase == -1:
                 try:
-                    new._blocks[sector] = -new._blocks[sector]
+                    new.set_block(sector, -new.get_block(sector))
                 except KeyError:
                     # if the block is not present, it is zero
                     # this can happen e.g. if two arrays have been aligned
@@ -500,7 +500,7 @@ class FermionicArray(AbelianArray):
 
         for sector, array in new.blocks.items():
             # conjugate the actual array
-            new.blocks[sector] = _conj(array)
+            new.set_block(sector, _conj(array))
 
             if phase_permutation or phase_dual:
                 parities = tuple(map(new.symmetry.parity, sector))
@@ -785,7 +785,7 @@ class FermionicArray(AbelianArray):
         if c.ndim == 0:
             try:
                 c.phase_sync(inplace=True)
-                return c.blocks[()]
+                return c.get_block(())
             except KeyError:
                 # no aligned blocks, return zero
                 return 0.0
@@ -892,7 +892,7 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
     if (c.ndim == 0) and (not preserve_array):
         try:
             c.phase_sync(inplace=True)
-            return c.blocks[()]
+            return c.get_block(())
         except KeyError:
             # no aligned blocks, return zero
             return 0.0

@@ -1526,7 +1526,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
             if not self.has_sector(sector):
                 shape = self.get_block_shape(sector)
                 array = ar.do("zeros", shape, like=_ex_array)
-                self.blocks[sector] = array
+                self.set_block(sector, array)
 
     def drop_missing_blocks(self):
         """Drop any present blocks that are all zero, resulting in a sparsity
@@ -1534,8 +1534,8 @@ class AbelianArray(AbelianCommon, BlockCommon):
         """
         _all = ar.get_lib_fn(self.backend, "all")
         for sector in self.sectors:
-            if _all(self.blocks[sector] == 0.0):
-                del self.blocks[sector]
+            if _all(self.get_block(sector) == 0.0):
+                self.del_block(sector)
 
     def check(self):
         """Check that all the block sizes and charges are consistent."""
@@ -1605,7 +1605,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
             (ax,) = args
             for sector, array in self.blocks.items():
                 charge = sector[ax]
-                v_block = other.blocks[charge]
+                v_block = other.get_block(charge)
                 assert ar.shape(array)[ax] == ar.size(v_block)
 
         else:
@@ -1683,7 +1683,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         new = cls(indices=indices, charge=charge, symmetry=symmetry, **kwargs)
 
         for sector in new.gen_valid_sectors():
-            new.blocks[sector] = fill_fn(new.get_block_shape(sector))
+            new.set_block(sector, fill_fn(new.get_block_shape(sector)))
 
         return new
 
@@ -2341,7 +2341,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
         if (c.ndim == 0) and (not preserve_array):
             try:
-                return c.blocks[()]
+                return c.get_block(())
             except KeyError:
                 # no aligned blocks, return zero
                 return 0.0
@@ -2402,10 +2402,10 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
             if v_block is not None:
                 # use broadcasting to perform "ab...X...c,X-> ab...X...c"
-                x.blocks[sector] = x.blocks[sector] * v_block
+                x.set_block(sector, x.get_block(sector) * v_block)
             else:
                 # block isn't present -> like multiplying by zero
-                del x.blocks[sector]
+                x.del_block(sector)
 
         if DEBUG:
             x.check()
@@ -2839,7 +2839,7 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
 
     if (c.ndim == 0) and (not preserve_array):
         try:
-            return c.blocks[()]
+            return c.get_block(())
         except KeyError:
             # no aligned blocks, return zero
             return 0.0

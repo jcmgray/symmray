@@ -35,6 +35,18 @@ class BlockCommon(SymmrayCommon):
         """The blocks of the array."""
         return self._blocks
 
+    def get_block(self, sector):
+        """Get the block for the given sector."""
+        return self._blocks[sector]
+
+    def set_block(self, sector, block):
+        """Set the block for the given sector."""
+        self._blocks[sector] = block
+
+    def del_block(self, sector):
+        """Delete the block for the given sector."""
+        del self._blocks[sector]
+
     def _map_blocks(self, fn_block=None, fn_sector=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
         if fn_block is None:
@@ -105,7 +117,7 @@ class BlockCommon(SymmrayCommon):
     def apply_to_arrays(self, fn):
         """Apply the ``fn`` inplace to the array of every block."""
         for sector, array in self._blocks.items():
-            self._blocks[sector] = fn(array)
+            self.set_block(sector, fn(array))
 
     def item(self):
         """Convert the block array to a scalar if it is a scalar block array."""
@@ -367,7 +379,9 @@ class BlockCommon(SymmrayCommon):
         shared = self.blocks.keys() & other.blocks.keys()
         for sector in shared:
             if not _allclose(
-                self.blocks[sector], other.blocks[sector], **allclose_opts
+                self.get_block(sector),
+                other.get_block(sector),
+                **allclose_opts,
             ):
                 return False
 
@@ -375,10 +389,10 @@ class BlockCommon(SymmrayCommon):
         left = self.blocks.keys() - other.blocks.keys()
         right = other.blocks.keys() - self.blocks.keys()
         for sector in left:
-            if not _allclose(self.blocks[sector], 0.0, **allclose_opts):
+            if not _allclose(self.get_block(sector), 0.0, **allclose_opts):
                 return False
         for sector in right:
-            if not _allclose(other.blocks[sector], 0.0, **allclose_opts):
+            if not _allclose(other.get_block(sector), 0.0, **allclose_opts):
                 return False
 
         return True
@@ -552,6 +566,6 @@ class BlockVector(BlockCommon):
 
     def to_dense(self):
         """Convert the block vector to a dense array."""
-        arrays = tuple(self.blocks[k] for k in sorted(self.blocks))
+        arrays = tuple(map(self.get_block, sorted(self.sectors)))
         _concatenate = ar.get_lib_fn(self.backend, "concatenate")
         return _concatenate(arrays, axis=0)
