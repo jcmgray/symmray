@@ -337,15 +337,15 @@ def _truncate_svd_result(
         # check how many singular values from this sector are valid
         if n_chi == 0:
             # remove this sector entirely
-            U.blocks.pop((c0, c1))
-            s.blocks.pop(c1)
-            VH.blocks.pop((c1, c1))
+            U.del_block((c0, c1))
+            s.del_block(c1)
+            VH.del_block((c1, c1))
             continue
 
         # slice the values and left and right vectors
-        U.blocks[(c0, c1)] = U.blocks[(c0, c1)][:, :n_chi]
-        s.blocks[c1] = s.blocks[c1][:n_chi]
-        VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)][:n_chi, :]
+        U.set_block((c0, c1), U.get_block((c0, c1))[:, :n_chi])
+        s.set_block(c1, s.get_block(c1)[:n_chi])
+        VH.set_block((c1, c1), VH.get_block((c1, c1))[:n_chi, :])
 
         # make sure the index chargemaps are updated too
         new_inner_chargemap[c1] = n_chi
@@ -384,17 +384,23 @@ def _truncate_svd_result(
     # absorb the singular values block by block
     for c0, c1 in U.sectors:
         if absorb in (-1, "left"):
-            U.blocks[(c0, c1)] = U.blocks[(c0, c1)] * s.blocks[c1].reshape(
-                (1, -1)
+            U.set_block(
+                (c0, c1),
+                U.get_block((c0, c1)) * s.get_block(c1).reshape((1, -1)),
             )
         elif absorb in (1, "right"):
-            VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)] * s.blocks[c1].reshape(
-                (-1, 1)
+            VH.set_block(
+                (c1, c1),
+                VH.get_block((c1, c1)) * s.get_block(c1).reshape((-1, 1)),
             )
         elif absorb in (0, "both"):
-            s_sqrt = ar.do("sqrt", s.blocks[c1], like=backend)
-            U.blocks[(c0, c1)] = U.blocks[(c0, c1)] * s_sqrt.reshape((1, -1))
-            VH.blocks[(c1, c1)] = VH.blocks[(c1, c1)] * s_sqrt.reshape((-1, 1))
+            s_sqrt = ar.do("sqrt", s.get_block(c1), like=backend)
+            U.set_block(
+                (c0, c1), U.get_block((c0, c1)) * s_sqrt.reshape((1, -1))
+            )
+            VH.set_block(
+                (c1, c1), VH.get_block((c1, c1)) * s_sqrt.reshape((-1, 1))
+            )
         else:
             raise ValueError(f"Unknown absorb value: {absorb}")
 
@@ -512,7 +518,7 @@ def eigh_fermionic(a: FermionicArray):
         # it means ev @ diag(el) @ ev.H == a always
         for c in eigenvalues.sectors:
             if symm.parity(c):
-                eigenvalues.blocks[c] = -eigenvalues.blocks[c]
+                eigenvalues.set_block(c, -eigenvalues.get_block(c))
 
     return eigenvalues, eigenvectors
 
@@ -530,14 +536,14 @@ def eigh_truncated(
 
     # inplace sort by descending absolute value
     for sector, charge in zip(U.sectors, s.sectors):
-        evals = s.blocks[charge]
-        evecs = U.blocks[sector]
+        evals = s.get_block(charge)
+        evecs = U.get_block(sector)
 
         idx = ar.do(
             "argsort", -ar.do("abs", evals, like=a.backend), like=a.backend
         )
-        s.blocks[charge] = evals[idx]
-        U.blocks[sector] = evecs[:, idx]
+        s.set_block(charge, evals[idx])
+        U.set_block(sector, evecs[:, idx])
 
     if DEBUG:
         U.check()
@@ -575,9 +581,9 @@ def solve(a: AbelianArray, b: BlockVector):
     x_blocks = {}
     for sector, array in a.blocks.items():
         b_sector = (sector[0],)
-        if b_sector in b.blocks:
+        if b.has_sector(b_sector):
             x_sector = (sector[1],)
-            x_blocks[x_sector] = _solve(array, b.blocks[b_sector])
+            x_blocks[x_sector] = _solve(array, b.get_block(b_sector))
 
     # c_x = c_b - c_A
     sym = a.symmetry

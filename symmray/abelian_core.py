@@ -2395,9 +2395,11 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
             # only compute reshaped vector block when charge changes
             if charge != v_charge:
-                v_block = v.blocks.get(charge, None)
-                if v_block is not None:
+                try:
+                    v_block = v.get_block(charge)
                     v_block = _reshape(v_block, new_shape)
+                except KeyError:
+                    v_block = None
                 v_charge = charge
 
             if v_block is not None:
