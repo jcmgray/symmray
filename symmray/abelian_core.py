@@ -915,7 +915,7 @@ def cached_fuse_block_info(self, axes_groups):
 
 
 def _fuse_blocks_via_insert(
-    blocks,
+    sector_block_pairs,
     num_groups,
     group_singlets,
     perm,
@@ -942,7 +942,7 @@ def _fuse_blocks_via_insert(
     ]
     selector = [slice(None)] * len(new_indices)
 
-    for sector, array in blocks.items():
+    for sector, array in sector_block_pairs:
         new_shape, new_sector, subsectors = blockmap[sector]
         # fuse (via transpose+reshape) actual array, to insert now
         new_array = _transpose(array, perm)
@@ -975,7 +975,7 @@ def _fuse_blocks_via_insert(
 
 def _fuse_blocks_via_concat(
     old_indices,
-    blocks,
+    sector_block_pairs,
     num_groups,
     group_singlets,
     perm,
@@ -999,7 +999,7 @@ def _fuse_blocks_via_concat(
     new_blocks = {}
 
     # first we group subsectors into their new fused blocks
-    for sector, array in blocks.items():
+    for sector, array in sector_block_pairs:
         new_shape, new_sector, subsectors = blockmap[sector]
         # fuse (via transpose+reshape) actual array, to concat later
         new_array = _transpose(array, perm)
@@ -1327,15 +1327,15 @@ class AbelianArray(AbelianCommon, BlockCommon):
         blocks=(),
         symmetry=None,
     ):
-        self._indices = tuple(indices)
-        self._blocks = dict(blocks)
+        super().__init__(blocks=blocks)
 
+        self._indices = tuple(indices)
         self._symmetry = self.get_class_symmetry(symmetry)
 
         if charge is None:
-            if self._blocks:
+            if self.num_blocks > 0:
                 # infer the charge total from any sector
-                sector = next(iter(self._blocks))
+                sector = self.get_any_sector()
                 signed_sector = (
                     self.symmetry.sign(c, ix.dual)
                     for c, ix in zip(sector, self._indices)
@@ -1352,10 +1352,9 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
     def copy(self):
         """Copy this block array."""
-        new = self.__new__(self.__class__)
+        new = super().copy()
         new._indices = self._indices
         new._charge = self._charge
-        new._blocks = self._blocks.copy()
         new._symmetry = self._symmetry
         return new
 
@@ -1364,10 +1363,9 @@ class AbelianArray(AbelianCommon, BlockCommon):
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        new = self.__new__(self.__class__)
+        new = super().copy_with(blocks=blocks)
         new._indices = self._indices if indices is None else indices
         new._charge = self._charge if charge is None else charge
-        new._blocks = self._blocks.copy() if blocks is None else blocks
         new._symmetry = self._symmetry
 
         if DEBUG:
@@ -1380,12 +1378,12 @@ class AbelianArray(AbelianCommon, BlockCommon):
         that checks are not performed on the new properties, this is intended
         for internal use.
         """
+        super().modify(blocks=blocks)
+
         if indices is not None:
             self._indices = indices
         if charge is not None:
             self._charge = charge
-        if blocks is not None:
-            self._blocks = blocks
 
         if DEBUG:
             self.check()
@@ -1542,7 +1540,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         for idx in self.indices:
             idx.check()
 
-        for sector, array in self.blocks.items():
+        for sector, array in self.get_sector_block_pairs():
             if not self.is_valid_sector(sector):
                 raise ValueError(
                     f"Invalid sector {sector} for array with {self.duals}"
@@ -1603,7 +1601,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         """
         if isinstance(other, BlockVector):
             (ax,) = args
-            for sector, array in self.blocks.items():
+            for sector, array in self.get_sector_block_pairs():
                 charge = sector[ax]
                 v_block = other.get_block(charge)
                 assert ar.shape(array)[ax] == ar.size(v_block)
@@ -1928,8 +1926,9 @@ class AbelianArray(AbelianCommon, BlockCommon):
             i = len(partial_sector)
             if i == self.ndim:
                 # full sector, return the block, making zeros if necessary
-                array = self._blocks.get(partial_sector, None)
-                if array is None:
+                try:
+                    array = self.get_block(partial_sector)
+                except KeyError:
                     array = filler(self.get_block_shape(partial_sector))
                 return array
             else:
@@ -1984,7 +1983,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
             indices=permuted(new._indices, axes),
             blocks={
                 permuted(sector, axes): _transpose(array, axes)
-                for sector, array in new.blocks.items()
+                for sector, array in new.get_sector_block_pairs()
             },
         )
 
@@ -2017,7 +2016,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
         # and filter blocks
         new_blocks = {
-            k: v for k, v in self.blocks.items() if k[axis] == charge
+            k: v for k, v in self.get_sector_block_pairs() if k[axis] == charge
         }
 
         return self._modify_or_copy(
@@ -2219,7 +2218,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
         if mode == "insert":
             new_blocks = _fuse_blocks_via_insert(
-                self.blocks,
+                self.get_sector_block_pairs(),
                 num_groups,
                 group_singlets,
                 perm,
@@ -2234,7 +2233,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         elif mode == "concat":
             new_blocks = _fuse_blocks_via_concat(
                 self._indices,
-                self._blocks,
+                self.get_sector_block_pairs(),
                 num_groups,
                 group_singlets,
                 perm,
@@ -2287,7 +2286,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
         selector = tuple(slice(None) for _ in range(axis))
 
         new_blocks = {}
-        for sector, array in self.blocks.items():
+        for sector, array in self.get_sector_block_pairs():
             old_charge = sector[axis]
             old_shape = ar.shape(array)
 
@@ -2359,7 +2358,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
         return sum(
             _trace(array)
-            for sector, array in self.blocks.items()
+            for sector, array in self.get_sector_block_pairs()
             # only take diagonal blocks
             if sector[0] == sector[1]
         )
@@ -2469,7 +2468,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
                 assert self.indices[j1].matches(self.indices[j2])
 
         new_blocks = {}
-        for sector, array in self.blocks.items():
+        for sector, array in self.get_sector_block_pairs():
             if all(sector[ja] == sector[jb] for ja, jb in traced.values()):
                 # only trace diagonal blocks
                 new_sector = tuple(sector[i] for i in perm)
@@ -2515,14 +2514,14 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
     # _stack = ar.get_lib_fn(a.backend, "stack")
 
     # group blocks of `b` by which contracted charges they are aligned to
-    for sector, array_b in b.blocks.items():
+    for sector, array_b in b.get_sector_block_pairs():
         sector_contracted = tuple(sector[i] for i in axes_b)
         sector_right = tuple(sector[i] for i in right_axes)
         aligned_blocks[sector_contracted].append((sector_right, array_b))
 
     # accumulate aligned blocks of `a` into a pair of lists
     new_blocks = {}
-    for sector, array_a in a.blocks.items():
+    for sector, array_a in a.get_sector_block_pairs():
         sector_contracted = tuple(sector[i] for i in axes_a)
         sector_left = tuple(sector[i] for i in left_axes)
         for sector_right, array_b in aligned_blocks[sector_contracted]:
@@ -2618,7 +2617,7 @@ def drop_misaligned_sectors(
     # filter out sectors of a that are not aligned with b
     new_blocks_a = {}
     charges_drop = [set(ix.charges) for ix in a.indices]
-    for sector, array in a.blocks.items():
+    for sector, array in a.get_sector_block_pairs():
         if sub_sectors_a[sector] in allowed_subsectors:
             # keep the block
             new_blocks_a[sector] = array
@@ -2635,7 +2634,7 @@ def drop_misaligned_sectors(
     # filter out sectors of b that are not aligned with a
     new_blocks_b = {}
     charges_drop = [set(ix.charges) for ix in b.indices]
-    for sector, array in b.blocks.items():
+    for sector, array in b.get_sector_block_pairs():
         if sub_sectors_b[sector] in allowed_subsectors:
             # keep the block
             new_blocks_b[sector] = array
@@ -2863,7 +2862,7 @@ class Z2Array(AbelianArray):
 
         blocks = [
             SubTensor(array, q_labels=tuple(map(Z2, sector)))
-            for sector, array in self.blocks.items()
+            for sector, array in self.get_sector_block_pairs()
         ]
 
         data = SparseTensor(blocks)
@@ -2889,7 +2888,7 @@ class U1Array(AbelianArray):
 
         blocks = [
             SubTensor(array, q_labels=tuple(map(U1, sector)))
-            for sector, array in self.blocks.items()
+            for sector, array in self.get_sector_block_pairs()
         ]
 
         data = SparseTensor(blocks)
@@ -2911,7 +2910,7 @@ class U1Array(AbelianArray):
             s=tuple(-1 if ix.dual else 1 for ix in self.indices),
             n=self.charge,
         )
-        for sector, array in self.blocks.items():
+        for sector, array in self.get_sector_block_pairs():
             t.set_block(ts=sector, Ds=array.shape, val=array)
 
         return t

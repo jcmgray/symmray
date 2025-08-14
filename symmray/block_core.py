@@ -21,14 +21,18 @@ class BlockCommon(SymmrayCommon):
         self._blocks = dict(blocks)
 
     def copy(self):
-        new = self.__class__(self.blocks)
+        new = self.__new__(self.__class__)
+        new._blocks = self._blocks.copy()
         return new
 
     def copy_with(self, blocks=None):
-        if blocks is None:
-            return self.copy()
-        else:
-            return self.__class__(blocks)
+        new = self.__new__(self.__class__)
+        new._blocks = self._blocks.copy() if blocks is None else blocks
+        return new
+
+    def modify(self, blocks=None):
+        if blocks is not None:
+            self._blocks = blocks
 
     @property
     def blocks(self):
@@ -47,6 +51,14 @@ class BlockCommon(SymmrayCommon):
         """Delete the block for the given sector."""
         del self._blocks[sector]
 
+    def get_sector_block_pairs(self):
+        """Get an iterator over all `(sector, block)` pairs."""
+        return self._blocks.items()
+
+    def get_all_blocks(self):
+        """Get an iterator over all blocks of the array."""
+        return self._blocks.values()
+
     def _map_blocks(self, fn_block=None, fn_sector=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
         if fn_block is None:
@@ -57,19 +69,22 @@ class BlockCommon(SymmrayCommon):
 
         self._blocks = {
             fn_sector(sector): fn_block(block)
-            for sector, block in self._blocks.items()
+            for sector, block in self.get_sector_block_pairs()
         }
+
+    def get_any_sector(self):
+        return next(iter(self._blocks.keys()), ())
 
     def get_any_array(self):
         """Get any array from the blocks, to check type and backend for
         example.
         """
-        return next(iter(self._blocks.values()), 0.0)
+        return next(iter(self.get_all_blocks()), 0.0)
 
     def is_zero(self, tol=1e-12):
         """Check if all blocks are zero up to a tolerance."""
         return all(
-            ar.do("allclose", b, 0.0, atol=tol) for b in self._blocks.values()
+            ar.do("allclose", b, 0.0, atol=tol) for b in self.get_all_blocks()
         )
 
     @property
@@ -103,7 +118,7 @@ class BlockCommon(SymmrayCommon):
         -------
         dict[tuple, array_like]
         """
-        return self.blocks.copy()
+        return self._blocks.copy()
 
     def set_params(self, params):
         """Set the parameters of this block array from a pytree (dict).
@@ -112,16 +127,16 @@ class BlockCommon(SymmrayCommon):
         ----------
         params : dict[tuple, array_like]
         """
-        self.blocks.update(params)
+        self._blocks.update(params)
 
     def apply_to_arrays(self, fn):
         """Apply the ``fn`` inplace to the array of every block."""
-        for sector, array in self._blocks.items():
+        for sector, array in self.get_sector_block_pairs():
             self.set_block(sector, fn(array))
 
     def item(self):
         """Convert the block array to a scalar if it is a scalar block array."""
-        (array,) = self.blocks.values()
+        (array,) = self.get_all_blocks()
         return array.item()
 
     def __float__(self):
@@ -309,7 +324,7 @@ class BlockCommon(SymmrayCommon):
         if isinstance(fn, str):
             fn = ar.get_lib_fn(self.backend, fn)
             _stack = ar.get_lib_fn(self.backend, "stack")
-        block_results = tuple(map(fn, self.blocks.values()))
+        block_results = tuple(map(fn, self.get_all_blocks()))
         return fn(_stack(block_results))
 
     def max(self):
@@ -367,7 +382,7 @@ class BlockCommon(SymmrayCommon):
         return (
             functools.reduce(
                 operator.add,
-                (_sum(_abs(x) ** 2) for x in self.blocks.values()),
+                (_sum(_abs(x) ** 2) for x in self.get_all_blocks()),
             )
             ** 0.5
         )
@@ -419,7 +434,7 @@ class BlockVector(BlockCommon):
         """The total size of all elements in the vector."""
         # compute lazily
         _size = ar.get_lib_fn(self.backend, "size")
-        return sum(_size(x) for x in self.blocks.values())
+        return sum(_size(x) for x in self.get_all_blocks())
 
     @property
     def shape(self):
@@ -559,10 +574,10 @@ class BlockVector(BlockCommon):
 
     def check(self):
         """Check that the block vector is well formed."""
-        ndims = {ar.ndim(x) for x in self.blocks.values()}
+        ndims = {ar.ndim(x) for x in self.get_all_blocks()}
         if len(ndims) != 1:
             raise ValueError(f"blocks have different ndims: {ndims}")
-        assert self.size == sum(ar.size(s) for s in self.blocks.values())
+        assert self.size == sum(ar.size(s) for s in self.get_all_blocks())
 
     def to_dense(self):
         """Convert the block vector to a dense array."""

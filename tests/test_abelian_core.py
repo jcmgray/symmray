@@ -60,7 +60,7 @@ def test_AbelianArray_fuse(symmetry, missing, mode):
 
     if missing:
         sector_to_drop = list(x.sectors)[len(x.sectors) // 2]
-        x.blocks.pop(sector_to_drop)
+        x.del_block(sector_to_drop)
 
     xf = x.fuse((0, 2), (1, 3), mode=mode)
     if symmetry == "Z2":
@@ -193,7 +193,7 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes, mode):
         if c.shape == d.shape:
             # XXX: can only check when no empty charges have been dropped
             assert_allclose(c.to_dense(), d)
-        elif c.blocks:
+        elif c.num_blocks > 0:
             # misaligned charges are all zero entries -> check sum
             assert_allclose(d.sum(), c.sum())
     else:

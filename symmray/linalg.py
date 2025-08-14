@@ -80,7 +80,7 @@ def qr(x: AbelianArray, stabilized=False):
     r_blocks = {}
     new_chargemap = {}
 
-    for sector, array in x.blocks.items():
+    for sector, array in x.get_sector_block_pairs():
         q, r = _qr(array)
         q_blocks[sector] = q
         new_chargemap[sector[1]] = ar.shape(q)[1]
@@ -162,7 +162,7 @@ def svd(x: AbelianArray):
     v_blocks = {}
     new_chargemap = {}
 
-    for sector, array in x.blocks.items():
+    for sector, array in x.get_sector_block_pairs():
         u, s, v = _svd(array)
         u_blocks[sector] = u
         # v charge is 0, and dualnesses always opposite
@@ -324,11 +324,11 @@ def _truncate_svd_result(
         # now find number of values to keep per sector
         sub_max_bonds = [
             int(ar.do("count_nonzero", ss >= abs_cutoff, like=backend))
-            for ss in s.blocks.values()
+            for ss in s.get_all_blocks()
         ]
     else:
         # size of each sector
-        sector_sizes = tuple(map(ar.size, s.blocks.values()))
+        sector_sizes = tuple(map(ar.size, s.get_all_blocks()))
         # distribute max_bond proportionally to sector sizes
         sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
 
@@ -490,7 +490,7 @@ def eigh(a: AbelianArray):
     eval_blocks = {}
     evec_blocks = {}
 
-    for sector, array in a.blocks.items():
+    for sector, array in a.get_sector_block_pairs():
         evals, evecs = _eigh(array)
         charge = sector[1]
         eval_blocks[charge] = evals
@@ -579,7 +579,7 @@ def solve(a: AbelianArray, b: BlockVector):
     _solve = ar.get_lib_fn(a.backend, "linalg.solve")
 
     x_blocks = {}
-    for sector, array in a.blocks.items():
+    for sector, array in a.get_sector_block_pairs():
         b_sector = (sector[0],)
         if b.has_sector(b_sector):
             x_sector = (sector[1],)

@@ -498,7 +498,7 @@ class FermionicArray(AbelianArray):
             ax for ax, ix in enumerate(new_indices) if not ix.dual
         )
 
-        for sector, array in new.blocks.items():
+        for sector, array in new.get_sector_block_pairs():
             # conjugate the actual array
             new.set_block(sector, _conj(array))
 
@@ -566,7 +566,7 @@ class FermionicArray(AbelianArray):
         # conjugate transpose all arrays
         new_blocks = {}
         new_phases = {}
-        for sector, array in new.blocks.items():
+        for sector, array in new.get_sector_block_pairs():
             new_sector = sector[::-1]
 
             if new._phases.pop(sector, 1) == -1:
@@ -917,7 +917,7 @@ class Z2FermionicArray(FermionicArray):
                 -array if self.phases.get(sector, 1) == -1 else array,
                 q_labels=tuple(map(Z2, sector)),
             )
-            for sector, array in self.blocks.items()
+            for sector, array in self.get_sector_block_pairs()
         ]
 
         data = SparseFermionTensor(
@@ -947,7 +947,7 @@ class U1FermionicArray(FermionicArray):
                 -array if self.phases.get(sector, 1) == -1 else array,
                 q_labels=tuple(map(U1, sector)),
             )
-            for sector, array in self.blocks.items()
+            for sector, array in self.get_sector_block_pairs()
         ]
 
         data = SparseFermionTensor(
