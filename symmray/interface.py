@@ -180,6 +180,38 @@ def multiply_diagonal(x, v, axis):
 ar.register_function("symmray", "multiply_diagonal", multiply_diagonal)
 
 
+def ldmul(v, x):
+    """Left multiply a `symmray` matrix `x` by a vector `v`."""
+    return x.ldmul(v)
+
+
+ar.register_function("symmray", "ldmul", ldmul)
+
+
+def rdmul(x, v):
+    """Right multiply a `symmray` matrix `x` by a vector `v`."""
+    return x.rdmul(v)
+
+
+ar.register_function("symmray", "rdmul", rdmul)
+
+
+def lddiv(v, x):
+    """Left divide a `symmray` matrix `x` by a vector `v`."""
+    return x.lddiv(v)
+
+
+ar.register_function("symmray", "lddiv", lddiv)
+
+
+def rddiv(x, v):
+    """Right divide a `symmray` matrix `x` by a vector `v`."""
+    return x.rddiv(v)
+
+
+ar.register_function("symmray", "rddiv", rddiv)
+
+
 def align_axes(x, y, axes):
     """ """
     return x.align_axes(y, axes)

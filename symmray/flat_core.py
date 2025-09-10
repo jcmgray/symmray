@@ -555,6 +555,16 @@ class FlatVector(FlatCommon):
         """Get the effective shape of the vector."""
         return (self.size,)
 
+    def copy(self, deep=False) -> "FlatVector":
+        if deep:
+            blocks = ar.do("copy", self._blocks, like=self.backend)
+            sectors = ar.do("copy", self._sectors, like=self.backend)
+        else:
+            blocks = self._blocks
+            sectors = self._sectors
+
+        return self.__class__(sectors, blocks)
+
     def copy_with(self, sectors=None, blocks=None):
         """Create a copy of the vector with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
@@ -1829,7 +1839,13 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
     def trace(self):
         raise NotImplementedError()
 
-    def multiply_diagonal(self, v: FlatVector, axis, inplace=False):
+    def multiply_diagonal(
+        self,
+        v: FlatVector,
+        axis,
+        power=1,
+        inplace=False
+    ):
         """Multiply this flat array by a vector as if contracting a diagonal
         matrix along the given axis.
 
@@ -1846,6 +1862,9 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         -------
         AbelianArrayFlat
         """
+        if axis < 0:
+            axis += self.ndim
+
         # find the order that sorts the sectors of `v` to match
         k = ar.do("argsort", self._sectors[:, axis])[v.sectors]
         vblocks_aligned = v.blocks[k]
@@ -1858,9 +1877,26 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             *repeat(None, self.ndim - axis - 1),
         )
 
-        new_blocks = self._blocks * vblocks_aligned[reshaper]
+        if power == 1:
+            new_blocks = self._blocks * vblocks_aligned[reshaper]
+        elif power == -1:
+            new_blocks = self._blocks / vblocks_aligned[reshaper]
+        else:
+            raise ValueError("Invalid power value")
 
         return self._modify_or_copy(blocks=new_blocks, inplace=inplace)
+
+    def ldmul(self, v, inplace=False):
+        return self.multiply_diagonal(v, axis=-2, inplace=inplace)
+
+    def rdmul(self, v, inplace=False):
+        return self.multiply_diagonal(v, axis=-1, inplace=inplace)
+
+    def lddiv(self, v, inplace=False):
+        return self.multiply_diagonal(v, axis=-2, power=-1, inplace=inplace)
+
+    def rddiv(self, v, inplace=False):
+        return self.multiply_diagonal(v, axis=-1, power=-1, inplace=inplace)
 
     def einsum(self, eq, preserve_array=False):
         raise NotImplementedError()

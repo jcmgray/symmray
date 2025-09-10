@@ -2363,7 +2363,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
             if sector[0] == sector[1]
         )
 
-    def multiply_diagonal(self, v: BlockVector, axis, inplace=False):
+    def multiply_diagonal(self, v: BlockVector, axis, power=1, inplace=False):
         """Multiply this block array by a vector as if contracting a diagonal
         matrix along the given axis.
 
@@ -2373,6 +2373,8 @@ class AbelianArray(AbelianCommon, BlockCommon):
             The vector to contract with.
         axis : int
             The axis along which to contract.
+        power : int or float, optional
+            The power to raise the diagonal elements to.
         inplace : bool, optional
             Whether to perform the operation inplace.
 
@@ -2381,6 +2383,9 @@ class AbelianArray(AbelianCommon, BlockCommon):
         AbelianArray
         """
         x = self if inplace else self.copy()
+
+        if axis < 0:
+            axis += x.ndim
 
         _reshape = ar.get_lib_fn(v.backend, "reshape")
         new_shape = tuple(-1 if i == axis else 1 for i in range(x.ndim))
@@ -2403,15 +2408,38 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
             if v_block is not None:
                 # use broadcasting to perform "ab...X...c,X-> ab...X...c"
-                x.set_block(sector, x.get_block(sector) * v_block)
+
+                if power == 1:
+                    new_block = x.get_block(sector) * v_block
+                elif power == -1:
+                    new_block = x.get_block(sector) / v_block
+
+                x.set_block(sector, new_block)
             else:
                 # block isn't present -> like multiplying by zero
+                if power == -1:
+                    raise ZeroDivisionError(
+                        "Cannot divide by implicitly zero (missing) "
+                        f"block for charge {charge}."
+                    )
                 x.del_block(sector)
 
         if DEBUG:
             x.check()
 
         return x
+
+    def ldmul(self, v: BlockVector, inplace=False):
+        return self.multiply_diagonal(v, axis=-2, inplace=inplace)
+
+    def rdmul(self, v: BlockVector, inplace=False):
+        return self.multiply_diagonal(v, axis=-1, inplace=inplace)
+
+    def lddiv(self, v: BlockVector, inplace=False):
+        return self.multiply_diagonal(v, axis=-2, power=-1, inplace=inplace)
+
+    def rddiv(self, v: BlockVector, inplace=False):
+        return self.multiply_diagonal(v, axis=-1, power=-1, inplace=inplace)
 
     def align_axes(self, other, axes):
         """Align the axes of this block array with another, by dropping any

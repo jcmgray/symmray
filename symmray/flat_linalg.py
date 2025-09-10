@@ -238,15 +238,35 @@ def eigh_truncated(
     max_bond=-1,
     absorb=0,
     renorm=0,
+    positive=0,
+    **kwargs,
 ):
+    if kwargs:
+        import warnings
+
+        warnings.warn(
+            f"Got unexpected kwargs {kwargs} in eigh_truncated "
+            "for AbelianArrayFlat. Ignoring them.",
+            UserWarning,
+        )
+
     s, U = eigh_flat(a)
 
     # make sure to sort by descending absolute value
-    idx = ar.do("argsort", -ar.do("abs", s._blocks, like=a.backend), axis=1)
-    s.modify(blocks=ar.do("take_along_axis", s._blocks, idx, axis=1))
-    U.modify(
-        blocks=ar.do("take_along_axis", U._blocks, idx[:, None, :], axis=2)
-    )
+    if not positive:
+        idx = ar.do(
+            "argsort", -ar.do("abs", s._blocks, like=a.backend), axis=1
+        )
+        s.modify(
+            blocks=ar.do("take_along_axis", s._blocks, idx, axis=1),
+        )
+        U.modify(
+            blocks=ar.do("take_along_axis", U._blocks, idx[:, None, :], axis=2)
+        )
+    else:
+        # assume all positive, just need to flip
+        s.modify(blocks=s._blocks[:, ::-1])
+        U.modify(blocks=U._blocks[:, :, ::-1])
 
     if DEBUG:
         s.check()

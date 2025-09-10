@@ -531,19 +531,35 @@ def eigh_truncated(
     max_bond=-1,
     absorb=0,
     renorm=0,
+    positive=0,
+    **kwargs,
 ):
+    if kwargs:
+        import warnings
+
+        warnings.warn(
+            f"Got unexpected kwargs {kwargs} in eigh_truncated "
+            "for AbelianArrayFlat. Ignoring them.",
+            UserWarning,
+        )
+
     s, U = eigh(a)
 
-    # inplace sort by descending absolute value
+    # inplace sort by descending magnitude
     for sector, charge in zip(U.sectors, s.sectors):
         evals = s.get_block(charge)
         evecs = U.get_block(sector)
 
-        idx = ar.do(
-            "argsort", -ar.do("abs", evals, like=a.backend), like=a.backend
-        )
-        s.set_block(charge, evals[idx])
-        U.set_block(sector, evecs[:, idx])
+        if not positive:
+            idx = ar.do(
+                "argsort", -ar.do("abs", evals, like=a.backend), like=a.backend
+            )
+            s.set_block(charge, evals[idx])
+            U.set_block(sector, evecs[:, idx])
+        else:
+            # assume positive, just need to flip
+            s.set_block(charge, evals[::-1])
+            U.set_block(sector, evecs[:, ::-1])
 
     if DEBUG:
         U.check()
