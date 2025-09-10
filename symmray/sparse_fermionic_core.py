@@ -1,6 +1,6 @@
 import autoray as ar
 
-from .abelian_core import (
+from .sparse_abelian_core import (
     AbelianArray,
     parse_tensordot_axes,
     permuted,
@@ -249,7 +249,11 @@ class FermionicArray(AbelianArray):
         )
 
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
-        """Need to sync phases before performing blockwise operations."""
+        """Need to sync phases before performing blockwise operations.
+
+        This is used across many basic methods defined in `BlockCommon` such as
+        `__add__`, `__imul__` etc.
+        """
         xy = self if inplace else self.copy()
         xy.phase_sync(inplace=True)
 
@@ -623,7 +627,7 @@ class FermionicArray(AbelianArray):
         -------
         FermionicArray
         """
-        from symmray.abelian_core import calc_fuse_group_info
+        from symmray.sparse_abelian_core import calc_fuse_group_info
 
         x = self if inplace else self.copy()
 

@@ -4,7 +4,7 @@ computational graphs that can be easily compiled and vectorized etc.
 TODO:
 
 - [x] store size,ncharges in FlatIndex and remove subshape?
-- [ ] implement tensordot without fusing?
+- [x] implement tensordot without fusing?
 - [ ] cache patterns and reshapers/slicers
 - [ ] cache properties, funcs
 
@@ -18,7 +18,7 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
-from .abelian_core import (
+from .sparse_abelian_core import (
     AbelianArray,
     AbelianCommon,
     calc_fuse_group_info,
@@ -313,25 +313,54 @@ def lexsort_sectors(sectors, stable=True):
                [3, 2, 1],
                [4, 1, 0]])
     """
-    if not ar.is_array(sectors):
-        sectors = ar.do("stack", sectors, axis=1)
+    # XXX: this is a bottleneck
 
-    backend = ar.infer_backend(sectors)
+    if ar.is_array(sectors):
+        ncol = sectors.shape[1]
+        cols = tuple(sectors[:, c] for c in range(ncol))
+    else:
+        cols = sectors
 
-    n = ar.do("shape", sectors, like=backend)[1]
-    limits = ar.do("max", sectors, axis=0, like=backend) + 1
+    xp = ar.get_namespace(cols[0])
 
-    # ws = ar.do("ones", (1, n), dtype=sectors.dtype, like=backend)
+    if len(cols) == 1:
+        return xp.argsort(cols[0], stable=stable)
 
-    ws = [ar.do("array", 1, like=sectors)] * n
-    for ax in range(n - 2, -1, -1):
-        # reverse cumulative product to get 'strides'
-        ws[ax] = ws[ax + 1] * limits[ax]
-    ws = ar.do("stack", tuple(ws), like=sectors)
-    ws = ar.do("reshape", ws, (1, n))
+    strides = [1]
 
-    ranks = ar.do("sum", ws * sectors, axis=1, like=backend)
-    return ar.do("argsort", ranks, stable=stable, like=backend)
+    for col in cols[:0:-1]:
+        strides.insert(0, (xp.max(col) + 1) * strides[0])
+
+    ranks = functools.reduce(
+        operator.add, (w * col for w, col in zip(strides, cols))
+    )
+
+    return xp.argsort(ranks, stable=stable)
+
+    # # alternative implementation:
+
+    # if not ar.is_array(sectors):
+    #     sectors = ar.do("stack", sectors, axis=1)
+
+    # backend = ar.infer_backend(sectors)
+
+    # n = ar.do("shape", sectors, like=backend)[1]
+    # limits = ar.do("max", sectors, axis=0, like=backend) + 1
+
+    # # ws = ar.do("ones", (1, n), dtype=sectors.dtype, like=backend)
+
+    # ws = [ar.do("array", 1, like=sectors)] * n
+    # for ax in range(n - 2, -1, -1):
+    #     # reverse cumulative product to get 'strides'
+    #     ws[ax] = ws[ax + 1] * limits[ax]
+    # ws = ar.do("stack", tuple(ws), like=sectors)
+    # ws = ar.do("reshape", ws, (1, n))
+
+    # ranks = ar.do("sum", ws * sectors, axis=1, like=backend)
+    # kord2 = ar.do("argsort", ranks, stable=stable, like=backend)
+
+    # assert ar.do("all", kord1 == kord2)
+    # return kord1
 
 
 @ar.compose
@@ -429,7 +458,11 @@ class FlatCommon(SymmrayCommon):
         """Interface for setting underlying arrays."""
         self._blocks = params
         self.backend = ar.infer_backend(self._blocks)
-        self._sectors = ar.do("array", self._sectors, like=params)
+        try:
+            self._sectors = ar.do("array", self._sectors, like=params)
+        except ImportError:
+            # params is possibly a placeholder of some kind
+            pass
 
     def item(self):
         """Convert the block array to a scalar if it is a scalar block array."""

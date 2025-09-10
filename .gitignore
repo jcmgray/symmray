@@ -135,3 +135,7 @@ dmypy.json
 
 symmray/_version.py
 notebooks
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml

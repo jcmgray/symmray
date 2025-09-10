@@ -1,5 +1,5 @@
 from . import flat_linalg, linalg, scipy, utils, utils_test
-from .abelian_core import (
+from .sparse_abelian_core import (
     AbelianArray,
     BlockIndex,
     U1Array,
@@ -13,7 +13,7 @@ from .abelian_core import (
 from .block_core import (
     BlockVector,
 )
-from .fermionic_core import (
+from .sparse_fermionic_core import (
     FermionicArray,
     U1FermionicArray,
     U1U1FermionicArray,
@@ -32,7 +32,7 @@ from .fermionic_local_operators import (
     fermi_number_up_local_array,
     fermi_spin_operator_local_array,
 )
-from .flat_core import (
+from .flat_abelian_core import (
     AbelianArrayFlat,
     Z2ArrayFlat,
 )

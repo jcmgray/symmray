@@ -1,6 +1,6 @@
 import autoray as ar
 
-from .flat_core import AbelianArrayFlat, FlatIndex, FlatVector
+from .flat_abelian_core import AbelianArrayFlat, FlatIndex, FlatVector
 from .linalg import qr, svd, svd_truncated, eigh, eigh_truncated
 from .utils import DEBUG
 
