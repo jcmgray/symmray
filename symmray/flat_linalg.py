@@ -1,7 +1,7 @@
 import autoray as ar
 
 from .flat_abelian_core import AbelianArrayFlat, FlatIndex, FlatVector
-from .linalg import qr, svd, svd_truncated, eigh, eigh_truncated
+from .linalg import eigh, eigh_truncated, qr, qr_stabilized, svd, svd_truncated
 from .utils import DEBUG
 
 
@@ -46,6 +46,14 @@ def qr_flat(
     )
 
     return q, r
+
+
+@qr_stabilized.register(AbelianArrayFlat)
+def qr_stabilized_flat(
+    x: AbelianArrayFlat,
+):
+    q, r = qr_flat(x, stabilized=True)
+    return q, None, r
 
 
 @svd.register(AbelianArrayFlat)

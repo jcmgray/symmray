@@ -1877,7 +1877,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         v: FlatVector,
         axis,
         power=1,
-        inplace=False
+        inplace=False,
     ):
         """Multiply this flat array by a vector as if contracting a diagonal
         matrix along the given axis.

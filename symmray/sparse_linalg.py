@@ -6,9 +6,20 @@ from .sparse_abelian_core import AbelianArray, BlockIndex
 from .block_core import BlockVector
 from .sparse_fermionic_core import FermionicArray
 from .utils import DEBUG
+from .linalg import (
+    eigh,
+    eigh_truncated,
+    norm,
+    qr,
+    qr_stabilized,
+    solve,
+    svd,
+    svd_truncated,
+)
 
 
-def norm(x: AbelianArray):
+@norm.register(AbelianArray)
+def norm_abelian(x: AbelianArray):
     """Compute the frobenius norm of an AbelianArray."""
     return x.norm()
 
@@ -48,8 +59,8 @@ def _get_qr_fn(backend, stabilized=False):
     return _qr
 
 
-@functools.singledispatch
-def qr(x: AbelianArray, stabilized=False):
+@qr.register(AbelianArray)
+def qr_abelian(x: AbelianArray, stabilized=False):
     """QR decomposition of an AbelianArray.
 
     Parameters
@@ -112,7 +123,7 @@ def qr(x: AbelianArray, stabilized=False):
 
 @qr.register(FermionicArray)
 def qr_fermionic(x: FermionicArray, stabilized=False):
-    q, r = qr.dispatch(AbelianArray)(x, stabilized=stabilized)
+    q, r = qr_abelian(x, stabilized=stabilized)
 
     if r.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
@@ -121,7 +132,8 @@ def qr_fermionic(x: FermionicArray, stabilized=False):
     return q, r
 
 
-def qr_stabilized(x: AbelianArray):
+@qr_stabilized.register(AbelianArray)
+def qr_stabilized_abelian(x: AbelianArray):
     q, r = qr(x, stabilized=True)
     return q, None, r
 
@@ -140,12 +152,8 @@ def get_numpy_svd_with_fallback():
     return svd_with_fallback
 
 
-# used by quimb
-ar.register_function("symmray", "qr_stabilized", qr_stabilized)
-
-
-@functools.singledispatch
-def svd(x: AbelianArray):
+@svd.register(AbelianArray)
+def svd_abelian(x: AbelianArray):
     if x.ndim != 2:
         raise NotImplementedError(
             "svd only implemented for 2D AbelianArrays,"
@@ -200,7 +208,7 @@ def svd(x: AbelianArray):
 
 @svd.register(FermionicArray)
 def svd_fermionic(x: FermionicArray):
-    u, s, vh = svd.dispatch(AbelianArray)(x)
+    u, s, vh = svd_abelian(x)
 
     if vh.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
@@ -415,8 +423,8 @@ def _truncate_svd_result(
     return U, None, VH
 
 
-@functools.singledispatch
-def svd_truncated(
+@svd_truncated.register(AbelianArray)
+def svd_truncated_abelian(
     x: AbelianArray,
     cutoff=-1.0,
     cutoff_mode=4,
@@ -470,12 +478,8 @@ def svd_truncated(
     )
 
 
-# used by quimb
-ar.register_function("symmray", "svd_truncated", svd_truncated)
-
-
-@functools.singledispatch
-def eigh(a: AbelianArray):
+@eigh.register(AbelianArray)
+def eigh_abelian(a: AbelianArray):
     """Perform a hermitian eigendecomposition on a AbelianArray."""
     if a.ndim != 2:
         raise NotImplementedError(
@@ -508,7 +512,7 @@ def eigh(a: AbelianArray):
 
 @eigh.register(FermionicArray)
 def eigh_fermionic(a: FermionicArray):
-    eigenvalues, eigenvectors = eigh.dispatch(AbelianArray)(a)
+    eigenvalues, eigenvectors = eigh_abelian(a)
 
     if not a.indices[1].dual:
         symm = a.symmetry
@@ -523,8 +527,8 @@ def eigh_fermionic(a: FermionicArray):
     return eigenvalues, eigenvectors
 
 
-@functools.singledispatch
-def eigh_truncated(
+@eigh_truncated.register(AbelianArray)
+def eigh_truncated_abelian(
     a: AbelianArray,
     cutoff=-1.0,
     cutoff_mode=4,
@@ -580,12 +584,8 @@ def eigh_truncated(
     )
 
 
-# used by quimb
-ar.register_function("symmray", "eigh_truncated", eigh_truncated)
-
-
-@functools.singledispatch
-def solve(a: AbelianArray, b: BlockVector):
+@solve.register(AbelianArray)
+def solve_abelian(a: AbelianArray, b: BlockVector):
     if (a.ndim, b.ndim) != (2, 1):
         raise NotImplementedError(
             "solve only implemented for 2D AbelianArrays and 1D BlockVectors,"
@@ -620,7 +620,7 @@ def solve(a: AbelianArray, b: BlockVector):
 
 @solve.register(FermionicArray)
 def solve_fermionic(a: FermionicArray, b: BlockVector):
-    x = solve.dispatch(AbelianArray)(a, b)
+    x = solve_abelian(a, b)
 
     if x.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip

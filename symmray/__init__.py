@@ -1,24 +1,6 @@
-from . import flat_linalg, linalg, scipy, utils, utils_test
-from .sparse_abelian_core import (
-    AbelianArray,
-    BlockIndex,
-    U1Array,
-    U1U1Array,
-    Z2Array,
-    Z2Z2Array,
-    default_tensordot_mode,
-    get_default_tensordot_mode,
-    set_default_tensordot_mode,
-)
+from . import flat_linalg, linalg, scipy, sparse_linalg, utils, utils_test
 from .block_core import (
     BlockVector,
-)
-from .sparse_fermionic_core import (
-    FermionicArray,
-    U1FermionicArray,
-    U1U1FermionicArray,
-    Z2FermionicArray,
-    Z2Z2FermionicArray,
 )
 from .fermionic_local_operators import (
     FermionicOperator,
@@ -56,8 +38,8 @@ from .interface import (
     lddiv,
     ldmul,
     log,
-    log10,
     log2,
+    log10,
     max,
     min,
     multiply_diagonal,
@@ -79,6 +61,24 @@ from .networks import (
     TN_abelian_from_edges_rand,
     TN_fermionic_from_edges_rand,
     parse_edges_to_site_info,
+)
+from .sparse_abelian_core import (
+    AbelianArray,
+    BlockIndex,
+    U1Array,
+    U1U1Array,
+    Z2Array,
+    Z2Z2Array,
+    default_tensordot_mode,
+    get_default_tensordot_mode,
+    set_default_tensordot_mode,
+)
+from .sparse_fermionic_core import (
+    FermionicArray,
+    U1FermionicArray,
+    U1U1FermionicArray,
+    Z2FermionicArray,
+    Z2Z2FermionicArray,
 )
 from .symmetries import (
     U1,
@@ -145,6 +145,7 @@ __all__ = (
     "reshape",
     "scipy",
     "set_default_tensordot_mode",
+    "sparse_linalg",
     "sqrt",
     "squeeze",
     "sum",
