@@ -114,8 +114,8 @@ def get_zn_charges(ncharge, order):
 def rand_zn_index(
     d,
     order,
-    dual=None,
-    subsizes=None,
+    dual="random",
+    subsizes="random",
     seed=None,
 ):
     """Generate a random ZN index with the given dimension and order.
@@ -126,12 +126,12 @@ def rand_zn_index(
         The total size of the index. If a dict, an explicit chargemap.
     order : int
         The order (i.e. size, N) of the cyclic group ZN.
-    dual : bool, optional
-        The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+    dual : bool or "random", optional
+        The dualness of the index. If "random", it is randomly chosen.
+    subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 
-        - None: the charges and sizes are randomly determined.
+        - "random": the charges and sizes are randomly determined.
         - "equal": a fixed number of charges 'close to' zero charge are chosen,
           all with equal size (up to remainders).
         - "maximal": as many charges as possible are chosen, each with size 1
@@ -151,7 +151,7 @@ def rand_zn_index(
 
     rng = get_rng(seed)
 
-    if dual is None:
+    if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
 
     if isinstance(d, dict):
@@ -163,13 +163,13 @@ def rand_zn_index(
 
     if d == 1:
         # can only have one charge sector
-        if subsizes is None:
+        if (subsizes is None) or (subsizes == "random"):
             charge = int(rng.integers(order))
         else:
             charge = 0
         return sr.BlockIndex(chargemap={charge: 1}, dual=dual)
 
-    if subsizes is None:
+    if (subsizes is None) or (subsizes == "random"):
         # randomly distributed over all
         ncharge = min(d, order)
         subsizes = rand_partition(d, ncharge, seed=rng)
@@ -201,20 +201,20 @@ rand_z2_index = functools.partial(rand_zn_index, order=2)
 
 def rand_z2z2_index(
     d,
-    dual=None,
-    subsizes=None,
+    dual="random",
+    subsizes="random",
     seed=None,
 ):
     import symmray as sr
 
     rng = get_rng(seed)
 
-    if dual is None:
+    if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
 
     possible = [(0, 0), (0, 1), (1, 0), (1, 1)]
 
-    if subsizes is None:
+    if (subsizes is None) or (subsizes == "random"):
         # randomly distributed
         if d < 4:
             charges = rng.choice(possible, size=d, replace=False)
@@ -252,8 +252,8 @@ def get_u1_charges(ncharge):
 
 def rand_u1_index(
     d,
-    dual=None,
-    subsizes=None,
+    dual="random",
+    subsizes="random",
     seed=None,
 ):
     """Generate a random U1 index with the given dimension.
@@ -262,12 +262,12 @@ def rand_u1_index(
     ----------
     d : int
         The total size of the index.
-    dual : bool, optional
-        The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+    dual : bool or "random", optional
+        The dualness of the index. If "random", it is randomly chosen.
+    subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 
-        - None: the charges and sizes are randomly determined.
+        - "random": the charges and sizes are randomly determined.
         - "equal": a fixed number of charges 'close to' zero charge are chosen,
           all with equal size (up to remainders).
         - "maximal": as many charges as possible are chosen, each with size 1
@@ -287,14 +287,14 @@ def rand_u1_index(
 
     rng = get_rng(seed)
 
-    if dual is None:
+    if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
 
     if isinstance(d, dict):
         # charges and sizes given explicitly
         return sr.BlockIndex(chargemap=d, dual=dual)
 
-    if subsizes is None:
+    if (subsizes is None) or (subsizes == "random"):
         # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
         subsizes = rand_partition(d, ncharge, seed=rng)
@@ -350,22 +350,22 @@ def get_u1u1_charges(ncharge):
 
 def rand_u1u1_index(
     d,
-    dual=None,
-    subsizes=None,
+    dual="random",
+    subsizes="random",
     seed=None,
 ):
     import symmray as sr
 
     rng = get_rng(seed)
 
-    if dual is None:
+    if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
 
     if isinstance(d, dict):
         # charges and sizes given explicitly
         return sr.BlockIndex(chargemap=d, dual=dual)
 
-    if subsizes is None:
+    if (subsizes is None) or (subsizes == "random"):
         # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
         subsizes = rand_partition(d, ncharge, seed=rng)
@@ -400,8 +400,8 @@ def rand_u1u1_index(
 def rand_index(
     symmetry,
     d,
-    dual=None,
-    subsizes=None,
+    dual="random",
+    subsizes="random",
     seed=None,
 ):
     """Get a random index with the given symmetry.
@@ -412,12 +412,12 @@ def rand_index(
         The symmetry of the index.
     d : int or dict
         The total size of the index. If a dict, an explicit chargemap.
-    dual : bool, optional
-        The dualness of the index. If None, it is randomly chosen.
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+    dual : bool or "random", optional
+        The dualness of the index. If "random", it is randomly chosen.
+    subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 
-        - None: the charges and sizes are randomly determined.
+        - "random": the charges and sizes are randomly determined.
         - "equal": a fixed number of charges 'close to' zero charge are chosen,
           all with equal size (up to remainders).
         - "maximal": as many charges as possible are chosen, each with size 1
@@ -488,10 +488,18 @@ def get_array_cls(symmetry, fermionic=False, flat=False) -> type:
 
 def choose_duals(duals, ndim):
     if duals == "equal":
+        # split ~half and ~half
         return [i >= ndim // 2 for i in range(ndim)]
-    elif (duals is None) or (duals is False) or (duals is True):
+    elif (
+        (duals == "random")
+        or (duals is None)
+        or (duals is False)
+        or (duals is True)
+    ):
+        # repeat for all axes
         return [duals] * ndim
     else:
+        # assume given explicit sequence
         if len(duals) != ndim:
             raise ValueError(
                 f"Length of duals ({len(duals)}) does not match ndim ({ndim})."
@@ -502,12 +510,12 @@ def choose_duals(duals, ndim):
 def get_rand(
     symmetry,
     shape,
-    duals=None,
+    duals="random",
     charge=None,
     seed=None,
     dist="normal",
     fermionic=False,
-    subsizes=None,
+    subsizes="random",
     **kwargs,
 ):
     """Get a random symmray array, with the given symmetry and shape. The
@@ -522,24 +530,25 @@ def get_rand(
         The desired overall effective shape of the array. Each element can be
         an int, in which case the charge sizes will be generated automatically,
         or an explicit dict of charge sizes, or a `BlockIndex`.
-    duals : None, "equals", or Sequence[bool], optional
-        The dualness of each index. If None, the dualnesses are chosen
+    duals : "random", "equals", or Sequence[bool], optional
+        The dualness of each index. If "random", the dualnesses are chosen
         randomly. If "equal", they are chosen so the first half of the
         indices have `dual=False` and the second half have `dual=True`.
-        If `shape` contains `BlockIndex` objects, the corresponding duals are
-        ignored.
+        If `shape` contains `BlockIndex` objects, the dualness of that index
+        takes precedence over any specification here.
     charge : int or tuple[int], optional
-        The total charge of the array.
+        The total charge of the array. If not given the 'zero' charge is used,
+        which depends on the symmetry.
     seed : None, int, or numpy.random.Generator, optional
         The seed for the random number generator.
     dist : str, optional
         The distribution of the random numbers. Can be "normal" or "uniform".
     fermionic : bool, optional
         Whether to generate a fermionic array.
-    subsizes : None, "equal", "maximal", "minimal", or tuple[int], optional
+    subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 
-        - None: the charges and sizes are randomly determined.
+        - "random": the charges and sizes are randomly determined.
         - "equal": a fixed number of charges 'close to' zero charge are chosen,
           all with equal size (up to remainders).
         - "maximal": as many charges as possible are chosen, each with size 1
@@ -548,6 +557,8 @@ def get_rand(
         - tuple: the sizes of the charge sectors, a matching number of charges
           are chosen automatically, in sequence 'closest to zero'.
 
+        If `shape` contains `dict` or `BlockIndex` objects, the subsizes of
+        those indices take precedence over any specification here.
     kwargs
         Additional keyword arguments are passed to the random array
         generation function.
@@ -567,11 +578,13 @@ def get_rand(
         (
             d
             if isinstance(d, sr.BlockIndex)
-            else sr.BlockIndex(d, dual=f)
+            else sr.BlockIndex(d, dual=dual)
             if isinstance(d, dict)
-            else rand_index(symmetry, d, dual=f, subsizes=subsizes, seed=rng)
+            else rand_index(
+                symmetry, d, dual=dual, subsizes=subsizes, seed=rng
+            )
         )
-        for d, f in zip(shape, duals)
+        for d, dual in zip(shape, duals)
     ]
 
     return cls.random(

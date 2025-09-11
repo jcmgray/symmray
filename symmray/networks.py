@@ -201,6 +201,7 @@ def TN_abelian_from_edges_rand(
 
     rng = np.random.default_rng(seed)
 
+    index_store = {}
     for site, info in site_info.items():
         if phys_dim is None:
             shape = info["shape"]
@@ -208,13 +209,25 @@ def TN_abelian_from_edges_rand(
             shape = info["shape"][:-1] + [phys_chargemap]
         duals = info["duals"]
 
+        # resolve shape sizes into explicit indices ahead of time so that we
+        # can build them in conj-pairs with matching subsizes even if random
+        shape_parsed = []
+        for ix, size, dual in zip(info["inds"], shape, duals):
+            if ix in index_store:
+                shape_parsed.append(index_store[ix].conj())
+            else:
+                index_store[ix] = sr.utils.rand_index(
+                    symmetry, size, dual=dual, subsizes=subsizes, seed=rng
+                )
+                shape_parsed.append(index_store[ix])
+
         if fermionic:
             # if odd parity, we might need to provide a "label"
             kwargs["oddpos"] = site
 
         tn |= qtn.Tensor(
             data=sr.utils.get_rand(
-                shape=shape,
+                shape=shape_parsed,
                 duals=duals,
                 symmetry=symmetry,
                 charge=site_charge(site),
