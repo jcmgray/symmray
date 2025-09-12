@@ -54,6 +54,6 @@ def svd_truncated(x: SymmrayCommon, *args, **kwargs):
 
 
 # used by quimb
+ar.register_function("symmray", "eigh_truncated", eigh_truncated)
 ar.register_function("symmray", "qr_stabilized", qr_stabilized)
-ar.register_function("symmray", "svd_truncated", eigh_truncated)
 ar.register_function("symmray", "svd_truncated", svd_truncated)
