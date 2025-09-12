@@ -35,30 +35,31 @@ the ``symmray`` namespace directly:
 import symmray as sr
 
 # create some random arrays:
-x = sr.utils.get_rand("Z2", shape=[2, 3, 4, 5], duals=[0, 1, 0, 1], fermionic=True)
-y = sr.utils.get_rand("Z2", shape=[3, 2, 5, 4], duals=[0, 1, 0, 1], fermionic=True)
+a, b, c, d, e, f = [sr.utils.rand_index("Z2", d) for d in [2, 3, 4, 5, 6, 7]]
+x = sr.utils.get_rand("Z2", shape=[a, b, c.conj(), d], fermionic=True)
+y = sr.utils.get_rand("Z2", shape=[e, a.conj(), f, c], fermionic=True)
 x, y
-# (Z2FermionicArray(shape~(2, 3, 4, 5):[+-+-], charge=0, num_blocks=8),
-#  Z2FermionicArray(shape~(3, 2, 5, 4):[+-+-], charge=0, num_blocks=8))
+# (Z2FermionicArray(shape~(2, 3, 4, 5):[++-+], charge=0, num_blocks=8),
+#  Z2FermionicArray(shape~(6, 2, 7, 4):[+--+], charge=0, num_blocks=8))
 
 # contract them:
 z = sr.tensordot(x, y, axes=[(0, 2), (1, 3)])
 z
-# Z2FermionicArray(shape~(3, 5, 3, 5):[--++], charge=0, num_blocks=8)
+# Z2FermionicArray(shape~(3, 5, 6, 7):[+++-], charge=0, num_blocks=8)
 
 print(z)
 # Z2FermionicArray(ndim=4, charge=0, indices=[
-#     (3 = 1+2 : -[0,1])
-#     (5 = 4+1 : -[0,1])
 #     (3 = 2+1 : +[0,1])
 #     (5 = 3+2 : +[0,1])
+#     (6 = 2+4 : +[0,1])
+#     (7 = 6+1 : -[0,1])
 # ], num_blocks=8, backend=numpy, dtype=float64)
 
 # fuse and decompose:
 sr.linalg.svd(z.fuse((0, 3), (1, 2)))
-# (Z2FermionicArray(shape~(15, 13):[--], charge=0, num_blocks=2),
-#  BlockVector(total_size=13, num_blocks=2),
-#  Z2FermionicArray(shape~(13, 15):[+-], charge=0, num_blocks=2))
+# (Z2FermionicArray(shape~(21, 21):[++], charge=0, num_blocks=2),
+#  BlockVector(total_size=21, num_blocks=2),
+#  Z2FermionicArray(shape~(21, 30):[-+], charge=0, num_blocks=2))
 ```
 
 or you can use the automatic dispatch library `autoray` to support multiple
@@ -67,10 +68,18 @@ backends including `symmray`:
 ```python
 import autoray as ar
 
-z = ar.do("tensordot", x, y, axes=[(5, 2), (3, 7)])
+z = ar.do("tensordot", x, y, axes=[(0, 2), (1, 3)])
 ```
 
-`symmray` also uses `autoray` internally to handle manipulating blocks within
+or you can use the [python array api](https://data-apis.org/array-api/latest/):
+
+```python
+xp = x.__array_namespace__()
+z = xp.tensordot(x, y, axes=[(0, 2), (1, 3)])
+```
+
+
+`symmray` also uses `autoray` **internally** to handle manipulating blocks *within*
 an array, meaning that these can be `numpy`, `torch`, `jax` or any other
 `autoray` compatible library.
 
@@ -475,6 +484,8 @@ Tensor network specific functions as used by `quimb`:
 
 - `svd_truncated`: svd with truncation based on maximum bond dimension and/or
   a cutoff threshold with various modes.
+- `eigh_truncated`: hermitian eigendecomposition with truncation based on
+  maximum bond dimension and/or a cutoff threshold with various modes.
 - `qr_stabilized`: qr decomposition with sign stabilization of the R matrix
   diagonal, which is beneficial for gradient based optimization.
 
