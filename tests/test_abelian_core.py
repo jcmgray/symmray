@@ -273,7 +273,8 @@ def test_can_pickle_abelian_array(symm):
     import tempfile
     import pickle
 
-    with tempfile.NamedTemporaryFile(suffix=".pkl") as tmpf:
+    # XXX: add delete=False to avoid win github action permission error
+    with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmpf:
         tmp_fname = tmpf.name
         # create dynamic symmetry
         symm = sr.get_symmetry(symm)
@@ -285,7 +286,7 @@ def test_can_pickle_abelian_array(symm):
             symm_loaded = pickle.load(f)
         assert symm == symm_loaded
 
-    with tempfile.NamedTemporaryFile(suffix=".pkl") as tmpf:
+    with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmpf:
         tmp_fname = tmpf.name
         # create dynamic symmetry
         x = sr.utils.get_rand(symm, (2, 3, 4))
