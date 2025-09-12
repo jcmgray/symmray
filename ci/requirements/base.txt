@@ -1,7 +1,0 @@
-autoray
-cotengra
-coverage
-einops
-numpy
-pytest
-pytest-cov

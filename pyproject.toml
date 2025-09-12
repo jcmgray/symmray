@@ -9,44 +9,52 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 keywords = [
-    "quantum",
-    "physics",
-    "tensor",
-    "networks",
-    "tensors",
-    "dmrg",
-    "tebd",
-    "mera",
-    "peps",
-    "fermions",
-    "symmetry",
-    "block",
-    "sparse",
     "autoray",
+    "block",
+    "dmrg",
+    "fermions",
+    "mera",
+    "networks",
+    "peps",
+    "physics",
+    "quantum",
+    "sparse",
+    "symmetry",
+    "tebd",
+    "tensor",
+    "tensors",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 dependencies = [
-    "autoray>=0.7.2"
+    "autoray"
 ]
 
 [project.optional-dependencies]
-tests = ["numpy", "coverage", "pytest", "pytest-cov"]
+testing = [
+    "cotengra",
+    "coverage",
+    "einops",
+    "numpy",
+    "pytest-cov",
+    "pytest",
+    "quimb",
+]
 docs = [
-    "sphinx>=2.0",
-    "sphinx-autoapi",
     "astroid<3",
-    "sphinx-copybutton",
-    "myst-nb",
     "furo",
-    "setuptools_scm",
     "ipython!=8.7.0",
+    "myst-nb",
+    "setuptools_scm",
+    "sphinx-autoapi",
+    "sphinx-copybutton",
+    "sphinx>=2.0",
 ]
 
 [project.urls]
@@ -74,3 +82,36 @@ filterwarnings = "once"
 line-length = 79
 target-version = "py38"
 lint.ignore = ["E741"]
+
+# ---------------------------------- pixi ----------------------------------- #
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.dependencies]
+autoray = ">=0.8.0,<0.9"
+
+[tool.pixi.pypi-dependencies]
+symmray = { path = ".", editable = true }
+
+[tool.pixi.feature.testing.dependencies]
+cotengra = "*"
+coverage = "*"
+einops = "*"
+numpy = "*"
+pytest = "*"
+pytest-cov = "*"
+quimb = "*"
+
+[tool.pixi.feature.pyold.dependencies]
+python = "3.10.*"
+[tool.pixi.feature.pymid.dependencies]
+python = "3.12.*"
+[tool.pixi.feature.pynew.dependencies]
+python = "3.13.*"
+
+[tool.pixi.environments]
+testing = { features = ["pymid", "testing"] }
+testing-pyold = { features = ["pyold", "testing"] }
+testing-pynew = { features = ["pynew", "testing"] }
