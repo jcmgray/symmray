@@ -35,12 +35,11 @@ jobs:
     - uses: prefix-dev/setup-pixi@v0.9.0
       with:
         environments: ${{ matrix.env }}
-        activate-environment: true
 
     - name: Test with pytest
       run: |
-        pytest \
-        tests/ \
+        pixi run -e ${{ matrix.env }} \
+        pytest tests/ \
         --cov=symmray \
         --cov-report=xml \
         --verbose \
