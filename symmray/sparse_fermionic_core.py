@@ -248,76 +248,32 @@ class FermionicArray(AbelianArray):
             self, indices=indices, blocks=blocks, charge=charge
         )
 
-    def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
-        """Need to sync phases before performing blockwise operations.
-
-        This is used across many basic methods defined in `BlockCommon` such as
-        `__add__`, `__imul__` etc.
-        """
-        xy = self if inplace else self.copy()
-        xy.phase_sync(inplace=True)
-
-        if isinstance(other, FermionicArray):
-            if other.phases:
-                other = other.phase_sync()
-
-        return BlockCommon._binary_blockwise_op(
-            xy, other, fn, inplace=True, **kwargs
-        )
-
-    def _map_blocks(self, fn_block=None, fn_sector=None):
-        BlockCommon._map_blocks(self, fn_block, fn_sector)
-        if fn_sector is not None:
-            # need to update phase keys as well
-            self._phases = {fn_sector(s): p for s, p in self._phases.items()}
-
-    def transpose(self, axes=None, phase=True, inplace=False):
-        """Transpose the fermionic array, by default accounting for the phases
-        accumulated from swapping odd charges.
+    def phase_sync(self, inplace=False):
+        """Multiply all lazy phases into the block arrays.
 
         Parameters
         ----------
-        axes : tuple of int, optional
-            The permutation of axes, by default None.
-        phase : bool, optional
-            Whether to flip the phase of sectors whose odd charges undergo a
-            odd permutation. By default True.
         inplace : bool, optional
             Whether to perform the operation in place.
 
         Returns
         -------
         FermionicArray
-            The transposed array.
+            The resolved array, which now has no lazy phases.
         """
         new = self if inplace else self.copy()
-
-        old_phases = new.phases
-
-        if axes is None:
-            axes = tuple(range(new.ndim - 1, -1, -1))
-
-        if phase:
-            # compute new sector phases
-            new_phases = {}
-            for sector in new.sectors:
-                parities = tuple(new.symmetry.parity(q) for q in sector)
-                perm_phase = calc_phase_permutation(parities, axes)
-                new_phase = old_phases.get(sector, 1) * perm_phase
-                if new_phase == -1:
-                    # only populate non-trivial phases
-                    new_phases[permuted(sector, axes)] = -1
-        else:
-            # just permute the phase keys
-            new_phases = {
-                permuted(sector, axes): phase
-                for sector, phase in old_phases.items()
-            }
-
-        new.modify(phases=new_phases)
-
-        # transpose block arrays
-        AbelianArray.transpose(new, axes, inplace=True)
+        phases = new.phases
+        while phases:
+            sector, phase = phases.popitem()
+            if phase == -1:
+                try:
+                    new.set_block(sector, -new.get_block(sector))
+                except KeyError:
+                    # if the block is not present, it is zero
+                    # this can happen e.g. if two arrays have been aligned
+                    # for contraction
+                    # TODO: use a drop_sectors method instead?
+                    pass
 
         return new
 
@@ -432,32 +388,76 @@ class FermionicArray(AbelianArray):
                 new._phases[sector] = phase
         return new
 
-    def phase_sync(self, inplace=False):
-        """Multiply all lazy phases into the block arrays.
+    def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
+        """Need to sync phases before performing blockwise operations.
+
+        This is used across many basic methods defined in `BlockCommon` such as
+        `__add__`, `__imul__` etc.
+        """
+        xy = self if inplace else self.copy()
+        xy.phase_sync(inplace=True)
+
+        if isinstance(other, FermionicArray):
+            if other.phases:
+                other = other.phase_sync()
+
+        return BlockCommon._binary_blockwise_op(
+            xy, other, fn, inplace=True, **kwargs
+        )
+
+    def _map_blocks(self, fn_block=None, fn_sector=None):
+        BlockCommon._map_blocks(self, fn_block, fn_sector)
+        if fn_sector is not None:
+            # need to update phase keys as well
+            self._phases = {fn_sector(s): p for s, p in self._phases.items()}
+
+    def transpose(self, axes=None, phase=True, inplace=False):
+        """Transpose the fermionic array, by default accounting for the phases
+        accumulated from swapping odd charges.
 
         Parameters
         ----------
+        axes : tuple of int, optional
+            The permutation of axes, by default None.
+        phase : bool, optional
+            Whether to flip the phase of sectors whose odd charges undergo a
+            odd permutation. By default True.
         inplace : bool, optional
             Whether to perform the operation in place.
 
         Returns
         -------
         FermionicArray
-            The resolved array, which now has no lazy phases.
+            The transposed array.
         """
         new = self if inplace else self.copy()
-        phases = new.phases
-        while phases:
-            sector, phase = phases.popitem()
-            if phase == -1:
-                try:
-                    new.set_block(sector, -new.get_block(sector))
-                except KeyError:
-                    # if the block is not present, it is zero
-                    # this can happen e.g. if two arrays have been aligned
-                    # for contraction
-                    # TODO: use a drop_sectors method instead?
-                    pass
+
+        old_phases = new.phases
+
+        if axes is None:
+            axes = tuple(range(new.ndim - 1, -1, -1))
+
+        if phase:
+            # compute new sector phases
+            new_phases = {}
+            for sector in new.sectors:
+                parities = tuple(new.symmetry.parity(q) for q in sector)
+                perm_phase = calc_phase_permutation(parities, axes)
+                new_phase = old_phases.get(sector, 1) * perm_phase
+                if new_phase == -1:
+                    # only populate non-trivial phases
+                    new_phases[permuted(sector, axes)] = -1
+        else:
+            # just permute the phase keys
+            new_phases = {
+                permuted(sector, axes): phase
+                for sector, phase in old_phases.items()
+            }
+
+        new.modify(phases=new_phases)
+
+        # transpose block arrays
+        AbelianArray.transpose(new, axes, inplace=True)
 
         return new
 
