@@ -1,7 +1,7 @@
 import pytest
 import symmray as sr
 
-from test_flat_abelian_core import get_zn_blocksparse_flat_compat
+from .test_flat_abelian_core import get_zn_blocksparse_flat_compat
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
