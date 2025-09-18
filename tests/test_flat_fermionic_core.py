@@ -128,3 +128,47 @@ def test_phase_transpose(
         # phases should have been absorbed into blocks
         assert not y.phases
     assert y.allclose(x_phase_transposed)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", [42, 43, 44])
+@pytest.mark.parametrize("sync", [False, True])
+@pytest.mark.parametrize(
+    "perm",
+    [
+        None,
+        (2, 1, 0),
+        (2, 0, 1),
+        (0, 1, 2),
+        (0, 2, 1),
+        (1, 0, 2),
+        (1, 2, 0),
+    ],
+)
+def test_transpose(
+    symmetry,
+    charge,
+    seed,
+    sync,
+    perm,
+):
+    if charge:
+        pytest.xfail("oddpos not implemented yet.")
+
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        (2, 4, 6),
+        charge=charge,
+        fermionic=True,
+        seed=seed,
+    )
+    xt = x.transpose(perm)
+    fx = x.to_flat()
+    fxt = fx.transpose(perm)
+    fxt.check()
+    if sync:
+        fxt.phase_sync(inplace=True)
+    y = fxt.to_blocksparse()
+    y.check()
+    assert y.allclose(xt)

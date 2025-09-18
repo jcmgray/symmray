@@ -322,18 +322,70 @@ class FermionicArrayFlat(AbelianArrayFlat):
 
         # absorb into current phases
         phase_change = (-1) ** nswap
-        new.modify(phases=new.phases * phase_change)
+        new.modify(phases=new._phases * phase_change)
 
         return new
 
+    def phase_sector(self, sector, inplace=False):
+        raise NotImplementedError(
+            "Flat fermionic arrays do not support individual sector phasing."
+        )
+
     def phase_global(self, inplace=False):
-        raise NotImplementedError
+        """Flip the global phase of the array.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        new = self if inplace else self.copy()
+        new.modify(phases=-new._phases)
+        return new
 
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         raise NotImplementedError
 
-    def transpose(self, axes=None, phase=True, inplace=False):
-        raise NotImplementedError
+    def transpose(
+        self,
+        axes=None,
+        phase=True,
+        inplace=False,
+    ) -> "FermionicArrayFlat":
+        """Transpose this flat fermionic array, by default accounting for the
+        phases accumulated from swapping odd charges.
+
+        Parameters
+        ----------
+        axes : tuple of int, optional
+            The permutation of axes, by default None.
+        phase : bool, optional
+            Whether to flip the phase of sectors whose odd charges undergo a
+            odd permutation. By default True.
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArrayFlat
+            The transposed array.
+        """
+        new = self if inplace else self.copy()
+
+        if axes is None:
+            axes = tuple(reversed(range(new.ndim)))
+
+        if phase:
+            # perform the phase accumulation separately first
+            new.phase_transpose(axes, inplace=True)
+
+        AbelianArrayFlat.transpose(new, axes, inplace=True)
+
+        return new
 
     def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
         raise NotImplementedError
