@@ -6,6 +6,46 @@ from .sparse_fermionic_core import FermionicArray
 from .symmetries import get_symmetry
 
 
+def perm_to_swaps(perm):
+    """Convert a permutation to a list of swaps.
+
+    Parameters
+    ----------
+    perm : tuple[int, ...]
+        The permutation to convert. Should be a permutation of the elements in
+        range(len(perm)).
+
+    Returns
+    -------
+    tuple[tuple[int, int], ...]
+        A tuple of swaps that will perform the permutation.
+    """
+    N = len(perm)
+    current = list(range(N))
+    desired = list(map(int, perm))
+    idxs = {i: i for i in current}
+    swaps = []
+
+    for pos in range(N):
+        x = desired[pos]
+        ix = idxs[x]
+        # ix = current.index(x)
+        in_position = ix == pos
+        while not in_position:
+            # swap with item to left
+            iy = ix - 1
+            y = current[iy]
+            # record the swap
+            swaps.append((iy, ix))
+            current[iy], current[ix] = x, y
+            idxs[y], idxs[x] = ix, iy
+            # check if we have finished this element
+            ix = iy
+            in_position = ix == pos
+
+    return tuple(swaps)
+
+
 class FermionicArrayFlat(AbelianArrayFlat):
     __slots__ = AbelianArrayFlat.__slots__ + ("_phases", "_oddpos")
     fermionic = True
@@ -244,8 +284,47 @@ class FermionicArrayFlat(AbelianArrayFlat):
         new.modify(phases=new.phases * flip_phases)
         return new
 
-    def phase_transpose(self, axes=None, inplace=False):
-        raise NotImplementedError
+    def phase_transpose(
+        self,
+        axes=None,
+        inplace=False,
+    ) -> "FermionicArrayFlat":
+        """Phase this fermionic array as if it were transposed virtually, i.e.
+        the actual arrays are not transposed. Useful when one wants the actual
+        data layout to differ from the required fermionic mode layout.
+
+        Parameters
+        ----------
+        axes : tuple of int, optional
+            The permutation of axes, by default None.
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArrayFlat
+        """
+        new = self if inplace else self.copy()
+
+        N = new.ndim
+        if axes is None:
+            axes = tuple(reversed(range(N)))
+
+        # convert permutation to sequence of pairwise neighboring swaps
+        swaps = perm_to_swaps(axes)
+
+        # count how many swaps of odd charges there are
+        parities = [self.sectors[:, i] % 2 for i in range(N)]
+        nswap = 0
+        for il, ir in swaps:
+            nswap = nswap + (parities[il] * parities[ir])
+            parities[il], parities[ir] = parities[ir], parities[il]
+
+        # absorb into current phases
+        phase_change = (-1) ** nswap
+        new.modify(phases=new.phases * phase_change)
+
+        return new
 
     def phase_global(self, inplace=False):
         raise NotImplementedError
