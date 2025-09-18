@@ -2524,7 +2524,7 @@ class AbelianArray(AbelianCommon, BlockCommon):
 
     def to_flat(self):
         """ """
-        cls = get_array_cls(self.symmetry, flat=True)
+        cls = get_array_cls(self.symmetry, self.fermionic, flat=True)
         return cls.from_blocksparse(self, symmetry=self.symmetry)
 
 

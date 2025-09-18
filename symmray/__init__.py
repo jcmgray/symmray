@@ -18,6 +18,10 @@ from .flat_abelian_core import (
     AbelianArrayFlat,
     Z2ArrayFlat,
 )
+from .flat_fermionic_core import (
+    FermionicArrayFlat,
+    Z2FermionicArrayFlat,
+)
 from .hamiltonians import (
     ham_fermi_hubbard_from_edges,
     ham_fermi_hubbard_spinless_from_edges,
@@ -115,6 +119,7 @@ __all__ = (
     "fermi_number_up_local_array",
     "fermi_spin_operator_local_array",
     "FermionicArray",
+    "FermionicArrayFlat",
     "FermionicOperator",
     "flat_linalg",
     "fuse",
@@ -167,6 +172,7 @@ __all__ = (
     "Z2Array",
     "Z2ArrayFlat",
     "Z2FermionicArray",
+    "Z2FermionicArrayFlat",
     "Z2Z2",
     "Z2Z2Array",
     "Z2Z2FermionicArray",

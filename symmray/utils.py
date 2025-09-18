@@ -465,24 +465,27 @@ def get_array_cls(symmetry, fermionic=False, flat=False) -> type:
         # statically defined array classes
         return {
             # blocksparse abelian arrays
-            ("Z2", False, False): sr.Z2Array,
-            ("U1", False, False): sr.U1Array,
-            ("Z2Z2", False, False): sr.Z2Z2Array,
-            ("U1U1", False, False): sr.U1U1Array,
+            ("Z2", 0, 0): sr.Z2Array,
+            ("U1", 0, 0): sr.U1Array,
+            ("Z2Z2", 0, 0): sr.Z2Z2Array,
+            ("U1U1", 0, 0): sr.U1U1Array,
             # blocksparse fermionic arrays
-            ("Z2", True, False): sr.Z2FermionicArray,
-            ("U1", True, False): sr.U1FermionicArray,
-            ("Z2Z2", True, False): sr.Z2Z2FermionicArray,
-            ("U1U1", True, False): sr.U1U1FermionicArray,
+            ("Z2", 1, 0): sr.Z2FermionicArray,
+            ("U1", 1, 0): sr.U1FermionicArray,
+            ("Z2Z2", 1, 0): sr.Z2Z2FermionicArray,
+            ("U1U1", 1, 0): sr.U1U1FermionicArray,
             # flat abelian arrays
-            ("Z2", False, True): sr.Z2ArrayFlat,
+            ("Z2", 0, 1): sr.Z2ArrayFlat,
+            # flat fermionic arrays
+            ("Z2", 1, 1): sr.Z2FermionicArrayFlat,
         }[str(symmetry), fermionic, flat]
     else:
         # symmetry is defined dynamically, and should be supplied as kwarg
         return {
-            (False, False): sr.AbelianArray,
-            (True, False): sr.FermionicArray,
-            (False, True): sr.AbelianArrayFlat,
+            (0, 0): sr.AbelianArray,
+            (1, 0): sr.FermionicArray,
+            (0, 1): sr.AbelianArrayFlat,
+            (1, 1): sr.FermionicArrayFlat,
         }[fermionic, flat]
 
 

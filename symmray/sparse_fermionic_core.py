@@ -104,10 +104,11 @@ def resolve_combined_oddpos(left, right, new):
     new._oddpos = tuple(oddpos)
 
 
-_fermionic_array_slots = AbelianArray.__slots__ + ("_phases", "_oddpos")
+class FermionicCommon:
+    pass
 
 
-class FermionicArray(AbelianArray):
+class FermionicArray(AbelianArray, FermionicCommon):
     """A fermionic block symmetry array.
 
     Parameters
@@ -132,7 +133,7 @@ class FermionicArray(AbelianArray):
         The symmetry of the array, if not using a specific symmetry class.
     """
 
-    __slots__ = _fermionic_array_slots
+    __slots__ = AbelianArray.__slots__ + ("_phases", "_oddpos")
     fermionic = True
     static_symmetry = None
 

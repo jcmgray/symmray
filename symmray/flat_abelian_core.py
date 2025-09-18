@@ -992,7 +992,10 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
     def copy_with(
-        self, sectors=None, blocks=None, indices=None
+        self,
+        sectors=None,
+        blocks=None,
+        indices=None,
     ) -> "AbelianArrayFlat":
         """A copy of this flat array with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
@@ -1011,7 +1014,10 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         return new
 
     def modify(
-        self, sectors=None, blocks=None, indices=None
+        self,
+        sectors=None,
+        blocks=None,
+        indices=None,
     ) -> "AbelianArrayFlat":
         """Modify this flat array in place with some attributes replaced. Note
         that checks are not performed on the new properties, this is intended
@@ -1096,7 +1102,9 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
     @classmethod
     def from_blocksparse(
-        cls, x: AbelianArray, symmetry=None
+        cls,
+        x: AbelianArray,
+        symmetry=None,
     ) -> "AbelianArrayFlat":
         """Create a flat abelian array from a blocksparse abelian array.
 
@@ -1106,7 +1114,9 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             The blocksparse abelian array to convert.
         """
         return cls.from_blocks(
-            blocks=x.blocks, indices=x.duals, symmetry=symmetry
+            blocks=x.blocks,
+            indices=x.duals,
+            symmetry=symmetry or x.symmetry,
         )
 
     @classmethod
@@ -1119,14 +1129,22 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
 
     def to_blocksparse(self) -> AbelianArray:
         """Create a blocksparse abelian array from this flat abelian array."""
+        cls = get_array_cls(
+            self.symmetry,
+            self.fermionic,
+            False,
+        )
+
         blocks = {}
         for i in range(self.num_blocks):
             sector = tuple(map(int, self._sectors[i]))
             block = self._blocks[i]
             blocks[sector] = block
-        cls = get_array_cls(self.symmetry)
+
         return cls.from_blocks(
-            blocks, duals=self.duals, symmetry=self.symmetry
+            blocks,
+            duals=self.duals,
+            symmetry=self.symmetry,
         )
 
     def is_fused(self, ax: int) -> bool:
