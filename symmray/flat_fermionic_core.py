@@ -221,8 +221,28 @@ class FermionicArrayFlat(AbelianArrayFlat):
 
         return new
 
-    def phase_flip(self, *axs, inplace=False):
-        raise NotImplementedError
+    def phase_flip(self, *axs, inplace=False) -> "FermionicArrayFlat":
+        """Flip the phase of all sectors with odd parity at the given axis.
+
+        Parameters
+        ----------
+        ax : int
+            The axis along which to flip the phase.
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArrayFlat
+            The phase-flipped array.
+        """
+        new = self if inplace else self.copy()
+        if not axs:
+            # nothing to do
+            return new
+        flip_phases = (-1) ** ar.do("sum", new._sectors[:, axs], axis=1)
+        new.modify(phases=new.phases * flip_phases)
+        return new
 
     def phase_transpose(self, axes=None, inplace=False):
         raise NotImplementedError

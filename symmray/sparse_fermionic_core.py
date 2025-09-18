@@ -249,7 +249,7 @@ class FermionicArray(AbelianArray, FermionicCommon):
             self, indices=indices, blocks=blocks, charge=charge
         )
 
-    def phase_sync(self, inplace=False):
+    def phase_sync(self, inplace=False) -> "FermionicArray":
         """Multiply all lazy phases into the block arrays.
 
         Parameters
@@ -278,7 +278,7 @@ class FermionicArray(AbelianArray, FermionicCommon):
 
         return new
 
-    def phase_flip(self, *axs, inplace=False):
+    def phase_flip(self, *axs, inplace=False) -> "FermionicArray":
         """Flip the phase of all sectors with odd parity at the given axis.
 
         Parameters
