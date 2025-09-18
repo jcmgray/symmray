@@ -217,7 +217,7 @@ class FermionicArrayFlat(AbelianArrayFlat):
         new._blocks = (
             new._blocks * new._phases[(slice(None),) + (None,) * (new.ndim)]
         )
-        new._phases = ar.do("ones", self.num_blocks, like=new._phases)
+        new._phases = ar.do("ones", new.num_blocks, like=new._phases)
 
         return new
 

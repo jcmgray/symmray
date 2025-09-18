@@ -938,7 +938,8 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         )
 
         if DEBUG:
-            self.check()
+            # might not have completed fermionic setup yet
+            AbelianArrayFlat.check(self)
 
     @property
     def order(self) -> int:
