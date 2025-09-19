@@ -2,7 +2,7 @@ import autoray as ar
 
 from .flat_abelian_core import AbelianArrayFlat
 from .interface import tensordot
-from .sparse_fermionic_core import FermionicArray
+from .sparse_fermionic_core import FermionicArray, FermionicCommon
 from .symmetries import get_symmetry
 
 
@@ -46,7 +46,7 @@ def perm_to_swaps(perm):
     return tuple(swaps)
 
 
-class FermionicArrayFlat(AbelianArrayFlat):
+class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
     __slots__ = AbelianArrayFlat.__slots__ + ("_phases", "_oddpos")
     fermionic = True
     static_symmetry = None
@@ -69,7 +69,7 @@ class FermionicArrayFlat(AbelianArrayFlat):
         )
 
         if phases is None:
-            self._phases = ar.do("ones", self.num_blocks, like=self._blocks)
+            self._phases = None
         elif hasattr(phases, "shape"):
             self._phases = phases
         else:
@@ -81,22 +81,28 @@ class FermionicArrayFlat(AbelianArrayFlat):
     @property
     def phases(self):
         """The lazy phases for each block."""
+        if self._phases is None:
+            self._phases = ar.do("ones", self.num_blocks, like=self._blocks)
         return self._phases
 
     def check(self):
         """Check the internal consistency of the array."""
         AbelianArrayFlat.check(self)
-        assert self._phases.shape == (self.num_blocks,)
-        assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
+        if self._phases is not None:
+            assert self._phases.shape == (self.num_blocks,)
+            assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
 
     def copy(self, deep=False) -> "FermionicArrayFlat":
         """Create a copy of the array."""
         new = AbelianArrayFlat.copy(self, deep=deep)
 
-        if deep:
-            new._phases = ar.do("copy", self._phases, like=self.backend)
+        if self._phases is not None:
+            if deep:
+                new._phases = ar.do("copy", self._phases, like=self.backend)
+            else:
+                new._phases = self._phases
         else:
-            new._phases = self._phases
+            new._phases = None
 
         return new
 
@@ -230,11 +236,15 @@ class FermionicArrayFlat(AbelianArrayFlat):
             The equivalent fermionic blocksparse array.
         """
         new = AbelianArrayFlat.to_blocksparse(self)
-        phases = {
-            sector: int(phase)
-            for sector, phase in zip(new.sectors, self._phases)
-            if phase != 1
-        }
+
+        if self._phases is None:
+            phases = {}
+        else:
+            phases = {
+                sector: int(phase)
+                for sector, phase in zip(new.sectors, self._phases)
+                if phase != 1
+            }
         new.modify(phases=phases, oddpos=self._oddpos)
         return new
 
@@ -254,10 +264,13 @@ class FermionicArrayFlat(AbelianArrayFlat):
         new = self if inplace else self.copy()
 
         # do broadcasted multiply to resolve phases
-        new._blocks = (
-            new._blocks * new._phases[(slice(None),) + (None,) * (new.ndim)]
-        )
-        new._phases = ar.do("ones", new.num_blocks, like=new._phases)
+        # XXX: use modify and phases="reset"?
+        if new._phases is not None:
+            new._blocks = (
+                new._blocks
+                * new._phases[(slice(None),) + (None,) * (new.ndim)]
+            )
+            new._phases = None
 
         return new
 
@@ -323,7 +336,11 @@ class FermionicArrayFlat(AbelianArrayFlat):
 
         # absorb into current phases
         phase_change = (-1) ** nswap
-        new.modify(phases=new._phases * phase_change)
+
+        if new._phases is None:
+            new._phases = phase_change
+        else:
+            new.modify(phases=new._phases * phase_change)
 
         return new
 
@@ -345,7 +362,7 @@ class FermionicArrayFlat(AbelianArrayFlat):
         FermionicArray
         """
         new = self if inplace else self.copy()
-        new.modify(phases=-new._phases)
+        new.modify(phases=-new.phases)
         return new
 
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
@@ -439,7 +456,12 @@ class FermionicArrayFlat(AbelianArrayFlat):
         return self.dagger()
 
     def fuse(self, *axes_groups, expand_empty=True, inplace=False):
-        raise NotImplementedError
+        return FermionicCommon.fuse(
+            self,
+            *axes_groups,
+            expand_empty=expand_empty,
+            inplace=inplace,
+        )
 
     def unfuse(self, axis, inplace=False):
         raise NotImplementedError

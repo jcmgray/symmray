@@ -211,3 +211,44 @@ def test_conj(
     y = fxc.to_blocksparse()
     y.check()
     assert y.allclose(xc)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize(
+    "shape,axes_groups",
+    [
+        ((2, 4, 6, 4), ((0, 1), (2, 3))),
+        ((2, 4, 6, 4), ((0, 2), (1, 3))),
+        ((2, 4, 6, 4), ((0, 3), (1, 2))),
+        ((2, 4, 6, 4, 6), ((0, 1), (2, 3, 4))),
+        ((2, 4, 6, 4, 6), ((0, 2), (1, 3, 4))),
+        ((2, 4, 6, 4, 6), ((0, 4), (1, 2, 3))),
+        ((2, 4, 6, 4, 6), ((0, 1, 2), (3, 4))),
+        ((2, 4, 6, 4, 6), ((0, 1, 3), (2, 4))),
+        ((2, 4, 6, 4, 6), ((0, 1, 4), (2, 3))),
+    ],
+)
+def test_fuse(
+    symmetry,
+    charge,
+    shape,
+    axes_groups,
+):
+    if charge:
+        pytest.xfail("oddpos not implemented yet.")
+
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=shape,
+        charge=charge,
+        fermionic=True,
+        seed=42,
+    )
+    x_fused = x.fuse(*axes_groups, inplace=False)
+    fx = x.to_flat()
+    fx_fused = fx.fuse(*axes_groups, inplace=False)
+    fx_fused.check()
+    y = fx_fused.to_blocksparse()
+    y.check()
+    assert y.allclose(x_fused)

@@ -105,7 +105,91 @@ def resolve_combined_oddpos(left, right, new):
 
 
 class FermionicCommon:
-    pass
+    def fuse(self, *axes_groups, expand_empty=True, inplace=False):
+        """Fermionic fusion of axes groups. This includes three sources of
+        phase changes:
+
+        1. Initial fermionic transpose to make each group contiguous.
+        2. Flipping of non dual indices, if merged group is overall dual.
+        3. Virtual transpose within a group, if merged group is overall dual.
+
+        A grouped axis is overall dual if the first axis in the group is dual.
+
+        Parameters
+        ----------
+        axes_groups : Sequence[Sequence[int]]
+            The axes groups to fuse. See `AbelianArray.fuse` for more details.
+        expand_empty : bool, optional
+            Whether to expand empty groups into new axes.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        from symmray.sparse_abelian_core import calc_fuse_group_info
+
+        x = self if inplace else self.copy()
+
+        # handle empty groups and ensure hashable
+        _axes_groups = []
+        axes_expand = []
+        for ax, group in enumerate(axes_groups):
+            group = tuple(group)
+            if group:
+                _axes_groups.append(group)
+            else:
+                axes_expand.append(ax)
+        axes_groups = tuple(_axes_groups)
+
+        if axes_groups:
+            # first make groups into contiguous
+            # blocks using fermionic transpose
+            perm = calc_fuse_group_info(axes_groups, x.duals)[3]
+            # this is the first step which introduces phases
+            x.transpose(perm, inplace=True)
+            # update groups to reflect new axes
+            axes_groups = tuple(tuple(map(perm.index, g)) for g in axes_groups)
+
+            # process each group with another two sources of phase changes:
+            axes_flip = []
+            virtual_perm = None
+            for group in axes_groups:
+                if x.indices[group[0]].dual:
+                    # overall dual index:
+                    # 1. flip non dual sub indices
+                    for ax in group:
+                        if not x.indices[ax].dual:
+                            axes_flip.append(ax)
+
+                    # 2. virtual transpose within group
+                    if virtual_perm is None:
+                        virtual_perm = list(range(x.ndim))
+                    for axi, axj in zip(group, reversed(group)):
+                        virtual_perm[axi] = axj
+
+            if axes_flip:
+                x.phase_flip(*axes_flip, inplace=True)
+
+            # if the fused axes is overall bra, need phases from effective flip
+            #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
+            #   but actual array layout should not be flipped, so do virtually
+            if virtual_perm is not None:
+                x.phase_transpose(tuple(virtual_perm), inplace=True)
+
+            # insert phases
+            x.phase_sync(inplace=True)
+
+            # so we can do the actual block concatenations
+            x._fuse_core(*axes_groups, inplace=True)
+
+        if expand_empty and axes_expand:
+            g0 = min(g for groups in axes_groups for g in groups)
+            for ax in axes_expand:
+                x.expand_dims(g0 + ax, inplace=True)
+
+        return x
 
 
 class FermionicArray(AbelianArray, FermionicCommon):
@@ -631,68 +715,12 @@ class FermionicArray(AbelianArray, FermionicCommon):
         -------
         FermionicArray
         """
-        from symmray.sparse_abelian_core import calc_fuse_group_info
-
-        x = self if inplace else self.copy()
-
-        # handle empty groups and ensure hashable
-        _axes_groups = []
-        axes_expand = []
-        for ax, group in enumerate(axes_groups):
-            group = tuple(group)
-            if group:
-                _axes_groups.append(group)
-            else:
-                axes_expand.append(ax)
-        axes_groups = tuple(_axes_groups)
-
-        if axes_groups:
-            # first make groups into contiguous
-            # blocks using fermionic transpose
-            perm = calc_fuse_group_info(axes_groups, x.duals)[3]
-            # this is the first step which introduces phases
-            x.transpose(perm, inplace=True)
-            # update groups to reflect new axes
-            axes_groups = tuple(tuple(map(perm.index, g)) for g in axes_groups)
-
-            # process each group with another two sources of phase changes:
-            axes_flip = []
-            virtual_perm = None
-            for group in axes_groups:
-                if x.indices[group[0]].dual:
-                    # overall dual index:
-                    # 1. flip non dual sub indices
-                    for ax in group:
-                        if not x.indices[ax].dual:
-                            axes_flip.append(ax)
-
-                    # 2. virtual transpose within group
-                    if virtual_perm is None:
-                        virtual_perm = list(range(x.ndim))
-                    for axi, axj in zip(group, reversed(group)):
-                        virtual_perm[axi] = axj
-
-            if axes_flip:
-                x.phase_flip(*axes_flip, inplace=True)
-
-            # if the fused axes is overall bra, need phases from effective flip
-            #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
-            #   but actual array layout should not be flipped, so do virtually
-            if virtual_perm is not None:
-                x.phase_transpose(tuple(virtual_perm), inplace=True)
-
-            # insert phases
-            x.phase_sync(inplace=True)
-
-            # so we can do the actual block concatenations
-            x._fuse_core(*axes_groups, inplace=True)
-
-        if expand_empty and axes_expand:
-            g0 = min(g for groups in axes_groups for g in groups)
-            for ax in axes_expand:
-                x.expand_dims(g0 + ax, inplace=True)
-
-        return x
+        return FermionicCommon.fuse(
+            self,
+            *axes_groups,
+            expand_empty=expand_empty,
+            inplace=inplace,
+        )
 
     def unfuse(self, axis, inplace=False):
         """Fermionic unfuse, which includes two sources of phase changes:
