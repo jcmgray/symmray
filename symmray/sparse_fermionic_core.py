@@ -499,9 +499,12 @@ class FermionicArray(AbelianArray, FermionicCommon):
 
         new_indices = tuple(ix.conj() for ix in new.indices)
 
-        axs_conj = tuple(
-            ax for ax, ix in enumerate(new_indices) if not ix.dual
-        )
+        if phase_dual:
+            axs_conj = tuple(
+                ax for ax, ix in enumerate(new_indices) if not ix.dual
+            )
+        else:
+            axs_conj = None
 
         for sector, array in new.get_sector_block_pairs():
             # conjugate the actual array

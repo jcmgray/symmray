@@ -308,17 +308,18 @@ class FermionicArrayFlat(AbelianArrayFlat):
 
         N = new.ndim
         if axes is None:
-            axes = tuple(reversed(range(N)))
+            # full reversal, shortcut to count the swaps
+            nswap = ar.do("sum", new.sectors % 2, axis=1) // 2
+        else:
+            # convert permutation to sequence of pairwise neighboring swaps
+            swaps = perm_to_swaps(axes)
 
-        # convert permutation to sequence of pairwise neighboring swaps
-        swaps = perm_to_swaps(axes)
-
-        # count how many swaps of odd charges there are
-        parities = [self.sectors[:, i] % 2 for i in range(N)]
-        nswap = 0
-        for il, ir in swaps:
-            nswap = nswap + (parities[il] * parities[ir])
-            parities[il], parities[ir] = parities[ir], parities[il]
+            # count how many swaps of odd charges there are
+            parities = [new.sectors[:, i] % 2 for i in range(N)]
+            nswap = 0
+            for il, ir in swaps:
+                nswap = nswap + (parities[il] * parities[ir])
+                parities[il], parities[ir] = parities[ir], parities[il]
 
         # absorb into current phases
         phase_change = (-1) ** nswap
@@ -376,19 +377,58 @@ class FermionicArrayFlat(AbelianArrayFlat):
         """
         new = self if inplace else self.copy()
 
-        if axes is None:
-            axes = tuple(reversed(range(new.ndim)))
-
         if phase:
             # perform the phase accumulation separately first
             new.phase_transpose(axes, inplace=True)
 
-        AbelianArrayFlat.transpose(new, axes, inplace=True)
-
-        return new
+        # transpose the actual arrays
+        return AbelianArrayFlat.transpose(new, axes, inplace=True)
 
     def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
-        raise NotImplementedError
+        """Conjugate this flat fermionic array. By default this include phases
+        from both the virtual flipping of all axes, but *not* the conjugation
+        of dual indices, such that::
+
+            (
+                tensordot_fermionic(x.conj(), x, ndim) ==
+                tensordot_fermionic(x, x.conj(), ndim)
+            )
+
+        If all indices have matching dualness (i.e. all bra or all ket), *or*
+        you set `phase_dual=True` then the above contractions will also be
+        equal to ``x.norm() ** 2``.
+
+        Parameters
+        ----------
+        phase_permutation : bool, optional
+            Whether to flip the phase of sectors whose odd charges undergo a
+            odd permutation due to *virtually* flipping the order of axes, by
+            default True.
+        phase_dual : bool, optional
+            Whether to flip the phase of dual indices, by default False. If a
+            FermionicArrayFlat has a mix of dual and non-dual indices, and you
+            are explicitly forming the norm, you may want to set this to True.
+            But if it is part of a large tensor network you only need to flip
+            the phase of true 'outer' dual indices.
+
+        Returns
+        -------
+        FermionicArrayFlat
+        """
+        new = self if inplace else self.copy()
+
+        if phase_permutation:
+            # perform the phase accumulation separately first
+            new.phase_transpose(inplace=True)
+
+        if phase_dual:
+            axs_conj = tuple(
+                ax for ax, ix in enumerate(new.indices) if ix.dual
+            )
+            new.phase_flip(*axs_conj, inplace=True)
+
+        # conjugate the actual arrays
+        return AbelianArrayFlat.conj(new, inplace=True)
 
     def dagger(self, phase_dual=False, inplace=False):
         raise NotImplementedError

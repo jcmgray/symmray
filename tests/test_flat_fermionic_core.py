@@ -172,3 +172,42 @@ def test_transpose(
     y = fxt.to_blocksparse()
     y.check()
     assert y.allclose(xt)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", [42, 43, 44])
+@pytest.mark.parametrize("sync", [False, True])
+@pytest.mark.parametrize("phase_permutation", [False, True])
+@pytest.mark.parametrize("phase_dual", [False, True])
+def test_conj(
+    symmetry,
+    charge,
+    seed,
+    sync,
+    phase_permutation,
+    phase_dual,
+):
+    if charge:
+        pytest.xfail("oddpos not implemented yet.")
+
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        (2, 4, 6),
+        charge=charge,
+        fermionic=True,
+        seed=seed,
+    )
+    # add some non-trivial phases
+    x.transpose((2, 0, 1), inplace=True)
+    assert x.phases
+    xc = x.conj(phase_permutation=phase_permutation, phase_dual=phase_dual)
+
+    fx = x.to_flat()
+    fxc = fx.conj(phase_permutation=phase_permutation, phase_dual=phase_dual)
+    fxc.check()
+    if sync:
+        fxc.phase_sync(inplace=True)
+    y = fxc.to_blocksparse()
+    y.check()
+    assert y.allclose(xc)
