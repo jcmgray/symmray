@@ -1,3 +1,6 @@
+"""Utility functions specifically for testing."""
+
+
 def rand_valid_tensordot(
     symmetry,
     ndim_a=None,

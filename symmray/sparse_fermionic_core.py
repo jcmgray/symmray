@@ -1,3 +1,5 @@
+"""Fermionic symmetric arrays with block sparse backend."""
+
 import autoray as ar
 
 from .abelian_common import AbelianCommon

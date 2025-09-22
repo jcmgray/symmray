@@ -1,3 +1,6 @@
+"""General interface for index objects."""
+
+
 class Index:
     @property
     def dual(self) -> bool:

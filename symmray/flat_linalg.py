@@ -1,3 +1,5 @@
+"""Linear algebra functions for flat arrays."""
+
 import autoray as ar
 
 from .flat_abelian_core import AbelianArrayFlat, FlatIndex, FlatVector

@@ -1,4 +1,4 @@
-"""Blocks arrays with an abelian symmetry constraint."""
+"""Abelian symmetric arrays with block sparse backend."""
 
 import autoray as ar
 

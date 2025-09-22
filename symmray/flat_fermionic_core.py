@@ -1,3 +1,5 @@
+"""Fermionic symmetric arrays with flat backend."""
+
 import autoray as ar
 
 from .flat_abelian_core import AbelianArrayFlat

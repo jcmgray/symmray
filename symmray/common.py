@@ -1,3 +1,5 @@
+"""Common interfaces for all symmray array objects."""
+
 _symmray_namespace = None
 
 

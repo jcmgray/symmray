@@ -1,3 +1,5 @@
+"""Index objects for flat arrays."""
+
 import autoray as ar
 
 from .index_common import Index, SubInfo

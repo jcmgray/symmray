@@ -1,4 +1,4 @@
-"""Basic classes and functions for array like objects consisting of blocks."""
+"""Basic classes and functions for block sparse backend objects."""
 
 import functools
 import operator

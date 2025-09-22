@@ -1,12 +1,13 @@
-"""Flat Abelian array implementation, branchless design to allow static
+"""Abelian symmetric arrays with flat backend.
+
+Flat backend with branchless design to allow static
 computational graphs that can be easily compiled and vectorized etc.
 
 TODO:
 
-- [x] store size,ncharges in FlatIndex and remove subshape?
-- [x] implement tensordot without fusing?
 - [ ] cache patterns and reshapers/slicers
 - [ ] cache properties, funcs
+- [ ] roll our own repeat and rearrange to avoid einops dependency
 
 """
 

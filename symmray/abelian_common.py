@@ -6,6 +6,7 @@ import functools
 
 from autoray.lazy.core import find_full_reshape
 
+from .index_common import Index
 from .symmetries import Symmetry, get_symmetry
 
 
@@ -213,12 +214,12 @@ class AbelianCommon:
         return self._symmetry
 
     @property
-    def indices(self) -> tuple:
+    def indices(self) -> tuple[Index, ...]:
         """The indices of the array."""
         return self._indices
 
     @property
-    def duals(self):
+    def duals(self) -> tuple[bool, ...]:
         """The dual-ness of each index."""
         return tuple(ix.dual for ix in self._indices)
 
@@ -235,20 +236,20 @@ class AbelianCommon:
         return get_symmetry(symmetry)
 
     @property
-    def signature(self):
+    def signature(self) -> str:
         return "".join("-" if f else "+" for f in self.duals)
 
     @property
-    def T(self):
+    def T(self) -> "AbelianCommon":
         """The transpose of the block array."""
         return self.transpose()
 
-    def dagger(self, inplace=False):
+    def dagger(self, inplace=False) -> "AbelianCommon":
         """Return the adjoint of this block array."""
         return self.conj(inplace=inplace).transpose(inplace=True)
 
     @property
-    def H(self):
+    def H(self) -> "AbelianCommon":
         return self.dagger()
 
     def fuse(
@@ -257,7 +258,7 @@ class AbelianCommon:
         expand_empty=True,
         inplace=False,
         **kwargs,
-    ):
+    ) -> "AbelianCommon":
         """Fuse the given group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
         the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
@@ -318,7 +319,7 @@ class AbelianCommon:
 
         return xf
 
-    def unfuse_all(self, inplace=False):
+    def unfuse_all(self, inplace=False) -> "AbelianCommon":
         """Unfuse all indices that carry subindex information, likely from a
         fusing operation.
 
@@ -337,7 +338,7 @@ class AbelianCommon:
                 new.unfuse(ax, inplace=True)
         return new
 
-    def reshape(self, newshape, inplace=False):
+    def reshape(self, newshape, inplace=False) -> "AbelianCommon":
         """Reshape this abelian array to ``newshape``, assuming it can be done
         by any mix of fusing, unfusing, and expanding new axes.
 

@@ -1,3 +1,6 @@
+"""Functions to create full tensor networks backed by `symmray`."""
+
+
 def parse_edges_to_site_info(
     edges,
     bond_dim,

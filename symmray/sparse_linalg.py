@@ -1,3 +1,5 @@
+"""Linear algebra functions for block sparse arrays."""
+
 import functools
 
 import autoray as ar
