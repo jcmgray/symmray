@@ -37,9 +37,27 @@ class FlatCommon:
         return ar.do("shape", self._blocks, like=self.backend)
 
     @property
+    def shape_block(self) -> tuple[int, ...]:
+        """Get the shape of an individual block."""
+        return self._get_shape_blocks_full()[1:]
+
+    @property
+    def ndim(self) -> int:
+        """Get the number of effective dimensions of the array."""
+        return len(self.shape_block)
+
+    @property
     def num_blocks(self) -> int:
         """Get the number of blocks in the array."""
         return self._get_shape_blocks_full()[0]
+
+    def get_any_array(self):
+        """Get an arbitrary (the first) block from the stack."""
+        return self._blocks[0]
+
+    def is_zero(self, tol=1e-12):
+        """Check if all blocks are zero up to a tolerance."""
+        return ar.do("allclose", self.blocks, 0.0, atol=tol, like=self.backend)
 
     def get_params(self):
         """Interface for getting underlying arrays."""

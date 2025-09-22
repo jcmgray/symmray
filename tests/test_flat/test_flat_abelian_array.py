@@ -251,7 +251,7 @@ def test_vecmat(symmetry, seed, charge_x, charge_y):
 def test_build_cyclic_keys_conserve(ndim, order, seed):
     import numpy as np
 
-    from symmray.flat.flat_abelian_array import (
+    from symmray.flat.flat_array import (
         build_cyclic_keys_conserve,
         lexsort_sectors,
         zn_combine,
@@ -280,7 +280,7 @@ def test_build_cyclic_keys_conserve(ndim, order, seed):
 def test_build_cyclic_keys_by_charge(ndim, order, seed):
     import numpy as np
 
-    from symmray.flat.flat_abelian_array import (
+    from symmray.flat.flat_array import (
         build_cyclic_keys_by_charge,
         lexsort_sectors,
         zn_combine,

@@ -11,7 +11,9 @@ from ..linalg import (
     svd_truncated,
 )
 from ..utils import DEBUG
-from .flat_abelian_array import AbelianArrayFlat, FlatIndex, FlatVector
+from .flat_abelian_array import AbelianArrayFlat
+from .flat_base import FlatVector
+from .flat_index import FlatIndex
 
 
 @qr.register(AbelianArrayFlat)

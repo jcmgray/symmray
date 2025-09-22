@@ -218,6 +218,12 @@ class AbelianCommon:
         """The indices of the array."""
         return self._indices
 
+    def is_fused(self, ax: int) -> bool:
+        """Does axis `ax` carry subindex information, i.e., is it a fused
+        index?
+        """
+        return self._indices[ax].subinfo is not None
+
     @property
     def duals(self) -> tuple[bool, ...]:
         """The dual-ness of each index."""
@@ -238,6 +244,12 @@ class AbelianCommon:
     @property
     def signature(self) -> str:
         return "".join("-" if f else "+" for f in self.duals)
+
+    def _modify_or_copy(self, inplace=False, **kwargs) -> "AbelianCommon":
+        if inplace:
+            return self.modify(**kwargs)
+        else:
+            return self.copy_with(**kwargs)
 
     @property
     def T(self) -> "AbelianCommon":

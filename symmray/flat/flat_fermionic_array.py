@@ -2,10 +2,15 @@
 
 import autoray as ar
 
+from ..abelian_common import AbelianCommon
+from ..common import SymmrayCommon
+from ..fermionic_common import FermionicCommon
 from ..interface import tensordot
-from ..sparse.sparse_fermionic_array import FermionicArray, FermionicCommon
+from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
-from .flat_abelian_array import AbelianArrayFlat
+from ..utils import DEBUG
+from .flat_array import FlatArrayCommon
+from .flat_base import FlatCommon
 
 
 def perm_to_swaps(perm):
@@ -48,8 +53,22 @@ def perm_to_swaps(perm):
     return tuple(swaps)
 
 
-class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
-    __slots__ = AbelianArrayFlat.__slots__ + ("_phases", "_oddpos")
+class FermionicArrayFlat(
+    FermionicCommon,
+    FlatArrayCommon,
+    FlatCommon,
+    AbelianCommon,
+    SymmrayCommon,
+):
+    __slots__ = (
+        "_blocks",
+        "_sectors",
+        "_indices",
+        "_symmetry",
+        "backend",
+        "_phases",
+        "_oddpos",
+    )
     fermionic = True
     static_symmetry = None
 
@@ -62,8 +81,7 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         oddpos=(),
         symmetry=None,
     ):
-        AbelianArrayFlat.__init__(
-            self,
+        self._init_flatarraycommon(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -80,6 +98,9 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         assert not oddpos
         self._oddpos = ()
 
+        if DEBUG:
+            self.check()
+
     @property
     def phases(self):
         """The phases for each block."""
@@ -89,14 +110,14 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
 
     def check(self):
         """Check the internal consistency of the array."""
-        AbelianArrayFlat.check(self)
+        self._check_abelian()
         if self._phases is not None:
-            assert self._phases.shape == (self.num_blocks,)
+            assert ar.do("shape", self._phases) == (self.num_blocks,)
             assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
 
     def copy(self, deep=False) -> "FermionicArrayFlat":
         """Create a copy of the array."""
-        new = AbelianArrayFlat.copy(self, deep=deep)
+        new = self._copy_flatarraycommon(deep=deep)
 
         if self._phases is not None:
             if deep:
@@ -119,8 +140,7 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         Note that checks are not performed on the new properties, this is
         intended for internal use.
         """
-        new = AbelianArrayFlat.copy_with(
-            self,
+        new = self._copy_with_flatarraycommon(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -139,7 +159,11 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         replaced. Note that checks are not performed on the new properties,
         this is intended for internal use.
         """
-        AbelianArrayFlat.modify(self, sectors, blocks, indices)
+        self._modify_flatarraycommon(
+            sectors=sectors,
+            blocks=blocks,
+            indices=indices,
+        )
         if phases is not None:
             if isinstance(phases, str):
                 if phases == "reset":
@@ -149,23 +173,10 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
             else:
                 self._phases = phases
 
-        if isinstance(self._phases, int):
-            raise ValueError
+        if DEBUG:
+            self.check()
 
         return self
-
-    def _modify_or_copy(
-        self,
-        sectors=None,
-        blocks=None,
-        indices=None,
-        phases=None,
-        inplace=False,
-    ) -> "FermionicArrayFlat":
-        if inplace:
-            return self.modify(sectors, blocks, indices, phases)
-        else:
-            return self.copy_with(sectors, blocks, indices, phases)
 
     @classmethod
     def from_blocks(
@@ -247,7 +258,7 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         FermionicArray
             The equivalent fermionic blocksparse array.
         """
-        new = AbelianArrayFlat.to_blocksparse(self)
+        new = self._to_blocksparse_flatarraycommon()
 
         if self._phases is None:
             phases = {}
@@ -259,6 +270,48 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
             }
         new.modify(phases=phases, oddpos=self._oddpos)
         return new
+
+    def sort_stack(
+        self,
+        axes=None,
+        all_axes=None,
+        inplace=False,
+    ) -> "FermionicArrayFlat":
+        """Lexicgraphic sort the stack of sectors and blocks according to the
+        values of charges in the specified axes, optionally filling in the rest
+        of the axes with the remaining axes in the order they appear.
+
+        Parameters
+        ----------
+        axes : int | tuple[int, ...], optional
+            The axes to sort by. If a single integer is given, it will be
+            interpreted as the axis to sort by. If a tuple of integers is
+            given, it will be interpreted as the axes to sort by in order.
+            Default is None, if all_axes is also None or True, this will sort
+            all axes in their current order.
+        all_axes : bool, optional
+            Whether to include all non-specified axes as tie-breakers, after
+            the specified axes. If ``None``, the default, this will be True
+            if `axes` is not supplied explicitly, and False otherwise.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+            Default is False, which returns a new array.
+        """
+        kord = self.get_sorting_indices(axes=axes, all_axes=all_axes)
+
+        new_sectors = self._sectors[kord]
+        new_blocks = self._blocks[kord]
+        if self._phases is None:
+            new_phases = None
+        else:
+            new_phases = self._phases[kord]
+
+        return self._modify_or_copy(
+            sectors=new_sectors,
+            blocks=new_blocks,
+            phases=new_phases,
+            inplace=inplace,
+        )
 
     def phase_sync(self, inplace=False) -> "FermionicArrayFlat":
         """Multiply all lazy phases into the block arrays.
@@ -418,7 +471,7 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
             new.phase_transpose(axes, inplace=True)
 
         # transpose the actual arrays
-        return AbelianArrayFlat.transpose(new, axes, inplace=True)
+        return new._transpose_flatarraycommon(axes, inplace=True)
 
     def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
         """Conjugate this flat fermionic array. By default this include phases
@@ -464,71 +517,25 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
             new.phase_flip(*axs_conj, inplace=True)
 
         # conjugate the actual arrays
-        return AbelianArrayFlat.conj(new, inplace=True)
+        return new._conj_flatarraycommon(inplace=True)
 
     def dagger(self, phase_dual=False, inplace=False):
-        raise NotImplementedError
-
-    @property
-    def H(self):
         """Fermionic conjugate transpose."""
-        return self.dagger()
-
-    def fuse(
-        self, *axes_groups, expand_empty=True, inplace=False
-    ) -> "FermionicArrayFlat":
-        """Fermionic fusion of axes groups. This includes three sources of
-        phase changes:
-
-        1. Initial fermionic transpose to make each group contiguous.
-        2. Flipping of non dual indices, if merged group is overall dual.
-        3. Virtual transpose within a group, if merged group is overall dual.
-
-        A grouped axis is overall dual if the first axis in the group is dual.
-
-        Parameters
-        ----------
-        axes_groups : Sequence[Sequence[int]]
-            The axes groups to fuse. See `AbelianArray.fuse` for more details.
-        expand_empty : bool, optional
-            Whether to expand empty groups into new axes.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        FermionicArrayFlat
-        """
-        return FermionicCommon.fuse(
-            self,
-            *axes_groups,
-            expand_empty=expand_empty,
-            inplace=inplace,
-        )
-
-    def unfuse(self, axis, inplace=False):
-        """Fermionic unfuse, which includes two sources of phase changes:
-
-        1. Flipping of non dual sub indices, if overall index is dual.
-        2. Virtual transpose within group, if overall index is dual.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to unfuse.
-        """
-        return FermionicCommon.unfuse(self, axis, inplace=inplace)
-
-    def einsum(self, eq, preserve_array=False):
         raise NotImplementedError
 
-    def __matmul__(self, other):
+    def einsum(self, eq: str, preserve_array=False):
+        raise NotImplementedError
+
+    def __matmul__(self, other: "FermionicArrayFlat"):
         raise NotImplementedError
 
     def to_dense(self):
         raise NotImplementedError
 
-    def allclose(self, other, **kwargs):
+    def allclose(self, other: "FermionicArrayFlat", **kwargs):
+        raise NotImplementedError
+
+    def test_allclose(self, other: "FermionicArrayFlat", **kwargs):
         raise NotImplementedError
 
     def trace(self):

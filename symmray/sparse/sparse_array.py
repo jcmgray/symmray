@@ -583,12 +583,6 @@ class SparseArrayCommon:
     def modify(self, indices=None, charge=None, blocks=None):
         pass
 
-    def _modify_or_copy(self, inplace=False, **kwargs):
-        if inplace:
-            return self.modify(**kwargs)
-        else:
-            return self.copy_with(**kwargs)
-
     @property
     def sizes(self):
         """The sizes of each index."""
@@ -618,12 +612,6 @@ class SparseArrayCommon:
     def ndim(self):
         """The number of dimensions/indices."""
         return len(self._indices)
-
-    def is_fused(self, ax):
-        """Does axis `ax` carry subindex information, i.e., is it a fused
-        index?
-        """
-        return self.indices[ax].subinfo is not None
 
     def sync_charges(self, inplace=False):
         """Given the blocks currently present, adjust the index chargemaps to
