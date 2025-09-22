@@ -1,7 +1,8 @@
+from .index_common import Index, SubInfo
 from .utils import hasher
 
 
-class BlockIndex:
+class BlockIndex(Index):
     """An index of a block sparse, abelian symmetric tensor. This is intended
     to be used immutably.
 
@@ -35,21 +36,6 @@ class BlockIndex:
     def chargemap(self):
         """A mapping from charge to size."""
         return self._chargemap
-
-    @property
-    def dual(self):
-        """Whether the index flows 'outwards' / (+ve) / ket-like = ``False`` or
-        'inwards' / (-ve) / bra-like= ``True``. The charge sign is given by
-        ``(-1) ** dual``.
-        """
-        return self._dual
-
-    @property
-    def subinfo(self):
-        """Information about the subindices of this index and their extents if
-        this index was formed from fusing.
-        """
-        return self._subinfo
 
     @property
     def subshape(self):
@@ -255,7 +241,7 @@ def dicts_dont_conflict(da, db):
     return True
 
 
-class SubIndexInfo:
+class SubIndexInfo(SubInfo):
     """Holder class for storing the relevant information for unfusing.
 
     Parameters
@@ -274,11 +260,6 @@ class SubIndexInfo:
         self._indices = indices
         self._extents = extents
         self._hashkey = None
-
-    @property
-    def indices(self):
-        """The indices that were fused to make this index."""
-        return self._indices
 
     @property
     def extents(self):
