@@ -27,7 +27,7 @@ class FermionicCommon:
         -------
         FermionicArray
         """
-        from .sparse.sparse_common import calc_fuse_group_info
+        from .sparse.sparse_array import calc_fuse_group_info
 
         x = self if inplace else self.copy()
 
@@ -186,14 +186,14 @@ class FermionicCommon:
         )
 
     def test_allclose(self, other, **allclose_opts):
-        """Assert that this ``BlockSparseArrayCommon`` is close to another,
+        """Assert that this ``SparseArrayCommon`` is close to another,
         that is, has all the same sectors, and the corresponding arrays are
         close. Unlike `allclose`, this raises an AssertionError with details
         if not.
 
         Parameters
         ----------
-        other : BlockSparseArrayCommon
+        other : SparseArrayCommon
             The other array to compare to.
         allclose_opts
             Keyword arguments to pass to `allclose`.

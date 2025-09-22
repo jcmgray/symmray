@@ -9,13 +9,13 @@ from ..fermionic_local_operators import FermionicOperator
 from ..interface import tensordot
 from ..symmetries import calc_phase_permutation, get_symmetry
 from ..utils import DEBUG
-from .sparse_base import BlockCommon
-from .sparse_common import (
-    BlockSparseArrayCommon,
+from .sparse_array import (
+    SparseArrayCommon,
     parse_tensordot_axes,
     permuted,
     tensordot_abelian,
 )
+from .sparse_base import BlockCommon
 
 
 def argsort(seq):
@@ -112,7 +112,7 @@ def resolve_combined_oddpos(left, right, new):
 
 class FermionicArray(
     FermionicCommon,
-    BlockSparseArrayCommon,
+    SparseArrayCommon,
     AbelianCommon,
     BlockCommon,
     SymmrayCommon,
@@ -161,7 +161,7 @@ class FermionicArray(
         oddpos=None,
         symmetry=None,
     ):
-        self._init_blocksparsearraycommon(
+        self._init_sparsearraycommon(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -207,7 +207,7 @@ class FermionicArray(
         FermionicArray
             The copied array.
         """
-        new = self._copy_blocksparsearraycommon()
+        new = self._copy_sparsearraycommon()
         new._phases = self.phases.copy()
         new._oddpos = self.oddpos
         return new
@@ -226,7 +226,7 @@ class FermionicArray(
         phases : dict, optional
             The new phases, if None, the original phases are used.
         """
-        new = self._copy_with_blocksparsearraycommon(
+        new = self._copy_with_sparsearraycommon(
             indices=indices, blocks=blocks, charge=charge
         )
         new._phases = self.phases.copy() if phases is None else phases
@@ -265,7 +265,7 @@ class FermionicArray(
             self._phases = phases
         if oddpos is not None:
             self._oddpos = oddpos
-        return self._modify_blocksparsearraycommon(
+        return self._modify_sparsearraycommon(
             indices=indices, blocks=blocks, charge=charge
         )
 
@@ -482,7 +482,7 @@ class FermionicArray(
         new.modify(phases=new_phases)
 
         # then transpose block arrays
-        new._transpose_blocksparsearraycommon(axes=axes, inplace=True)
+        new._transpose_sparsearraycommon(axes=axes, inplace=True)
 
         return new
 

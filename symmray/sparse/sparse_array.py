@@ -506,8 +506,8 @@ def _fuse_blocks_via_concat(
     }
 
 
-class BlockSparseArrayCommon:
-    def _init_blocksparsearraycommon(
+class SparseArrayCommon:
+    def _init_sparsearraycommon(
         self,
         indices,
         charge=None,
@@ -534,7 +534,7 @@ class BlockSparseArrayCommon:
         else:
             self._charge = charge
 
-    def _copy_blocksparsearraycommon(self):
+    def _copy_sparsearraycommon(self):
         """Copy this abelian block sparse array."""
         new = self._copy_blockcommon()
         new._indices = self._indices
@@ -546,7 +546,7 @@ class BlockSparseArrayCommon:
     def copy(self):
         pass
 
-    def _copy_with_blocksparsearraycommon(
+    def _copy_with_sparsearraycommon(
         self, indices=None, charge=None, blocks=None
     ):
         """A copy of this block array with some attributes replaced. Note that
@@ -563,7 +563,7 @@ class BlockSparseArrayCommon:
     def copy_with(self, indices=None, charge=None, blocks=None):
         pass
 
-    def _modify_blocksparsearraycommon(
+    def _modify_sparsearraycommon(
         self, indices=None, charge=None, blocks=None
     ):
         """Modify this block array in place with some attributes replaced. Note
@@ -740,7 +740,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         symmetry = cls.get_class_symmetry(symmetry)
 
@@ -788,7 +788,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         from ..utils import get_random_fill_fn
 
@@ -861,7 +861,7 @@ class BlockSparseArrayCommon:
 
         Parameters
         ----------
-        other : BlockSparseArrayCommon or BlockVector
+        other : SparseArrayCommon or BlockVector
             The other array or vector to compare to.
         *args
             The axes to compare, if ``other`` is a vector, the axis to compare
@@ -883,12 +883,12 @@ class BlockSparseArrayCommon:
                 assert self.indices[axa].matches(other.indices[axb])
 
     def _allclose_abelian(self, other, **allclose_opts):
-        """Test whether this ``BlockSparseArrayCommon`` is close to another, that is,
+        """Test whether this ``SparseArrayCommon`` is close to another, that is,
         has all the same sectors, and the corresponding arrays are close.
 
         Parameters
         ----------
-        other : BlockSparseArrayCommon
+        other : SparseArrayCommon
             The other array to compare to.
         allclose_opts
             Keyword arguments to pass to `allclose`.
@@ -917,14 +917,14 @@ class BlockSparseArrayCommon:
         pass
 
     def _test_allclose_abelian(self, other, **allclose_opts):
-        """Assert that this ``BlockSparseArrayCommon`` is close to another,
+        """Assert that this ``SparseArrayCommon`` is close to another,
         that is, has all the same sectors, and the corresponding arrays are
         close. Unlike `allclose`, this raises an AssertionError with details
         if not.
 
         Parameters
         ----------
-        other : BlockSparseArrayCommon
+        other : SparseArrayCommon
             The other array to compare to.
         allclose_opts
             Keyword arguments to pass to `allclose`.
@@ -979,7 +979,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         symmetry = cls.get_class_symmetry(symmetry)
 
@@ -1059,7 +1059,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         # XXX: warn if invalid blocks are non-zero?
         symmetry = cls.get_class_symmetry()
@@ -1137,7 +1137,7 @@ class BlockSparseArrayCommon:
             **kwargs,
         )
 
-    def _transpose_blocksparsearraycommon(self, axes=None, inplace=False):
+    def _transpose_sparsearraycommon(self, axes=None, inplace=False):
         """Transpose this block sparse abelian array.
 
         Parameters
@@ -1150,7 +1150,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         new = self if inplace else self.copy()
 
@@ -1187,7 +1187,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         if axis < 0:
             axis += self.ndim
@@ -1223,7 +1223,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         x = self if inplace else self.copy()
 
@@ -1316,7 +1316,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         x = self if inplace else self.copy()
 
@@ -1508,7 +1508,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         return self._unfuse_abelian(axis, inplace=inplace)
 
@@ -1583,7 +1583,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon
+        SparseArrayCommon
         """
         x = self if inplace else self.copy()
 
@@ -1651,7 +1651,7 @@ class BlockSparseArrayCommon:
 
         Parameters
         ----------
-        other : BlockSparseArrayCommon
+        other : SparseArrayCommon
             The other array to align with.
         axes : tuple[tuple[int]]
             The pairs of axes to align, given as tuples of the corresponding
@@ -1673,7 +1673,7 @@ class BlockSparseArrayCommon:
 
         Returns
         -------
-        BlockSparseArrayCommon or scalar
+        SparseArrayCommon or scalar
         """
         _einsum = ar.get_lib_fn(self.backend, "einsum")
 
@@ -1777,7 +1777,7 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
     """
     aligned_blocks = defaultdict(list)
 
-    # iterate over all valid sectors of the new BlockSparseArrayCommon
+    # iterate over all valid sectors of the new SparseArrayCommon
     _tensordot = ar.get_lib_fn(a.backend, "tensordot")
     # _stack = ar.get_lib_fn(a.backend, "stack")
 
@@ -1850,25 +1850,25 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
 
 
 def drop_misaligned_sectors(
-    a: BlockSparseArrayCommon,
-    b: BlockSparseArrayCommon,
+    a: SparseArrayCommon,
+    b: SparseArrayCommon,
     axes_a: tuple[int, ...],
     axes_b: tuple[int, ...],
     inplace=False,
-) -> tuple[BlockSparseArrayCommon, BlockSparseArrayCommon]:
+) -> tuple[SparseArrayCommon, SparseArrayCommon]:
     """Eagerly drop misaligned sectors of ``a`` and ``b`` so that they can be
     contracted via fusing.
 
     Parameters
     ----------
-    a, b : BlockSparseArrayCommon
+    a, b : SparseArrayCommon
         The arrays to be contracted.
     axes_a, axes_b : tuple[int]
         The axes that will be contracted, defined like in `tensordot`.
 
     Returns
     -------
-    a, b : BlockSparseArrayCommon
+    a, b : SparseArrayCommon
         The new arrays with misaligned sectors dropped.
     """
     # compute the intersection of fused charges for a and b
@@ -1932,7 +1932,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
     Parameters
     ----------
-    a, b : BlockSparseArrayCommon
+    a, b : SparseArrayCommon
         The arrays to be contracted.
     left_axes : tuple[int]
         The axes of ``a`` that will not be contracted.
@@ -1976,7 +1976,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     # unfuse result into (*left_axes, *right_axes)
     for ax in reversed(range(cf.ndim)):
         if cf.is_fused(ax):
-            BlockSparseArrayCommon.unfuse(cf, ax, inplace=True)
+            SparseArrayCommon.unfuse(cf, ax, inplace=True)
 
     return cf
 
@@ -2041,13 +2041,13 @@ def parse_tensordot_axes(axes, ndim_a, ndim_b):
     return left_axes, axes_a, axes_b, right_axes
 
 
-@tensordot.register(BlockSparseArrayCommon)
+@tensordot.register(SparseArrayCommon)
 def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     """Tensordot between two block sparse abelian symmetric arrays.
 
     Parameters
     ----------
-    a, b : BlockSparseArrayCommon
+    a, b : SparseArrayCommon
         The arrays to be contracted.
     axes : int or tuple[int]
         The axes to contract. If an integer, the last ``axes`` axes of ``a``
@@ -2059,12 +2059,12 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     preserve_array : bool, optional
         Whether to return a scalar if the result is a scalar.
     """
-    if not isinstance(b, BlockSparseArrayCommon):
+    if not isinstance(b, SparseArrayCommon):
         if getattr(b, "ndim", 0) == 0:
             # assume scalar
             return a * b
         else:
-            raise TypeError(f"Expected BlockSparseArrayCommon, got {type(b)}.")
+            raise TypeError(f"Expected SparseArrayCommon, got {type(b)}.")
 
     if DEBUG:
         a.check()

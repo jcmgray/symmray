@@ -1,0 +1,2 @@
+class FlatArrayCommon:
+    pass

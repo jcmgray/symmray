@@ -6,12 +6,12 @@ from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
+from .sparse_array import SparseArrayCommon
 from .sparse_base import BlockCommon
-from .sparse_common import BlockSparseArrayCommon
 
 
 class AbelianArray(
-    BlockSparseArrayCommon,
+    SparseArrayCommon,
     AbelianCommon,
     BlockCommon,
     SymmrayCommon,
@@ -43,7 +43,7 @@ class AbelianArray(
         blocks=(),
         symmetry=None,
     ):
-        self._init_blocksparsearraycommon(
+        self._init_sparsearraycommon(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -55,14 +55,14 @@ class AbelianArray(
 
     def copy(self):
         """Copy this abelian block sparse array."""
-        return self._copy_blocksparsearraycommon()
+        return self._copy_sparsearraycommon()
 
     def copy_with(self, indices=None, charge=None, blocks=None):
         """A copy of this block array with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        new = self._copy_with_blocksparsearraycommon(
+        new = self._copy_with_sparsearraycommon(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -76,7 +76,7 @@ class AbelianArray(
         that checks are not performed on the new properties, this is intended
         for internal use.
         """
-        self._modify_blocksparsearraycommon(
+        self._modify_sparsearraycommon(
             indices=indices, charge=charge, blocks=blocks
         )
         if DEBUG:
@@ -107,9 +107,7 @@ class AbelianArray(
         -------
         AbelianArray
         """
-        return self._transpose_blocksparsearraycommon(
-            axes=axes, inplace=inplace
-        )
+        return self._transpose_sparsearraycommon(axes=axes, inplace=inplace)
 
     def conj(self, inplace=False):
         """Return the complex conjugate of this block array, including the
@@ -144,7 +142,7 @@ class AbelianArray(
 
         Returns
         -------
-        BlockSparseArrayCommon or scalar
+        SparseArrayCommon or scalar
         """
         return self._einsum_abelian(eq, preserve_array=preserve_array)
 
@@ -178,14 +176,14 @@ class AbelianArray(
         return self._allclose_abelian(other, **allclose_opts)
 
     def test_allclose(self, other, **allclose_opts):
-        """Assert that this ``BlockSparseArrayCommon`` is close to another,
+        """Assert that this ``SparseArrayCommon`` is close to another,
         that is, has all the same sectors, and the corresponding arrays are
         close. Unlike `allclose`, this raises an AssertionError with details
         if not.
 
         Parameters
         ----------
-        other : BlockSparseArrayCommon
+        other : SparseArrayCommon
             The other array to compare to.
         allclose_opts
             Keyword arguments to pass to `allclose`.
