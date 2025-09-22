@@ -13,10 +13,10 @@ from collections import OrderedDict, defaultdict
 
 import autoray as ar
 
+from ..interface import tensordot
+from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 from .block_core import BlockVector
-from .interface import tensordot
 from .sparse_index import BlockIndex, SubIndexInfo
-from .utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 
 # --------------------------------------------------------------------------- #
 
@@ -790,7 +790,7 @@ class BlockSparseArrayCommon:
         -------
         BlockSparseArrayCommon
         """
-        from .utils import get_random_fill_fn
+        from ..utils import get_random_fill_fn
 
         fill_fn = get_random_fill_fn(
             dist=dist,

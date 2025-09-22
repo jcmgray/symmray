@@ -27,7 +27,7 @@ class FermionicCommon:
         -------
         FermionicArray
         """
-        from .sparse_common import calc_fuse_group_info
+        from .sparse.sparse_common import calc_fuse_group_info
 
         x = self if inplace else self.copy()
 

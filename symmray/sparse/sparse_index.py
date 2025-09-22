@@ -1,7 +1,7 @@
 """Index objects for abelian arrays with block sparse backend."""
 
-from .index_common import Index, SubInfo
-from .utils import hasher
+from ..index_common import Index, SubInfo
+from ..utils import hasher
 
 
 class BlockIndex(Index):

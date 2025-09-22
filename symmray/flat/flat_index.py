@@ -2,8 +2,8 @@
 
 import autoray as ar
 
-from .index_common import Index, SubInfo
-from .utils import DEBUG
+from ..index_common import Index, SubInfo
+from ..utils import DEBUG
 
 
 class FlatIndex(Index):

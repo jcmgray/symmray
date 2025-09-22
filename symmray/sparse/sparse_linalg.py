@@ -4,8 +4,7 @@ import functools
 
 import autoray as ar
 
-from .block_core import BlockVector
-from .linalg import (
+from ..linalg import (
     eigh,
     eigh_truncated,
     norm,
@@ -15,10 +14,11 @@ from .linalg import (
     svd,
     svd_truncated,
 )
+from ..utils import DEBUG
+from .block_core import BlockVector
 from .sparse_abelian_array import AbelianArray
 from .sparse_common import BlockIndex, BlockSparseArrayCommon
 from .sparse_fermionic_array import FermionicArray
-from .utils import DEBUG
 
 
 @norm.register(AbelianArray)

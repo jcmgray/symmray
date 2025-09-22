@@ -1,7 +1,4 @@
-from . import flat_linalg, linalg, scipy, sparse_linalg, utils, utils_test
-from .block_core import (
-    BlockVector,
-)
+from . import linalg, scipy, utils, utils_test
 from .fermionic_local_operators import (
     FermionicOperator,
     build_local_fermionic_array,
@@ -14,11 +11,12 @@ from .fermionic_local_operators import (
     fermi_number_up_local_array,
     fermi_spin_operator_local_array,
 )
-from .flat_abelian_array import (
+from .flat import flat_linalg
+from .flat.flat_abelian_array import (
     AbelianArrayFlat,
     Z2ArrayFlat,
 )
-from .flat_fermionic_array import (
+from .flat.flat_fermionic_array import (
     FermionicArrayFlat,
     Z2FermionicArrayFlat,
 )
@@ -66,20 +64,24 @@ from .networks import (
     TN_fermionic_from_edges_rand,
     parse_edges_to_site_info,
 )
-from .sparse_abelian_array import (
+from .sparse import sparse_linalg
+from .sparse.block_core import (
+    BlockVector,
+)
+from .sparse.sparse_abelian_array import (
     AbelianArray,
     U1Array,
     U1U1Array,
     Z2Array,
     Z2Z2Array,
 )
-from .sparse_common import (
+from .sparse.sparse_common import (
     BlockIndex,
     default_tensordot_mode,
     get_default_tensordot_mode,
     set_default_tensordot_mode,
 )
-from .sparse_fermionic_array import (
+from .sparse.sparse_fermionic_array import (
     FermionicArray,
     U1FermionicArray,
     U1U1FermionicArray,

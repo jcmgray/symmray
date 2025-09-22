@@ -19,14 +19,14 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
-from .abelian_common import AbelianCommon
-from .common import SymmrayCommon
+from ..abelian_common import AbelianCommon
+from ..common import SymmrayCommon
+from ..interface import tensordot
+from ..sparse.sparse_abelian_array import AbelianArray
+from ..sparse.sparse_common import calc_fuse_group_info, parse_tensordot_axes
+from ..symmetries import get_symmetry
+from ..utils import DEBUG, get_array_cls
 from .flat_index import FlatIndex, FlatSubIndexInfo
-from .interface import tensordot
-from .sparse_abelian_array import AbelianArray
-from .sparse_common import calc_fuse_group_info, parse_tensordot_axes
-from .symmetries import get_symmetry
-from .utils import DEBUG, get_array_cls
 
 try:
     from einops import rearrange as _einops_rearrange
@@ -408,7 +408,7 @@ class FlatVector(FlatCommon):
         assert ar.do("ndim", self._blocks, like=self.backend) == 2
 
     def to_blockvector(self):
-        from .block_core import BlockVector
+        from ..sparse.block_core import BlockVector
 
         return BlockVector(
             {k.item(): b for k, b in zip(self.sectors, self.blocks)}

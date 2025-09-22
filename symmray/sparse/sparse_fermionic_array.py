@@ -2,20 +2,20 @@
 
 import autoray as ar
 
-from .abelian_common import AbelianCommon
+from ..abelian_common import AbelianCommon
+from ..common import SymmrayCommon
+from ..fermionic_common import FermionicCommon
+from ..fermionic_local_operators import FermionicOperator
+from ..interface import tensordot
+from ..symmetries import calc_phase_permutation, get_symmetry
+from ..utils import DEBUG
 from .block_core import BlockCommon
-from .common import SymmrayCommon
-from .fermionic_common import FermionicCommon
-from .fermionic_local_operators import FermionicOperator
-from .interface import tensordot
 from .sparse_common import (
     BlockSparseArrayCommon,
     parse_tensordot_axes,
     permuted,
     tensordot_abelian,
 )
-from .symmetries import calc_phase_permutation, get_symmetry
-from .utils import DEBUG
 
 
 def argsort(seq):

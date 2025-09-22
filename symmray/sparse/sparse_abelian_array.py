@@ -2,12 +2,12 @@
 
 import autoray as ar
 
-from .abelian_common import AbelianCommon
+from ..abelian_common import AbelianCommon
+from ..common import SymmrayCommon
+from ..symmetries import get_symmetry
+from ..utils import DEBUG
 from .block_core import BlockCommon
-from .common import SymmrayCommon
 from .sparse_common import BlockSparseArrayCommon
-from .symmetries import get_symmetry
-from .utils import DEBUG
 
 
 class AbelianArray(

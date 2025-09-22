@@ -5,8 +5,8 @@ import operator
 
 import autoray as ar
 
-from .common import SymmrayCommon
-from .utils import lazyabstractmethod
+from ..common import SymmrayCommon
+from ..utils import lazyabstractmethod
 
 
 def _identity(x):
@@ -664,3 +664,11 @@ class BlockVector(BlockCommon, SymmrayCommon):
         arrays = tuple(map(self.get_block, sorted(self.sectors)))
         _concatenate = ar.get_lib_fn(self.backend, "concatenate")
         return _concatenate(arrays, axis=0)
+
+    def allclose(self, other, **allclose_opts):
+        return self._allclose_blockcommon(other, **allclose_opts)
+
+    def test_allclose(self, other, **allclose_opts):
+        """Like `allclose` but raises an AssertionError with details if not
+        close."""
+        return self._test_allclose_blockcommon(other, **allclose_opts)

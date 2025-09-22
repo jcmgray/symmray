@@ -2,10 +2,10 @@
 
 import autoray as ar
 
+from ..interface import tensordot
+from ..sparse.sparse_fermionic_array import FermionicArray, FermionicCommon
+from ..symmetries import get_symmetry
 from .flat_abelian_array import AbelianArrayFlat
-from .interface import tensordot
-from .sparse_fermionic_array import FermionicArray, FermionicCommon
-from .symmetries import get_symmetry
 
 
 def perm_to_swaps(perm):
