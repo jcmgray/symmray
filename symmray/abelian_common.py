@@ -212,6 +212,16 @@ class AbelianCommon:
         """The symmetry object of the array."""
         return self._symmetry
 
+    @property
+    def indices(self) -> tuple:
+        """The indices of the array."""
+        return self._indices
+
+    @property
+    def duals(self):
+        """The dual-ness of each index."""
+        return tuple(ix.dual for ix in self._indices)
+
     @classmethod
     def get_class_symmetry(cls, symmetry=None) -> Symmetry:
         if symmetry is None:

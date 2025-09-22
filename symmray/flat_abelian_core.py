@@ -943,12 +943,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
         return self._symmetry.N
 
     @property
-    def indices(self) -> tuple[FlatIndex]:
-        """Indices describing the dualness and any subindex information for \
-        each dimension of the array."""
-        return self._indices
-
-    @property
     def charge(self):
         """Compute the overall charge of the array."""
         return zn_combine(
@@ -957,11 +951,6 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             self.duals,
             like=self.backend,
         )[0]
-
-    @property
-    def duals(self) -> tuple[bool]:
-        """Get the dualness of each index."""
-        return tuple(index.dual for index in self._indices)
 
     def check(self):
         assert len(self._sectors) == len(self._blocks)

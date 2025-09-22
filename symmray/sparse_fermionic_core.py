@@ -159,7 +159,7 @@ class FermionicArray(
         oddpos=None,
         symmetry=None,
     ):
-        self._init_blocksparsearray(
+        self._init_blocksparsearraycommon(
             indices=indices,
             charge=charge,
             blocks=blocks,

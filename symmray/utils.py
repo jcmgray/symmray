@@ -1,5 +1,7 @@
 import functools
+import hashlib
 import os
+import pickle
 
 # a simple flag for enabling rigorous checks in many places
 DEBUG = bool(os.environ.get("SYMMRAY_DEBUG", "0").upper() in ("1", "TRUE"))
@@ -29,6 +31,10 @@ def lazyabstractmethod(method):
         )
 
     return raising_method
+
+
+def hasher(k):
+    return hashlib.sha1(pickle.dumps(k)).hexdigest()
 
 
 def get_rng(seed=None):
