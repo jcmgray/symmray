@@ -15,7 +15,7 @@ import autoray as ar
 
 from ..interface import tensordot
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
-from .block_core import BlockVector
+from .sparse_base import BlockVector
 from .sparse_index import BlockIndex, SubIndexInfo
 
 # --------------------------------------------------------------------------- #

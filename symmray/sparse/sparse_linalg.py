@@ -15,7 +15,7 @@ from ..linalg import (
     svd_truncated,
 )
 from ..utils import DEBUG
-from .block_core import BlockVector
+from .sparse_base import BlockVector
 from .sparse_abelian_array import AbelianArray
 from .sparse_common import BlockIndex, BlockSparseArrayCommon
 from .sparse_fermionic_array import FermionicArray

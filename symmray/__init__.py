@@ -65,7 +65,7 @@ from .networks import (
     parse_edges_to_site_info,
 )
 from .sparse import sparse_linalg
-from .sparse.block_core import (
+from .sparse.sparse_base import (
     BlockVector,
 )
 from .sparse.sparse_abelian_array import (

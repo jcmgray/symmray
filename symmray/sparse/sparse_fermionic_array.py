@@ -9,7 +9,7 @@ from ..fermionic_local_operators import FermionicOperator
 from ..interface import tensordot
 from ..symmetries import calc_phase_permutation, get_symmetry
 from ..utils import DEBUG
-from .block_core import BlockCommon
+from .sparse_base import BlockCommon
 from .sparse_common import (
     BlockSparseArrayCommon,
     parse_tensordot_axes,
