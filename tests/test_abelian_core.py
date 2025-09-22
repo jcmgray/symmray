@@ -30,7 +30,7 @@ def test_z2symmetric_array_basics():
     assert x.ndim == 4
     assert x.num_blocks == 8
     assert x.get_sparsity() == 1
-    assert x.allclose(x.copy())
+    x.test_allclose(x.copy())
 
 
 all_symmetries = ("Z2", "Z3", "Z5", "U1", "Z2Z2", "U1U1")
@@ -67,7 +67,7 @@ def test_AbelianArray_fuse(symmetry, missing, mode):
         assert xf.shape == (15, 24)
         assert xf.num_blocks == 2
     xu = xf.unfuse_all().transpose((0, 2, 1, 3))
-    assert x.allclose(xu)
+    x.test_allclose(xu)
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)
@@ -92,7 +92,7 @@ def test_AbelianArray_reshape(symmetry, shape0, shape1, seed):
     y.check()
     z = ar.do("reshape", y, shape0)
     z.check()
-    assert x.allclose(z)
+    x.test_allclose(z)
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)
@@ -104,7 +104,7 @@ def test_abelian_reshape_unfuse(symmetry, seed, mode):
     )
     b = a.fuse((0, 1), (2, 3), mode=mode)
     c = b.reshape((12, 5, 6))
-    assert c.allclose(a.fuse((0, 1), mode=mode))
+    c.test_allclose(a.fuse((0, 1), mode=mode))
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)
@@ -128,11 +128,11 @@ def test_fuse_conj_unfuse(symmetry):
     xfcu.check()
     xfcuc = xfcu.conj()
     xfcuc.check()
-    assert x.allclose(xfcuc)
+    x.test_allclose(xfcuc)
 
 
 def test_calc_reshape_args_edgecase():
-    from symmray.sparse_abelian_core import calc_reshape_args
+    from symmray.abelian_common import calc_reshape_args
 
     axs_unfuse, axs_fuse_groupings, axs_expand = calc_reshape_args(
         shape=(4, 4, 4), newshape=(16, 4), subshapes=(None, None, (4, 4))
@@ -270,8 +270,8 @@ def test_einsum_single_term(eq, symmetry):
 
 @pytest.mark.parametrize("symm", ["Z2", "U1", "Z3"])
 def test_can_pickle_abelian_array(symm):
-    import tempfile
     import pickle
+    import tempfile
 
     # XXX: add delete=False to avoid win github action permission error
     with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmpf:
@@ -296,4 +296,4 @@ def test_can_pickle_abelian_array(symm):
         # load from disk
         with open(tmp_fname, "rb") as f:
             x_loaded = pickle.load(f)
-        assert x.allclose(x_loaded)
+        x.test_allclose(x_loaded)

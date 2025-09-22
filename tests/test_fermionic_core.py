@@ -1,8 +1,7 @@
+import numpy as np
 import pytest
 
 import symmray as sr
-import numpy as np
-
 
 all_symmetries = ["Z2", "Z4", "U1"]
 
@@ -205,7 +204,7 @@ def test_fuse_unfuse(symmetry, seed, subsizes):
     else:
         y = xf
     yt = y.transpose(perm_back)
-    assert x.allclose(yt)
+    x.test_allclose(yt)
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)

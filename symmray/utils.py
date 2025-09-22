@@ -10,6 +10,27 @@ def set_debug(debug):
     DEBUG = debug
 
 
+def lazyabstractmethod(method):
+    """Mark a method as one that must be implemented in a subclass, but only
+    enforce this when the method is called. This can be used as a decorator (if
+    you want to demonstrate the call signature) or by directly assigning the
+    result to a method name.
+    """
+
+    if callable(method):
+        name = method.__name__
+    else:
+        name = str(method)
+
+    def raising_method(self, *args, **kwargs):
+        raise NotImplementedError(
+            f"`{name}` must be implemented in "
+            f"subclass `{self.__class__.__name__}`"
+        )
+
+    return raising_method
+
+
 def get_rng(seed=None):
     import numpy as np
 

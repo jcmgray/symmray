@@ -6,33 +6,46 @@ import operator
 import autoray as ar
 
 from .common import SymmrayCommon
+from .utils import lazyabstractmethod
 
 
 def _identity(x):
     return x
 
 
-class BlockCommon(SymmrayCommon):
+class BlockCommon:
     """Mixin class for arrays consisting of dicts of blocks."""
 
     __slots__ = ("_blocks",)
 
-    def __init__(self, blocks):
+    def _init_blockcommon(self, blocks):
         self._blocks = dict(blocks)
 
-    def copy(self):
+    def _copy_blockcommon(self):
         new = self.__new__(self.__class__)
         new._blocks = self._blocks.copy()
         return new
 
-    def copy_with(self, blocks=None):
+    @lazyabstractmethod
+    def copy(self):
+        pass
+
+    def _copy_with_blockcommon(self, blocks=None):
         new = self.__new__(self.__class__)
         new._blocks = self._blocks.copy() if blocks is None else blocks
         return new
 
-    def modify(self, blocks=None):
+    @lazyabstractmethod
+    def copy_with(self, blocks=None):
+        pass
+
+    def _modify_blockcommon(self, blocks=None):
         if blocks is not None:
             self._blocks = blocks
+
+    @lazyabstractmethod
+    def modify(self, blocks=None):
+        pass
 
     @property
     def blocks(self):
@@ -59,7 +72,7 @@ class BlockCommon(SymmrayCommon):
         """Get an iterator over all blocks of the array."""
         return self._blocks.values()
 
-    def _map_blocks(self, fn_block=None, fn_sector=None):
+    def _map_blocks_blockcommon(self, fn_block=None, fn_sector=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
         if fn_block is None:
             fn_block = _identity
@@ -71,6 +84,10 @@ class BlockCommon(SymmrayCommon):
             fn_sector(sector): fn_block(block)
             for sector, block in self.get_sector_block_pairs()
         }
+
+    @lazyabstractmethod
+    def _map_blocks(self, fn_block=None, fn_sector=None):
+        pass
 
     def get_any_sector(self):
         return next(iter(self._blocks.keys()), ())
@@ -151,7 +168,9 @@ class BlockCommon(SymmrayCommon):
     def __bool__(self):
         return bool(self.item())
 
-    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
+    def _binary_blockwise_op_blockcommon(
+        self, other, fn, missing=None, inplace=False
+    ):
         """Apply a binary blockwise operation to two block arrays, which must
         have exactly the same sectors/keys.
 
@@ -160,9 +179,9 @@ class BlockCommon(SymmrayCommon):
         fn : callable
             Function to apply to the blocks of the arrays, with signature
             ``fn(x_block, y_block) -> result_block``.
-        x : BlockBase
+        x : BlockCommon
             First block array.
-        y : BlockBase
+        y : BlockCommon
             Second block array.
         missing : str, optional
             How to handle missing blocks. Can be "outer", "inner" or None.
@@ -175,7 +194,7 @@ class BlockCommon(SymmrayCommon):
 
         Returns
         -------
-        BlockBase
+        BlockCommon
         """
         xy = self if inplace else self.copy()
 
@@ -223,6 +242,10 @@ class BlockCommon(SymmrayCommon):
                     xy_blocks[sector] = fn(x_block, other_block)
 
         return xy
+
+    @lazyabstractmethod
+    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
+        pass
 
     def __add__(self, other):
         if isinstance(other, BlockCommon):
@@ -387,7 +410,7 @@ class BlockCommon(SymmrayCommon):
             ** 0.5
         )
 
-    def allclose(self, other, **allclose_opts):
+    def _allclose_blockcommon(self, other, **allclose_opts):
         _allclose = ar.get_lib_fn(self.backend, "allclose")
 
         # all shared blocks must be close
@@ -412,6 +435,53 @@ class BlockCommon(SymmrayCommon):
 
         return True
 
+    @lazyabstractmethod
+    def allclose(self, other, **allclose_opts):
+        pass
+
+    def _test_allclose_blockcommon(self, other, **allclose_opts):
+        """Like `allclose` but raises an AssertionError with details if not
+        close."""
+        _allclose = ar.get_lib_fn(self.backend, "allclose")
+
+        # all shared blocks must be close
+        shared = self.blocks.keys() & other.blocks.keys()
+        for sector in shared:
+            if not _allclose(
+                self.get_block(sector),
+                other.get_block(sector),
+                **allclose_opts,
+            ):
+                raise AssertionError(
+                    f"Block arrays are not allclose for sector {sector}:\n"
+                    f" Left  block:\n{self.get_block(sector)}\n"
+                    f" Right block:\n{other.get_block(sector)}\n"
+                )
+
+        # all missing blocks must be zero
+        left = self.blocks.keys() - other.blocks.keys()
+        right = other.blocks.keys() - self.blocks.keys()
+        for sector in left:
+            if not _allclose(self.get_block(sector), 0.0, **allclose_opts):
+                raise AssertionError(
+                    f"Left block only is not zero for {sector}:\n"
+                    f" Left  block:\n{self.get_block(sector)}\n"
+                    f" Right block:\n<missing>\n"
+                )
+        for sector in right:
+            if not _allclose(other.get_block(sector), 0.0, **allclose_opts):
+                raise AssertionError(
+                    f"Right block only is not zero for {sector}:\n"
+                    f" Left  block:\n<missing>\n"
+                    f" Right block:\n{other.get_block(sector)}\n"
+                )
+
+        return True
+
+    @lazyabstractmethod
+    def test_allclose(self, other, **allclose_opts):
+        pass
+
     def __repr__(self):
         return "".join(
             [
@@ -422,12 +492,17 @@ class BlockCommon(SymmrayCommon):
         )
 
 
-class BlockVector(BlockCommon):
+class BlockVector(BlockCommon, SymmrayCommon):
     """A vector stored as a dict of blocks."""
 
-    __slots__ = BlockCommon.__slots__
-
+    __slots__ = ("_blocks",)
     ndim = 1
+
+    def __init__(self, blocks):
+        self._init_blockcommon(blocks)
+
+    def copy(self):
+        return self._copy_blockcommon()
 
     @property
     def size(self):
@@ -440,6 +515,11 @@ class BlockVector(BlockCommon):
     def shape(self):
         """Get the effective shape of the vector."""
         return (self.size,)
+
+    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
+        return self._binary_blockwise_op_blockcommon(
+            other, fn, missing=missing, inplace=inplace
+        )
 
     def __add__(self, other):
         if isinstance(other, BlockVector):

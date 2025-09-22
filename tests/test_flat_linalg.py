@@ -1,4 +1,5 @@
 import pytest
+
 import symmray as sr
 
 from .test_flat_abelian_core import get_zn_blocksparse_flat_compat

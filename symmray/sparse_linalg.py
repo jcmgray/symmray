@@ -2,10 +2,7 @@ import functools
 
 import autoray as ar
 
-from .sparse_abelian_core import AbelianArray, BlockIndex
 from .block_core import BlockVector
-from .sparse_fermionic_core import FermionicArray
-from .utils import DEBUG
 from .linalg import (
     eigh,
     eigh_truncated,
@@ -16,6 +13,10 @@ from .linalg import (
     svd,
     svd_truncated,
 )
+from .sparse_abelian_core import AbelianArray
+from .sparse_common import BlockIndex, BlockSparseArrayCommon
+from .sparse_fermionic_core import FermionicArray
+from .utils import DEBUG
 
 
 @norm.register(AbelianArray)
@@ -132,8 +133,8 @@ def qr_fermionic(x: FermionicArray, stabilized=False):
     return q, r
 
 
-@qr_stabilized.register(AbelianArray)
-def qr_stabilized_abelian(x: AbelianArray):
+@qr_stabilized.register(BlockSparseArrayCommon)
+def qr_stabilized_abelian(x: BlockSparseArrayCommon):
     q, r = qr(x, stabilized=True)
     return q, None, r
 
@@ -423,9 +424,9 @@ def _truncate_svd_result(
     return U, None, VH
 
 
-@svd_truncated.register(AbelianArray)
+@svd_truncated.register(BlockSparseArrayCommon)
 def svd_truncated_abelian(
-    x: AbelianArray,
+    x: BlockSparseArrayCommon,
     cutoff=-1.0,
     cutoff_mode=4,
     max_bond=-1,
@@ -527,9 +528,9 @@ def eigh_fermionic(a: FermionicArray):
     return eigenvalues, eigenvectors
 
 
-@eigh_truncated.register(AbelianArray)
+@eigh_truncated.register(BlockSparseArrayCommon)
 def eigh_truncated_abelian(
-    a: AbelianArray,
+    a: BlockSparseArrayCommon,
     cutoff=-1.0,
     cutoff_mode=4,
     max_bond=-1,

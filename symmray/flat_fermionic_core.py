@@ -80,7 +80,7 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
 
     @property
     def phases(self):
-        """The lazy phases for each block."""
+        """The phases for each block."""
         if self._phases is None:
             self._phases = ar.do("ones", self.num_blocks, like=self._blocks)
         return self._phases
@@ -139,7 +139,17 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         """
         AbelianArrayFlat.modify(self, sectors, blocks, indices)
         if phases is not None:
-            self._phases = phases
+            if isinstance(phases, str):
+                if phases == "reset":
+                    self._phases = None
+                else:
+                    raise ValueError(f"Unknown phases value '{phases}'")
+            else:
+                self._phases = phases
+
+        if isinstance(self._phases, int):
+            raise ValueError
+
         return self
 
     def _modify_or_copy(
@@ -263,14 +273,13 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         """
         new = self if inplace else self.copy()
 
-        # do broadcasted multiply to resolve phases
-        # XXX: use modify and phases="reset"?
         if new._phases is not None:
-            new._blocks = (
-                new._blocks
-                * new._phases[(slice(None),) + (None,) * (new.ndim)]
+            # do broadcasted multiply to resolve phases
+            phases_b = new._phases[(slice(None),) + (None,) * (new.ndim)]
+            new.modify(
+                blocks=new._blocks * phases_b,
+                phases="reset",
             )
-            new._phases = None
 
         return new
 
@@ -323,24 +332,35 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         if axes is None:
             # full reversal, shortcut to count the swaps
             nswap = ar.do("sum", new.sectors % 2, axis=1) // 2
+        elif all(ax == i for i, ax in enumerate(axes)):
+            # identity, nothing to do
+            return new
         else:
             # convert permutation to sequence of pairwise neighboring swaps
             swaps = perm_to_swaps(axes)
 
             # count how many swaps of odd charges there are
             parities = [new.sectors[:, i] % 2 for i in range(N)]
-            nswap = 0
+            nswap = None
             for il, ir in swaps:
-                nswap = nswap + (parities[il] * parities[ir])
+                if nswap is None:
+                    nswap = parities[il] * parities[ir]
+                else:
+                    nswap = nswap + (parities[il] * parities[ir])
                 parities[il], parities[ir] = parities[ir], parities[il]
+
+        if nswap is None:
+            raise ValueError("No phase changes required.")
 
         # absorb into current phases
         phase_change = (-1) ** nswap
-
-        if new._phases is None:
-            new._phases = phase_change
-        else:
-            new.modify(phases=new._phases * phase_change)
+        new.modify(
+            phases=(
+                phase_change
+                if new._phases is None
+                else new._phases * phase_change
+            )
+        )
 
         return new
 
@@ -364,9 +384,6 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         new = self if inplace else self.copy()
         new.modify(phases=-new.phases)
         return new
-
-    def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
-        raise NotImplementedError
 
     def transpose(
         self,
@@ -455,7 +472,31 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         """Fermionic conjugate transpose."""
         return self.dagger()
 
-    def fuse(self, *axes_groups, expand_empty=True, inplace=False):
+    def fuse(
+        self, *axes_groups, expand_empty=True, inplace=False
+    ) -> "FermionicArrayFlat":
+        """Fermionic fusion of axes groups. This includes three sources of
+        phase changes:
+
+        1. Initial fermionic transpose to make each group contiguous.
+        2. Flipping of non dual indices, if merged group is overall dual.
+        3. Virtual transpose within a group, if merged group is overall dual.
+
+        A grouped axis is overall dual if the first axis in the group is dual.
+
+        Parameters
+        ----------
+        axes_groups : Sequence[Sequence[int]]
+            The axes groups to fuse. See `AbelianArray.fuse` for more details.
+        expand_empty : bool, optional
+            Whether to expand empty groups into new axes.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        FermionicArrayFlat
+        """
         return FermionicCommon.fuse(
             self,
             *axes_groups,
@@ -464,7 +505,17 @@ class FermionicArrayFlat(AbelianArrayFlat, FermionicCommon):
         )
 
     def unfuse(self, axis, inplace=False):
-        raise NotImplementedError
+        """Fermionic unfuse, which includes two sources of phase changes:
+
+        1. Flipping of non dual sub indices, if overall index is dual.
+        2. Virtual transpose within group, if overall index is dual.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to unfuse.
+        """
+        return FermionicCommon.unfuse(self, axis, inplace=inplace)
 
     def einsum(self, eq, preserve_array=False):
         raise NotImplementedError

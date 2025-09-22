@@ -144,8 +144,9 @@ def TN_abelian_from_edges_rand(
     quimb.tensor.TensorNetworkGen or quimb.tensor.TensorNetworkGenVector
     """
     import numpy as np
-    import symmray as sr
     import quimb.tensor as qtn
+
+    import symmray as sr
 
     site_info = parse_edges_to_site_info(
         edges,
@@ -179,7 +180,7 @@ def TN_abelian_from_edges_rand(
         phys_chargemap = None
 
     if site_charge is None:
-        from symmray.symmetries import get_symmetry, ZN
+        from symmray.symmetries import ZN, get_symmetry
 
         if symmetry == "U1":
             sites = sorted(site_info.keys())

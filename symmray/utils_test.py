@@ -66,8 +66,9 @@ def rand_valid_tensordot(
         Axes to contract.
     """
     import numpy as np
+
     from .symmetries import get_symmetry
-    from .utils import rand_index, get_rand
+    from .utils import get_rand, rand_index
 
     symmetry = get_symmetry(symmetry)
     rng = np.random.default_rng(seed)

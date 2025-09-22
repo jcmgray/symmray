@@ -1,5 +1,7 @@
 import pytest
 
+import symmray as sr
+
 from .test_flat_abelian_core import get_zn_blocksparse_flat_compat
 
 
@@ -34,7 +36,7 @@ def test_to_and_from_blocksparse_with_phase_sync(
     y = fx.to_blocksparse()
     assert sync == (not y.phases)
     y.check()
-    assert y.allclose(x)
+    y.test_allclose(x)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
@@ -73,45 +75,36 @@ def test_phase_flip(
     if sync:
         # phases should have been absorbed into blocks
         assert not y.phases
-    assert y.allclose(xflipped)
+    y.test_allclose(xflipped)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
-@pytest.mark.parametrize("seed", [42, 43, 44])
+@pytest.mark.parametrize("seed", range(20))
 @pytest.mark.parametrize("sync", [False, True])
-@pytest.mark.parametrize(
-    "perm",
-    [
-        None,
-        (2, 1, 0),
-        (2, 0, 1),
-        (0, 1, 2),
-        (0, 2, 1),
-        (1, 0, 2),
-        (1, 2, 0),
-    ],
-)
 def test_phase_transpose(
     symmetry,
     charge,
     seed,
     sync,
-    perm,
 ):
     if charge:
         pytest.xfail("oddpos not implemented yet.")
 
+    rng = sr.utils.get_rng(seed)
+    N = rng.integers(1, 7)
+    perm = tuple(rng.permutation(N))
+    shape = tuple(rng.choice([2, 4], size=N))
+
     x = get_zn_blocksparse_flat_compat(
         symmetry,
-        (2, 4, 6),
+        shape,
         charge=charge,
         fermionic=True,
         seed=seed,
     )
     # add some non-trivial phases
-    x.transpose((2, 0, 1), inplace=True)
-    assert x.phases
+    x.modify(phases={sector: rng.choice([-1, 1]) for sector in x.sectors})
     fx = x.to_flat()
 
     x_phase_transposed = x.phase_transpose(perm)
@@ -119,15 +112,12 @@ def test_phase_transpose(
     if sync:
         fx_phase_transposed.phase_sync(inplace=True)
     fx_phase_transposed.check()
-    if perm != (0, 1, 2):
-        # the phases should have changed
-        assert (fx_phase_transposed.phases != fx.phases).sum()
     y = fx_phase_transposed.to_blocksparse()
     y.check()
     if sync:
         # phases should have been absorbed into blocks
         assert not y.phases
-    assert y.allclose(x_phase_transposed)
+    y.test_allclose(x_phase_transposed)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
@@ -171,7 +161,7 @@ def test_transpose(
         fxt.phase_sync(inplace=True)
     y = fxt.to_blocksparse()
     y.check()
-    assert y.allclose(xt)
+    y.test_allclose(xt)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
@@ -210,7 +200,7 @@ def test_conj(
         fxc.phase_sync(inplace=True)
     y = fxc.to_blocksparse()
     y.check()
-    assert y.allclose(xc)
+    y.test_allclose(xc)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
@@ -251,4 +241,100 @@ def test_fuse(
     fx_fused.check()
     y = fx_fused.to_blocksparse()
     y.check()
-    assert y.allclose(x_fused)
+    y.test_allclose(x_fused)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", range(10))
+def test_fuse_unfuse(symmetry, charge, seed):
+    if charge:
+        pytest.xfail("oddpos not implemented yet.")
+
+    rng = sr.utils.get_rng(seed)
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=(2, 4, 6, 4, 8),
+        charge=charge,
+        fermionic=True,
+        seed=rng,
+    )
+
+    fx = x.to_flat()
+
+    nfuse = rng.integers(1, x.ndim)
+    axes = tuple(rng.choice(x.ndim, size=nfuse, replace=False))
+    position = min(axes)
+    new_order = (
+        *range(position),
+        *axes,
+        *(ax for ax in range(position, x.ndim) if ax not in axes),
+    )
+    perm_back = tuple(new_order.index(ax) for ax in range(x.ndim))
+
+    x_fused = x.fuse(axes)
+    fx_fused = fx.fuse(axes)
+    fx_fused.check()
+    fx_fused.to_blocksparse().test_allclose(x_fused)
+
+    if len(axes) > 1:
+        y = x_fused.unfuse(position)
+        fy = fx_fused.unfuse(position)
+        fy.check()
+        fy.to_blocksparse().test_allclose(y)
+    else:
+        y = x_fused
+        fy = fx_fused
+
+    fyt = fy.transpose(perm_back)
+    fyt.check()
+    fyt.to_blocksparse().test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize(
+    "shape,axes_groups",
+    [
+        ([4], [(0,)]),
+        ([2, 2], [(0, 1)]),
+        ([2, 2], [(0,), (1,)]),
+        ([2, 2], [(1,), (0,)]),
+        ([4] * 6, [(1, 3), (4, 2)]),
+        ([6, 2, 4, 8], [(3, 2, 1)]),
+        ([6, 2, 4, 8], [(0, 1)]),
+        ([6, 2, 4, 8], [(2, 3)]),
+        ([6, 2, 4, 8], [(0, 1, 2, 3)]),
+        ([6, 2, 4, 8], [(2, 3, 1, 0)]),
+        ([6, 2, 4, 8], [(0, 1), (2, 3)]),
+        ([2, 2, 2, 2, 2], [(0, 1), (2, 3, 4)]),
+        ([2, 2, 2, 2, 2, 2], [(0, 1), (2, 3), (4, 5)]),
+        ([2, 2, 2, 2, 2, 2], [(0, 1), (4, 5), (2, 3)]),
+        ([4, 2, 6, 2], [(0, 3)]),
+        ([2, 2, 2, 2, 2, 2, 2, 2], [(5,), (7, 2, 3), (1, 4)]),
+    ],
+)
+@pytest.mark.parametrize("charge", [0, 1])
+def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
+    if charge:
+        pytest.xfail("oddpos not implemented yet.")
+
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry, shape, charge, fermionic=True, seed=42
+    )
+    sy = sx.fuse(*axes_groups)
+    fx = sx.to_flat()
+    fx.check()
+    fx.to_blocksparse().test_allclose(sx)
+    fy = fx.fuse(*axes_groups)
+    fy.check()
+    fy.to_blocksparse().test_allclose(sy)
+    xu = fy.unfuse_all()
+    xu.check()
+    # fuse + unfuse is identity up to permutation of axes
+    axes_grouped = [i for g in axes_groups for i in g]
+    axes_rem = [i for i in range(fx.ndim) if i not in axes_grouped]
+    ax_g0 = min(axes_grouped)
+    new_axes = axes_rem[:ax_g0] + axes_grouped + axes_rem[ax_g0:]
+    sxt = sx.transpose(new_axes)
+    fxus = xu.to_blocksparse()
+    fxus.test_allclose(sxt)

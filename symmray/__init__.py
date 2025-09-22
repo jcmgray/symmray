@@ -68,11 +68,13 @@ from .networks import (
 )
 from .sparse_abelian_core import (
     AbelianArray,
-    BlockIndex,
     U1Array,
     U1U1Array,
     Z2Array,
     Z2Z2Array,
+)
+from .sparse_common import (
+    BlockIndex,
     default_tensordot_mode,
     get_default_tensordot_mode,
     set_default_tensordot_mode,

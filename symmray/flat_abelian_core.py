@@ -18,17 +18,13 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
-from .sparse_abelian_core import (
-    AbelianArray,
-    AbelianCommon,
-    calc_fuse_group_info,
-    parse_tensordot_axes,
-)
+from .abelian_common import AbelianCommon
 from .common import SymmrayCommon
 from .interface import tensordot
+from .sparse_abelian_core import AbelianArray
+from .sparse_common import calc_fuse_group_info, parse_tensordot_axes
 from .symmetries import get_symmetry
 from .utils import DEBUG, get_array_cls
-
 
 try:
     from einops import rearrange as _einops_rearrange
@@ -1431,23 +1427,7 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             inplace=inplace,
         )
 
-    def unfuse(self, axis, inplace=False) -> "AbelianArrayFlat":
-        """Unfuse the ``axis`` index, which must carry subindex information,
-        likely generated automatically from a fusing operation.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to unfuse. It must have fuse information
-            (`.indices[axis].subinfo`), typically from a previous fusing
-            operation.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArrayFlat
-        """
+    def _unfuse_abelian(self, axis, inplace=False):
         new = self if inplace else self.copy()
 
         fi = new.indices[axis].subinfo
@@ -1511,6 +1491,25 @@ class AbelianArrayFlat(FlatCommon, AbelianCommon):
             blocks=new_blocks,
             indices=new_indices,
         )
+
+    def unfuse(self, axis, inplace=False) -> "AbelianArrayFlat":
+        """Unfuse the ``axis`` index, which must carry subindex information,
+        likely generated automatically from a fusing operation.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to unfuse. It must have fuse information
+            (`.indices[axis].subinfo`), typically from a previous fusing
+            operation.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
+        return self._unfuse_abelian(axis, inplace=inplace)
 
     def conj(self, inplace=False) -> "AbelianArrayFlat":
         """Return the complex conjugate of this block array, including the

@@ -1,15 +1,19 @@
 import autoray as ar
 
-from .sparse_abelian_core import (
-    AbelianArray,
+from .abelian_common import AbelianCommon
+from .block_core import BlockCommon
+from .common import SymmrayCommon
+from .fermionic_common import FermionicCommon
+from .fermionic_local_operators import FermionicOperator
+from .interface import tensordot
+from .sparse_common import (
+    BlockSparseArrayCommon,
     parse_tensordot_axes,
     permuted,
     tensordot_abelian,
 )
-from .block_core import BlockCommon
-from .fermionic_local_operators import FermionicOperator
-from .interface import tensordot
 from .symmetries import calc_phase_permutation, get_symmetry
+from .utils import DEBUG
 
 
 def argsort(seq):
@@ -104,95 +108,13 @@ def resolve_combined_oddpos(left, right, new):
     new._oddpos = tuple(oddpos)
 
 
-class FermionicCommon:
-    def fuse(self, *axes_groups, expand_empty=True, inplace=False):
-        """Fermionic fusion of axes groups. This includes three sources of
-        phase changes:
-
-        1. Initial fermionic transpose to make each group contiguous.
-        2. Flipping of non dual indices, if merged group is overall dual.
-        3. Virtual transpose within a group, if merged group is overall dual.
-
-        A grouped axis is overall dual if the first axis in the group is dual.
-
-        Parameters
-        ----------
-        axes_groups : Sequence[Sequence[int]]
-            The axes groups to fuse. See `AbelianArray.fuse` for more details.
-        expand_empty : bool, optional
-            Whether to expand empty groups into new axes.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        FermionicArray
-        """
-        from symmray.sparse_abelian_core import calc_fuse_group_info
-
-        x = self if inplace else self.copy()
-
-        # handle empty groups and ensure hashable
-        _axes_groups = []
-        axes_expand = []
-        for ax, group in enumerate(axes_groups):
-            group = tuple(group)
-            if group:
-                _axes_groups.append(group)
-            else:
-                axes_expand.append(ax)
-        axes_groups = tuple(_axes_groups)
-
-        if axes_groups:
-            # first make groups into contiguous
-            # blocks using fermionic transpose
-            perm = calc_fuse_group_info(axes_groups, x.duals)[3]
-            # this is the first step which introduces phases
-            x.transpose(perm, inplace=True)
-            # update groups to reflect new axes
-            axes_groups = tuple(tuple(map(perm.index, g)) for g in axes_groups)
-
-            # process each group with another two sources of phase changes:
-            axes_flip = []
-            virtual_perm = None
-            for group in axes_groups:
-                if x.indices[group[0]].dual:
-                    # overall dual index:
-                    # 1. flip non dual sub indices
-                    for ax in group:
-                        if not x.indices[ax].dual:
-                            axes_flip.append(ax)
-
-                    # 2. virtual transpose within group
-                    if virtual_perm is None:
-                        virtual_perm = list(range(x.ndim))
-                    for axi, axj in zip(group, reversed(group)):
-                        virtual_perm[axi] = axj
-
-            if axes_flip:
-                x.phase_flip(*axes_flip, inplace=True)
-
-            # if the fused axes is overall bra, need phases from effective flip
-            #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
-            #   but actual array layout should not be flipped, so do virtually
-            if virtual_perm is not None:
-                x.phase_transpose(tuple(virtual_perm), inplace=True)
-
-            # insert phases
-            x.phase_sync(inplace=True)
-
-            # so we can do the actual block concatenations
-            x._fuse_core(*axes_groups, inplace=True)
-
-        if expand_empty and axes_expand:
-            g0 = min(g for groups in axes_groups for g in groups)
-            for ax in axes_expand:
-                x.expand_dims(g0 + ax, inplace=True)
-
-        return x
-
-
-class FermionicArray(AbelianArray, FermionicCommon):
+class FermionicArray(
+    FermionicCommon,
+    BlockSparseArrayCommon,
+    AbelianCommon,
+    BlockCommon,
+    SymmrayCommon,
+):
     """A fermionic block symmetry array.
 
     Parameters
@@ -217,7 +139,14 @@ class FermionicArray(AbelianArray, FermionicCommon):
         The symmetry of the array, if not using a specific symmetry class.
     """
 
-    __slots__ = AbelianArray.__slots__ + ("_phases", "_oddpos")
+    __slots__ = (
+        "_indices",
+        "_blocks",
+        "_charge",
+        "_symmetry",
+        "_phases",
+        "_oddpos",
+    )
     fermionic = True
     static_symmetry = None
 
@@ -230,8 +159,7 @@ class FermionicArray(AbelianArray, FermionicCommon):
         oddpos=None,
         symmetry=None,
     ):
-        AbelianArray.__init__(
-            self,
+        self._init_blocksparsearray(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -239,6 +167,8 @@ class FermionicArray(AbelianArray, FermionicCommon):
         )
         self._phases = dict(phases)
         self._oddpos = oddpos_parse(oddpos, self.parity)
+        if DEBUG:
+            self.check()
 
     @property
     def parity(self):
@@ -275,7 +205,7 @@ class FermionicArray(AbelianArray, FermionicCommon):
         FermionicArray
             The copied array.
         """
-        new = AbelianArray.copy(self)
+        new = self._copy_blocksparsearraycommon()
         new._phases = self.phases.copy()
         new._oddpos = self.oddpos
         return new
@@ -294,11 +224,15 @@ class FermionicArray(AbelianArray, FermionicCommon):
         phases : dict, optional
             The new phases, if None, the original phases are used.
         """
-        new = AbelianArray.copy_with(
-            self, indices=indices, blocks=blocks, charge=charge
+        new = self._copy_with_blocksparsearraycommon(
+            indices=indices, blocks=blocks, charge=charge
         )
         new._phases = self.phases.copy() if phases is None else phases
         new._oddpos = self.oddpos
+
+        if DEBUG:
+            new.check()
+
         return new
 
     def modify(
@@ -329,8 +263,8 @@ class FermionicArray(AbelianArray, FermionicCommon):
             self._phases = phases
         if oddpos is not None:
             self._oddpos = oddpos
-        return AbelianArray.modify(
-            self, indices=indices, blocks=blocks, charge=charge
+        return self._modify_blocksparsearraycommon(
+            indices=indices, blocks=blocks, charge=charge
         )
 
     def phase_sync(self, inplace=False) -> "FermionicArray":
@@ -486,12 +420,13 @@ class FermionicArray(AbelianArray, FermionicCommon):
             if other.phases:
                 other = other.phase_sync()
 
-        return BlockCommon._binary_blockwise_op(
-            xy, other, fn, inplace=True, **kwargs
+        return xy._binary_blockwise_op_blockcommon(
+            other, fn, inplace=True, **kwargs
         )
 
     def _map_blocks(self, fn_block=None, fn_sector=None):
-        BlockCommon._map_blocks(self, fn_block, fn_sector)
+        """Map the blocks and their keys (sectors) of the array inplace."""
+        self._map_blocks_blockcommon(fn_block, fn_sector)
         if fn_sector is not None:
             # need to update phase keys as well
             self._phases = {fn_sector(s): p for s, p in self._phases.items()}
@@ -521,6 +456,8 @@ class FermionicArray(AbelianArray, FermionicCommon):
 
         if axes is None:
             axes = tuple(range(new.ndim - 1, -1, -1))
+        else:
+            axes = tuple(axes)
 
         if phase:
             # compute new sector phases
@@ -539,10 +476,11 @@ class FermionicArray(AbelianArray, FermionicCommon):
                 for sector, phase in old_phases.items()
             }
 
+        # update phase dict
         new.modify(phases=new_phases)
 
-        # transpose block arrays
-        AbelianArray.transpose(new, axes, inplace=True)
+        # then transpose block arrays
+        new._transpose_blocksparsearraycommon(axes=axes, inplace=True)
 
         return new
 
@@ -630,7 +568,7 @@ class FermionicArray(AbelianArray, FermionicCommon):
         return new
 
     def dagger(self, phase_dual=False, inplace=False):
-        """Fermionic adjoint.
+        """Fermionic adjoint, implements `.H` attribute.
 
         Parameters
         ----------
@@ -687,123 +625,6 @@ class FermionicArray(AbelianArray, FermionicCommon):
 
         return new
 
-    @property
-    def H(self):
-        """Fermionic conjugate transpose."""
-        return self.dagger()
-
-    def fuse(self, *axes_groups, expand_empty=True, inplace=False):
-        """Fermionic fusion of axes groups. This includes three sources of
-        phase changes:
-
-        1. Initial fermionic transpose to make each group contiguous.
-        2. Flipping of non dual indices, if merged group is overall dual.
-        3. Virtual transpose within a group, if merged group is overall dual.
-
-        A grouped axis is overall dual if the first axis in the group is dual.
-
-        Parameters
-        ----------
-        axes_groups : Sequence[Sequence[int]]
-            The axes groups to fuse. See `AbelianArray.fuse` for more details.
-        expand_empty : bool, optional
-            Whether to expand empty groups into new axes.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        FermionicArray
-        """
-        return FermionicCommon.fuse(
-            self,
-            *axes_groups,
-            expand_empty=expand_empty,
-            inplace=inplace,
-        )
-
-    def unfuse(self, axis, inplace=False):
-        """Fermionic unfuse, which includes two sources of phase changes:
-
-        1. Flipping of non dual sub indices, if overall index is dual.
-        2. Virtual transpose within group, if overall index is dual.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to unfuse.
-        """
-        index = self.indices[axis]
-
-        if index.dual:
-            sub_indices = self.indices[axis].subinfo.indices
-            # if overall index is dual, need to (see fermionic fuse):
-            #     1. flip not dual sub indices back
-            #     2. perform virtual transpose within group
-
-            nnew = len(sub_indices)
-            axes_flip = []
-            virtual_perm = list(range(self.ndim + nnew - 1))
-
-            for i, ix in enumerate(sub_indices):
-                if not ix.dual:
-                    axes_flip.append(axis + i)
-                # reverse the order of the groups subindices
-                virtual_perm[axis + i] = axis + nnew - i - 1
-
-        # need to insert actual phases prior to block operations
-        new = self.phase_sync(inplace=inplace)
-        # do the non-fermionic actual block unfusing
-        new = AbelianArray.unfuse(new, axis, inplace=True)
-
-        if index.dual:
-            # apply the phase changes
-            if axes_flip:
-                new.phase_flip(*axes_flip, inplace=True)
-            new.phase_transpose(tuple(virtual_perm), inplace=True)
-
-        return new
-
-    def einsum(self, eq, preserve_array=False):
-        """Einsum for fermionic arrays, currently only single term.
-
-        Parameters
-        ----------
-        eq : str
-            The einsum equation, e.g. "abcb->ca". The output indices must be
-            specified and only trace and permutations are allowed.
-        preserve_array : bool, optional
-            If tracing to a scalar, whether to return an AbelainArray object
-            with no indices, or simply scalar itself (the default).
-
-        Returns
-        -------
-        AbelianArray or scalar
-        """
-        lhs, rhs = eq.split("->")
-
-        def key(i):
-            c = lhs[i]
-            return (
-                # group traced then kept indices
-                rhs.find(c),
-                # pair up traced indices
-                c,
-                # make sure traced pairs grouped like (-+)
-                not self.indices[i].dual,
-            )
-
-        # tranposition introduces all necessary phases
-        perm = tuple(sorted(range(self.ndim), key=key))
-        x = self.transpose(perm)
-        x.phase_sync(inplace=True)
-
-        # then can use AbelianArray einsum
-        new_lhs = "".join(lhs[i] for i in perm)
-        new_eq = f"{new_lhs}->{rhs}"
-
-        return AbelianArray.einsum(x, new_eq, preserve_array=preserve_array)
-
     def __matmul__(self, other):
         # shortcut of matrx/vector products
         if self.ndim > 2 or other.ndim > 2:
@@ -815,7 +636,7 @@ class FermionicArray(AbelianArray, FermionicCommon):
 
         a = self.phase_sync()
         b = other.phase_sync()
-        c = AbelianArray.__matmul__(a, b, preserve_array=True)
+        c = a._matmul_abelian(b, preserve_array=True)
         resolve_combined_oddpos(a, b, c)
 
         if c.ndim == 0:
@@ -827,36 +648,6 @@ class FermionicArray(AbelianArray, FermionicCommon):
                 return 0.0
 
         return c
-
-    def to_dense(self):
-        """Return dense representation of the fermionic array, with lazy phases
-        multiplied in.
-        """
-        return AbelianArray.to_dense(self.phase_sync())
-
-    def allclose(self, other, **kwargs):
-        """Check if two fermionic arrays are element-wise equal within a
-        tolerance, accounting for phases.
-
-        Parameters
-        ----------
-        other : FermionicArray
-            The other fermionic array to compare.
-        """
-        return AbelianArray.allclose(
-            self.phase_sync(), other.phase_sync(), **kwargs
-        )
-
-    def trace(self):
-        """Fermionic matrix trace."""
-        ixl, ixr = self.indices
-
-        if ixl.dual and not ixr.dual:
-            return AbelianArray.trace(self.phase_sync())
-        elif not ixl.dual and ixr.dual:
-            return AbelianArray.trace(self.phase_flip(0).phase_sync())
-        else:
-            raise ValueError("Cannot trace a non-bra or non-ket.")
 
 
 @tensordot.register(FermionicArray)
