@@ -2,7 +2,7 @@
 
 import autoray as ar
 
-from .flat_abelian_core import AbelianArrayFlat, FlatIndex, FlatVector
+from .flat_abelian_array import AbelianArrayFlat, FlatIndex, FlatVector
 from .linalg import eigh, eigh_truncated, qr, qr_stabilized, svd, svd_truncated
 from .utils import DEBUG
 

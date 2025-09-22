@@ -23,7 +23,7 @@ from .abelian_common import AbelianCommon
 from .common import SymmrayCommon
 from .flat_index import FlatIndex, FlatSubIndexInfo
 from .interface import tensordot
-from .sparse_abelian_core import AbelianArray
+from .sparse_abelian_array import AbelianArray
 from .sparse_common import calc_fuse_group_info, parse_tensordot_axes
 from .symmetries import get_symmetry
 from .utils import DEBUG, get_array_cls

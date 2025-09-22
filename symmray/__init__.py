@@ -14,11 +14,11 @@ from .fermionic_local_operators import (
     fermi_number_up_local_array,
     fermi_spin_operator_local_array,
 )
-from .flat_abelian_core import (
+from .flat_abelian_array import (
     AbelianArrayFlat,
     Z2ArrayFlat,
 )
-from .flat_fermionic_core import (
+from .flat_fermionic_array import (
     FermionicArrayFlat,
     Z2FermionicArrayFlat,
 )
@@ -66,7 +66,7 @@ from .networks import (
     TN_fermionic_from_edges_rand,
     parse_edges_to_site_info,
 )
-from .sparse_abelian_core import (
+from .sparse_abelian_array import (
     AbelianArray,
     U1Array,
     U1U1Array,
@@ -79,7 +79,7 @@ from .sparse_common import (
     get_default_tensordot_mode,
     set_default_tensordot_mode,
 )
-from .sparse_fermionic_core import (
+from .sparse_fermionic_array import (
     FermionicArray,
     U1FermionicArray,
     U1U1FermionicArray,

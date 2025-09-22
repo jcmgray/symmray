@@ -2,9 +2,9 @@
 
 import autoray as ar
 
-from .flat_abelian_core import AbelianArrayFlat
+from .flat_abelian_array import AbelianArrayFlat
 from .interface import tensordot
-from .sparse_fermionic_core import FermionicArray, FermionicCommon
+from .sparse_fermionic_array import FermionicArray, FermionicCommon
 from .symmetries import get_symmetry
 
 
