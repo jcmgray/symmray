@@ -143,6 +143,30 @@ def test_tn_contract_exact_rand_reg(
             3.699916651272369e18,
             3.5167108363602043e18,
         ),
+        (
+            "Z2",
+            True,
+            False,
+            4,
+            5,
+            4,
+            "equal",
+            42,
+            4.2460299722958316e18,
+            4.125147271299068e18,
+        ),
+        (
+            "Z2",
+            True,
+            True,
+            4,
+            5,
+            4,
+            "equal",
+            42,
+            4.2460299722958316e18,
+            4.1306686155615053e18,
+        ),
     ],
 )
 def test_peps_approx_norm_abelian(
@@ -155,8 +179,15 @@ def test_peps_approx_norm_abelian(
     # this guarantees state across versions
     rng = numpy.random.RandomState(seed)
 
-    def site_charge(coo):
-        return (coo[0] + coo[1]) % 2
+    if fermionic and flat:
+
+        def site_charge(coo):
+            return 0
+
+    else:
+
+        def site_charge(coo):
+            return (coo[0] + coo[1]) % 2
 
     psi = sr.networks.PEPS_abelian_rand(
         symm,

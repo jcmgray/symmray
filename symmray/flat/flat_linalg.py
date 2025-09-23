@@ -12,12 +12,14 @@ from ..linalg import (
 )
 from ..utils import DEBUG
 from .flat_abelian_array import AbelianArrayFlat
+from .flat_array import FlatArrayCommon
 from .flat_base import FlatVector
+from .flat_fermionic_array import FermionicArrayFlat
 from .flat_index import FlatIndex
 
 
 @qr.register(AbelianArrayFlat)
-def qr_flat(
+def qr_abelian(
     x: AbelianArrayFlat,
     stabilized=False,
 ):
@@ -59,16 +61,26 @@ def qr_flat(
     return q, r
 
 
-@qr_stabilized.register(AbelianArrayFlat)
+@qr.register(FermionicArrayFlat)
+def qr_fermionic(x: FermionicArrayFlat, stabilized=False):
+    # XXX: combine into fermionic common
+    q, r = qr_abelian(x, stabilized=stabilized)
+    if r.indices[0].dual:
+        # inner index is like |x><x| so introduce a phase flip
+        r.phase_flip(0, inplace=True)
+    return q, r
+
+
+@qr_stabilized.register(FlatArrayCommon)
 def qr_stabilized_flat(
-    x: AbelianArrayFlat,
+    x: FlatArrayCommon,
 ):
-    q, r = qr_flat(x, stabilized=True)
+    q, r = qr(x, stabilized=True)
     return q, None, r
 
 
 @svd.register(AbelianArrayFlat)
-def svd_flat(
+def svd_abelian(
     x: AbelianArrayFlat,
 ) -> tuple[AbelianArrayFlat, FlatVector, AbelianArrayFlat]:
     if x.ndim != 2:
@@ -111,6 +123,20 @@ def svd_flat(
     if DEBUG:
         # u and vh checked in copy_with
         s.check()
+
+    return u, s, vh
+
+
+@svd.register(FermionicArrayFlat)
+def svd_fermionic(
+    x: FermionicArrayFlat,
+) -> tuple[FermionicArrayFlat, FlatVector, FermionicArrayFlat]:
+    # XXX: combine into fermionic common?
+    u, s, vh = svd_abelian(x)
+
+    if vh.indices[0].dual:
+        # inner index is like |x><x| so introduce a phase flip
+        vh.phase_flip(0, inplace=True)
 
     return u, s, vh
 
@@ -209,16 +235,16 @@ def _truncate_svd_result(
     return U, s, VH
 
 
-@svd_truncated.register(AbelianArrayFlat)
+@svd_truncated.register(FlatArrayCommon)
 def svd_truncated(
-    x: AbelianArrayFlat,
+    x: FlatArrayCommon,
     cutoff=-1.0,
     cutoff_mode=4,
     max_bond=-1,
     absorb=0,
     renorm=0,
 ):
-    U, s, VH = svd_flat(x)
+    U, s, VH = svd(x)
     return _truncate_svd_result(
         U, s, VH, cutoff, cutoff_mode, max_bond, absorb, renorm
     )
