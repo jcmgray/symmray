@@ -150,7 +150,6 @@ def TN_abelian_from_edges_rand(
     -------
     quimb.tensor.TensorNetworkGen or quimb.tensor.TensorNetworkGenVector
     """
-    import numpy as np
     import quimb.tensor as qtn
 
     import symmray as sr
@@ -207,7 +206,7 @@ def TN_abelian_from_edges_rand(
                 "`site_charge`. Please provide one."
             )
 
-    rng = np.random.default_rng(seed)
+    rng = sr.utils.get_rng(seed)
 
     index_store = {}
     for site, info in site_info.items():

@@ -71,10 +71,10 @@ def rand_valid_tensordot(
     import numpy as np
 
     from .symmetries import get_symmetry
-    from .utils import get_rand, rand_index
+    from .utils import get_rand, get_rng, rand_index
 
     symmetry = get_symmetry(symmetry)
-    rng = np.random.default_rng(seed)
+    rng = get_rng(seed)
 
     # dimensionality of each array
     if ndim_a is None:

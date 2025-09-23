@@ -37,10 +37,35 @@ def hasher(k):
     return hashlib.sha1(pickle.dumps(k)).hexdigest()
 
 
+class RandomStateTranslated:
+    """Simple wrapper to make `numpy.random.RandomState` have the same
+    interface as `numpy.random.Generator`."""
+
+    def __init__(self, rng):
+        self.rng = rng
+
+    def integers(self, *args, **kwargs):
+        return self.rng.randint(*args, **kwargs)
+
+    def __getattribute__(self, name):
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            x = getattr(self.rng, name)
+            super().__getattribute__("__dict__")[name] = x
+            return x
+
+
 def get_rng(seed=None):
     import numpy as np
 
-    return np.random.default_rng(seed)
+    # RandomStateTranslated is useful for determinism across numpy versions
+    if isinstance(seed, RandomStateTranslated):
+        return seed
+    elif isinstance(seed, np.random.RandomState):
+        return RandomStateTranslated(seed)
+    else:
+        return np.random.default_rng(seed)
 
 
 def get_random_fill_fn(
