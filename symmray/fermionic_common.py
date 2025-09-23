@@ -1,6 +1,6 @@
 """Common methods for any fermionic arrays."""
 
-from .sparse.sparse_array import parse_tensordot_axes
+from .abelian_common import parse_tensordot_axes
 
 
 class FermionicCommon:
