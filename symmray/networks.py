@@ -100,6 +100,7 @@ def TN_abelian_from_edges_rand(
     site_tag_id="I{}",
     site_ind_id="k{}",
     fermionic=False,
+    flat=False,
     site_charge=None,
     subsizes="maximal",
     **kwargs,
@@ -131,10 +132,13 @@ def TN_abelian_from_edges_rand(
         The index format for each site tensor, if physical sites are included.
     fermionic : bool, optional
         Whether to generate fermionic tensors.
+    flat : bool, optional
+        Whether to generate 'flat' backend arrays (True) or the default
+        block-sparse backend arrays (False).
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
-        alernate between 0 and 1 for U1.
+        alternate between 0 and 1 for U1.
     subsizes : {"maximal", "equal"}, optional
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
@@ -236,6 +240,7 @@ def TN_abelian_from_edges_rand(
                 symmetry=symmetry,
                 charge=site_charge(site),
                 fermionic=fermionic,
+                flat=flat,
                 subsizes=subsizes,
                 seed=rng,
                 dtype=dtype,
@@ -331,6 +336,7 @@ def PEPS_abelian_rand(
     x_tag_id="X{}",
     y_tag_id="Y{}",
     fermionic=False,
+    flat=False,
     site_charge=None,
     subsizes="maximal",
     **kwargs,
@@ -364,6 +370,9 @@ def PEPS_abelian_rand(
         The index format for each site tensor, if physical sites are included.
     fermionic : bool, optional
         Whether to generate fermionic tensors.
+    flat : bool, optional
+        Whether to generate 'flat' backend arrays (True) or the default
+        block-sparse backend arrays (False).
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
@@ -393,6 +402,7 @@ def PEPS_abelian_rand(
         site_ind_id=site_ind_id,
         site_tag_id=site_tag_id,
         fermionic=fermionic,
+        flat=flat,
         site_charge=site_charge,
         subsizes=subsizes,
         **kwargs,

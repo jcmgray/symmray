@@ -545,6 +545,7 @@ def get_rand(
     seed=None,
     dist="normal",
     fermionic=False,
+    flat=False,
     subsizes="random",
     **kwargs,
 ):
@@ -576,6 +577,9 @@ def get_rand(
         The distribution of the random numbers. Can be "normal" or "uniform".
     fermionic : bool, optional
         Whether to generate a fermionic array.
+    flat : bool, optional
+        Whether to generate a 'flat' backend array (True) or the default
+        block-sparse backend array (False).
     subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 
@@ -618,7 +622,7 @@ def get_rand(
         for d, dual in zip(shape, duals)
     ]
 
-    return cls.random(
+    x = cls.random(
         indices=indices,
         charge=charge,
         seed=rng,
@@ -626,6 +630,11 @@ def get_rand(
         symmetry=symmetry,
         **kwargs,
     )
+
+    if flat:
+        x = x.to_flat()
+
+    return x
 
 
 def get_rand_blockvector(

@@ -6,18 +6,18 @@ import symmray as sr
 @pytest.mark.parametrize(
     "symm,fermionic,flat,D,subsizes,seed,zex",
     [
-        ("Z2", 0, 0, 4, "equal", 42, -281.62364214437235),
-        ("Z2", 0, 1, 4, "equal", 42, -281.62364214437235),
-        ("Z2", 1, 0, 4, "equal", 42, -366.2700849695507),
-        ("Z2", 1, 1, 4, "equal", 42, -366.2700849695507),
-        ("Z3", 0, 0, 6, "equal", 42, -3370.3874923970207),
-        ("Z3", 0, 1, 6, "equal", 42, -3370.3874923970207),
-        ("Z3", 1, 0, 6, "equal", 42, -1676.676550645644),
-        ("Z3", 1, 1, 6, "equal", 42, -1676.676550645644),
-        ("Z4", 0, 0, 8, "equal", 42, -2850.1344930363116),
-        ("Z4", 0, 1, 8, "equal", 42, -2850.1344930363116),
-        ("Z4", 1, 0, 8, "equal", 42, 512.9367355654399),
-        ("Z4", 1, 1, 8, "equal", 42, 512.9367355654399),
+        ("Z2", 0, 0, 4, "equal", 42, 910.9953756296064),
+        ("Z2", 0, 1, 4, "equal", 42, 910.9953756296064),
+        ("Z2", 1, 0, 4, "equal", 42, -559.9041778658463),
+        ("Z2", 1, 1, 4, "equal", 42, -559.9041778658463),
+        ("Z3", 0, 0, 6, "equal", 42, -2273.9553413723775),
+        ("Z3", 0, 1, 6, "equal", 42, -2273.9553413723775),
+        ("Z3", 1, 0, 6, "equal", 42, 2790.4191674364483),
+        ("Z3", 1, 1, 6, "equal", 42, 2790.4191674364483),
+        ("Z4", 0, 0, 8, "equal", 42, -28168.346984047483),
+        ("Z4", 0, 1, 8, "equal", 42, -28168.346984047483),
+        ("Z4", 1, 0, 8, "equal", 42, 21259.573156456645),
+        ("Z4", 1, 1, 8, "equal", 42, 21259.573156456645),
     ],
 )
 def test_tn_contract_exact_rand_reg(
@@ -31,10 +31,10 @@ def test_tn_contract_exact_rand_reg(
 ):
     pytest.importorskip("quimb")
 
-    from numpy.random import PCG64, default_rng
+    import numpy
 
-    bg = PCG64(seed)
-    rng = default_rng(bg)
+    # this guarantees state across versions
+    rng = numpy.random.RandomState(42)
 
     # networkx.random_regular_graph(3, 10, seed=42)
     edges = (
@@ -61,30 +61,33 @@ def test_tn_contract_exact_rand_reg(
         seed=rng,
         subsizes=subsizes,
         fermionic=fermionic,
+        flat=flat,
     )
-
-    if flat:
-        for t in tn:
-            t.modify(data=t.data.to_flat())
 
     z = tn.contract(all)
     assert z == pytest.approx(zex)
 
 
 @pytest.mark.parametrize(
-    "symm,fermionic,Lx,Ly,D,subsizes,seed,zex,zap",
+    "symm,fermionic,flat,Lx,Ly,D,subsizes,seed,zex,zap",
     [
-        ("Z2", 0, 4, 5, 3, None, 42, 18686525784203.750, 18699063660322.18),
-        ("Z2", 1, 4, 5, 3, None, 42, 22755076798682.906, 22728959655138.24),
-        ("U1", 0, 4, 5, 3, None, 42, 55955059.004159900, 55961396.57935014),
-        ("U1", 1, 4, 5, 3, None, 42, 64162935.019977340, 64162323.77904858),
+        ("Z2", 0, 0, 4, 5, 3, "random", 42, 932868121102350, 931801000689350),
+        ("Z2", 1, 0, 4, 5, 3, "random", 42, 836370835922494, 836451499443962),
+        ("U1", 0, 0, 4, 5, 3, "random", 42, 2616935568011.6, 2616935568011.69),
+        ("U1", 1, 0, 4, 5, 3, "random", 42, 3347515047752.4, 3347515047752.46),
+        ("Z2", 0, 0, 4, 5, 4, "equal", 42, 7.194706515e18, 6.8934743978e18),
+        ("Z2", 0, 1, 4, 5, 4, "equal", 42, 7.194706515e18, 6.8947000425e18),
     ],
 )
 def test_peps_approx_norm_abelian(
-    symm, fermionic, Lx, Ly, D, subsizes, seed, zex, zap
+    symm, fermionic, flat, Lx, Ly, D, subsizes, seed, zex, zap
 ):
-    # regression test to catch otherwise silent implementation change errors
     pytest.importorskip("quimb")
+
+    import numpy
+
+    # this guarantees state across versions
+    rng = numpy.random.RandomState(seed)
 
     def site_charge(coo):
         return (coo[0] + coo[1]) % 2
@@ -94,11 +97,13 @@ def test_peps_approx_norm_abelian(
         Lx,
         Ly,
         D,
-        seed=seed,
+        seed=rng,
         subsizes=subsizes,
         site_charge=site_charge,
         fermionic=fermionic,
+        flat=flat,
     )
+
     psi.check()
     norm = psi.make_norm()
     norm.check()
@@ -107,7 +112,11 @@ def test_peps_approx_norm_abelian(
         zex
     )
 
+    if flat:
+        kwargs = {"cutoff": 0.0}
+    else:
+        kwargs = {"cutoff": 1e-10}
+
     assert norm.contract_boundary(
-        max_bond=40,
-        layer_tags=["KET", "BRA"],
+        max_bond=40, layer_tags=["KET", "BRA"], **kwargs
     ) == pytest.approx(zap)
