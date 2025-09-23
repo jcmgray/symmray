@@ -31,6 +31,11 @@ def test_tn_contract_exact_rand_reg(
 ):
     pytest.importorskip("quimb")
 
+    from numpy.random import PCG64, default_rng
+
+    bg = PCG64(seed)
+    rng = default_rng(bg)
+
     # networkx.random_regular_graph(3, 10, seed=42)
     edges = (
         (0, 7),
@@ -53,7 +58,7 @@ def test_tn_contract_exact_rand_reg(
         symm,
         edges,
         bond_dim=D,
-        seed=seed,
+        seed=rng,
         subsizes=subsizes,
         fermionic=fermionic,
     )
