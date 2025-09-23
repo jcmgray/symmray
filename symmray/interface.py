@@ -140,10 +140,14 @@ def tensordot(a, b, axes=2, **kwargs):
         If an integer, the number of axes to contract. If a tuple, the axes
         to contract. Default is 2.
     """
-    if getattr(a, "ndim", 0) == 0:
-        # likely called as effective scalar multiplication of block array
-        return a * b
-    return a.tensordot(b, axes, **kwargs)
+    try:
+        return a.tensordot(b, axes, **kwargs)
+    except AttributeError:
+        if getattr(a, "ndim", 0) == 0:
+            # likely called as effective scalar multiplication of block array
+            return a * b
+        else:
+            raise TypeError(f"Expected SymmrayCommon, got {type(a).__name__}.")
 
 
 def einsum(eq, x):

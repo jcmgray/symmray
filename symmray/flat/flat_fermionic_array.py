@@ -126,6 +126,8 @@ class FermionicArrayFlat(
         else:
             new._phases = None
 
+        new._oddpos = self._oddpos
+
         return new
 
     def copy_with(
@@ -145,6 +147,7 @@ class FermionicArrayFlat(
             indices=indices,
         )
         new._phases = self._phases if phases is None else phases
+        new._oddpos = self._oddpos
         return new
 
     def modify(
@@ -525,11 +528,65 @@ class FermionicArrayFlat(
     def einsum(self, eq: str, preserve_array=False):
         raise NotImplementedError
 
-    def tensordot(self, other, axes=2, mode="auto", preserve_array=False):
-        raise NotImplementedError
+    def tensordot(
+        self, other, axes=2, preserve_array=False, **kwargs
+    ) -> "FermionicArrayFlat":
+        # XXX: move into FermionicCommon as a generic
 
-    def __matmul__(self, other: "FermionicArrayFlat"):
-        raise NotImplementedError
+        if not isinstance(other, self.__class__):
+            if getattr(other, "ndim", 0) == 0:
+                # assume scalar
+                return self * other
+            else:
+                raise TypeError(
+                    f"Expected {self.__class__.__name__}, got {type(other)}."
+                )
+
+        a, b, new_axes_a, new_axes_b = self._prepare_for_tensordot_fermionic(
+            other, axes
+        )
+
+        # perform blocked contraction!
+        c = a._tensordot_abelian(
+            b,
+            axes=(new_axes_a, new_axes_b),
+            # preserve array for resolving oddposs
+            preserve_array=True,
+            **kwargs,
+        )
+
+        # XXX: need flat resolve_combined_oddpos
+        # resolve_combined_oddpos(a, b, c)
+
+        if (c.ndim == 0) and (not preserve_array):
+            c.phase_sync(inplace=True)
+            return c.get_scalar_element()
+
+        return c
+
+    def __matmul__(self, other: "FermionicArrayFlat", preserve_array=False):
+        # XXX: move into FermionicCommon as a generic
+
+        # shortcut of matrx/vector products
+        if self.ndim > 2 or other.ndim > 2:
+            raise ValueError("Matrix multiplication requires 2D arrays.")
+
+        if other.indices[0].dual:
+            # have |x><x| -> want <x|x>
+            other = other.phase_flip(0)
+
+        a = self.phase_sync()
+        b = other.phase_sync()
+        c = a._matmul_abelian(b, preserve_array=True)
+
+        # XXX: need to implement
+        # resolve_combined_oddpos(a, b, c)
+
+        if c.ndim == 0:
+            c.phase_sync(inplace=True)
+            return c.get_scalar_element()
+
+        return c
 
     def to_dense(self):
         raise NotImplementedError

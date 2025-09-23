@@ -338,3 +338,31 @@ def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
     sxt = sx.transpose(new_axes)
     fxus = xu.to_blocksparse()
     fxus.test_allclose(sxt)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("seed", range(50))
+def test_tensordot(symmetry, seed):
+    N = int(symmetry[1:])
+
+    a, b, axes = sr.utils_test.rand_valid_tensordot(
+        symmetry=symmetry,
+        fermionic=True,
+        charge_a=0,
+        charge_b=0,
+        dimension_multiplier=N,
+        subsizes="equal",
+        seed=seed,
+    )
+    c = a.tensordot(b, axes=axes, preserve_array=True)
+
+    fa = a.to_flat()
+    fb = b.to_flat()
+    fc = fa.tensordot(fb, axes=axes, preserve_array=True)
+    fc.check()
+
+    if c.is_zero() and fc.is_zero():
+        # both are zero, other tests might break
+        return
+
+    fc.to_blocksparse().test_allclose(c)

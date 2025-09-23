@@ -98,6 +98,19 @@ class BlockCommon:
         """
         return next(iter(self.get_all_blocks()), 0.0)
 
+    def get_scalar_element(self):
+        """Assuming the block array is a scalar, get that scalar element."""
+        sectors = self.sectors
+
+        if sectors == ((),):
+            # single scalar block, usual case
+            return self.get_block(())
+        elif sectors == ():
+            # no aligned blocks, return zero
+            return 0.0
+        else:
+            raise ValueError("Block array does not seem to be a scalar.")
+
     def is_zero(self, tol=1e-12):
         """Check if all blocks are zero up to a tolerance."""
         return all(

@@ -278,6 +278,13 @@ class AbelianArrayFlat(
         """
         return self._unfuse_abelian(axis, inplace=inplace)
 
+    def __matmul__(
+        self: "AbelianArrayFlat",
+        other: "AbelianArrayFlat",
+        preserve_array=False,
+    ):
+        return self._matmul_abelian(other=other, preserve_array=preserve_array)
+
     def tensordot(
         self,
         other,

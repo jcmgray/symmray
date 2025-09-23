@@ -55,6 +55,12 @@ class FlatCommon:
         """Get an arbitrary (the first) block from the stack."""
         return self._blocks[0]
 
+    def get_scalar_element(self):
+        """Get the scalar element from a scalar block array."""
+        if self.shape_block != ():
+            raise ValueError("Array does not have scalar blocks.")
+        return self._blocks[0]
+
     def is_zero(self, tol=1e-12):
         """Check if all blocks are zero up to a tolerance."""
         return ar.do("allclose", self.blocks, 0.0, atol=tol, like=self.backend)

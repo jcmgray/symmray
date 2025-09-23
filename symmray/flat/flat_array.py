@@ -1224,7 +1224,7 @@ class FlatArrayCommon:
             preserve_array=preserve_array,
         )
 
-    def __matmul__(
+    def _matmul_abelian(
         self: "FlatArrayCommon",
         other: "FlatArrayCommon",
         preserve_array=False,
@@ -1357,17 +1357,20 @@ def tensordot_flat_fused(
     right_axes: tuple[int, ...],
     preserve_array=False,
 ):
+    # NOTE: we use abelian fusion as, while fermionic tensordot uses this
+    # routine, it handles all phases ahead of time then expects abelian
+
     if left_axes:
-        af = a.fuse(left_axes, axes_a)
+        af = a._fuse_core_abelian(left_axes, axes_a)
     elif len(axes_a) > 1:
-        af = a.fuse(axes_a)
+        af = a._fuse_core_abelian(axes_a)
     else:
         af = a
 
     if right_axes:
-        bf = b.fuse(axes_b, right_axes)
+        bf = b._fuse_core_abelian(axes_b, right_axes)
     elif len(axes_b) > 1:
-        bf = b.fuse(axes_b)
+        bf = b._fuse_core_abelian(axes_b)
     else:
         bf = b
 
@@ -1375,7 +1378,9 @@ def tensordot_flat_fused(
 
     if isinstance(cf, FlatArrayCommon):
         # if we got a new flat array, unfuse all axes
-        cf.unfuse_all(inplace=True)
+        for ax in reversed(range(cf.ndim)):
+            if cf.is_fused(ax):
+                cf = cf._unfuse_abelian(ax, inplace=True)
 
     return cf
 

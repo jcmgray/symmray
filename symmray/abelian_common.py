@@ -457,3 +457,31 @@ class AbelianCommon:
                 f", num_blocks={self.num_blocks})",
             ]
         )
+
+
+def without(it, remove):
+    """Return a tuple of the elements in ``it`` with those at positions
+    ``remove`` removed.
+    """
+    return tuple(el for i, el in enumerate(it) if i not in remove)
+
+
+def parse_tensordot_axes(axes, ndim_a, ndim_b):
+    """Parse the axes argument for single integer and also negative indices.
+    Returning the 4 axes groups that can be used for fusing.
+    """
+    if isinstance(axes, int):
+        axes_a = tuple(range(ndim_a - axes, ndim_a))
+        axes_b = tuple(range(0, axes))
+    else:
+        axes_a, axes_b = axes
+        axes_a = tuple(x % ndim_a for x in axes_a)
+        axes_b = tuple(x % ndim_b for x in axes_b)
+        if not len(axes_a) == len(axes_b):
+            raise ValueError("Axes must have same length.")
+
+    # axes left on the left and right tensors respectively
+    left_axes = without(range(ndim_a), axes_a)
+    right_axes = without(range(ndim_b), axes_b)
+
+    return left_axes, axes_a, axes_b, right_axes

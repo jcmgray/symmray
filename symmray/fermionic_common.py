@@ -1,5 +1,7 @@
 """Common methods for any fermionic arrays."""
 
+from .sparse.sparse_array import parse_tensordot_axes
+
 
 class FermionicCommon:
     def _fuse_core(
@@ -165,6 +167,46 @@ class FermionicCommon:
             return self.phase_flip(0).phase_sync(inplace=True)._trace_abelian()
         else:
             raise ValueError("Cannot trace a non-bra or non-ket.")
+
+    def _prepare_for_tensordot_fermionic(self, other, axes):
+        """Perform necessary fermionic phase operations to prepare two arrays
+        for tensordot.
+        """
+        ndim_a, ndim_b = self.ndim, other.ndim
+        left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+            axes, ndim_a, ndim_b
+        )
+
+        ncon = len(axes_a)
+
+        # XXX: do all three as virtual phases?
+
+        # permute a & b so we have axes like
+        #     in terms of data layout => [..., x, y, z], [x, y, z, ...]
+        a = self.transpose((*left_axes, *axes_a))
+        b = other.transpose((*axes_b, *right_axes))
+        #     but in terms of 'phase layout' =>  [..., x, y, z], [z, y, x, ...]
+        b.phase_transpose(
+            (*range(ncon - 1, -1, -1), *range(ncon, b.ndim)), inplace=True
+        )
+
+        # new axes for tensordot_abelian having permuted inputs
+        new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
+        new_axes_b = tuple(range(ncon))
+
+        # if contracted index is like |x><x| phase flip to get <x|x>
+        if a.size <= b.size:
+            axs_flip = tuple(ax for ax in new_axes_a if not a.indices[ax].dual)
+            a.phase_flip(*axs_flip, inplace=True)
+        else:
+            axs_flip = tuple(ax for ax in new_axes_b if b.indices[ax].dual)
+            b.phase_flip(*axs_flip, inplace=True)
+
+        # actually multiply block arrays with phases
+        a.phase_sync(inplace=True)
+        b.phase_sync(inplace=True)
+
+        return a, b, new_axes_a, new_axes_b
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases

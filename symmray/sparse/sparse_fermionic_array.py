@@ -10,9 +10,7 @@ from ..symmetries import calc_phase_permutation, get_symmetry
 from ..utils import DEBUG
 from .sparse_array import (
     SparseArrayCommon,
-    parse_tensordot_axes,
     permuted,
-    tensordot_abelian,
 )
 from .sparse_base import BlockCommon
 
@@ -644,6 +642,8 @@ class FermionicArray(
         )
 
     def __matmul__(self, other):
+        # XXX: move into FermionicCommon as a generic?
+
         # shortcut of matrx/vector products
         if self.ndim > 2 or other.ndim > 2:
             raise ValueError("Matrix multiplication requires 2D arrays.")
@@ -658,17 +658,19 @@ class FermionicArray(
         resolve_combined_oddpos(a, b, c)
 
         if c.ndim == 0:
-            try:
-                c.phase_sync(inplace=True)
-                return c.get_block(())
-            except KeyError:
-                # no aligned blocks, return zero
-                return 0.0
+            c.phase_sync(inplace=True)
+            return c.get_scalar_element()
 
         return c
 
 
-def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
+def tensordot_fermionic(
+    a: FermionicArray,
+    b: FermionicArray,
+    axes=2,
+    preserve_array=False,
+    **kwargs,
+):
     """Contract two fermionic arrays along the specified axes, accounting for
     phases from both transpositions and contractions.
 
@@ -680,45 +682,26 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
         The second fermionic array.
     axes : int or (tuple[int], tuple[int]), optional
         The axes to contract over, by default 2.
+    preserve_array : bool, optional
+        Whether to preserve the array structure if the result is a scalar,
+        by default False.
+    kwargs
+        Passed to the underlying (non-fermionic) tensordot call.
+
+    Returns
+    -------
+    FermionicArray or scalar
     """
-    if not isinstance(b, FermionicArray):
+    if not isinstance(b, type(a)):
         if getattr(b, "ndim", 0) == 0:
             # assume scalar
             return a * b
         else:
-            raise TypeError(f"Expected FermionicArray, got {type(b)}.")
+            raise TypeError(
+                f"Expected {type(a).__name__}, got {type(b).__name__}."
+            )
 
-    ndim_a, ndim_b = a.ndim, b.ndim
-    left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
-        axes, ndim_a, ndim_b
-    )
-
-    ncon = len(axes_a)
-
-    # permute a & b so we have axes like
-    #     in terms of data layout => [..., x, y, z], [x, y, z, ...]
-    a = a.transpose((*left_axes, *axes_a))
-    b = b.transpose((*axes_b, *right_axes))
-    #     but in terms of 'phase layout' =>  [..., x, y, z], [z, y, x, ...]
-    b.phase_transpose(
-        (*range(ncon - 1, -1, -1), *range(ncon, b.ndim)), inplace=True
-    )
-
-    # new axes for tensordot_abelian having permuted inputs
-    new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
-    new_axes_b = tuple(range(ncon))
-
-    # if contracted index is like |x><x| phase flip to get <x|x>
-    if a.size <= b.size:
-        axs_flip = tuple(ax for ax in new_axes_a if not a.indices[ax].dual)
-        a.phase_flip(*axs_flip, inplace=True)
-    else:
-        axs_flip = tuple(ax for ax in new_axes_b if b.indices[ax].dual)
-        b.phase_flip(*axs_flip, inplace=True)
-
-    # actually multiply block arrays with phases
-    a.phase_sync(inplace=True)
-    b.phase_sync(inplace=True)
+    a, b, new_axes_a, new_axes_b = a._prepare_for_tensordot_fermionic(b, axes)
 
     # perform blocked contraction!
     c = a._tensordot_abelian(
@@ -733,12 +716,8 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
     resolve_combined_oddpos(a, b, c)
 
     if (c.ndim == 0) and (not preserve_array):
-        try:
-            c.phase_sync(inplace=True)
-            return c.get_block(())
-        except KeyError:
-            # no aligned blocks, return zero
-            return 0.0
+        c.phase_sync(inplace=True)
+        return c.get_scalar_element()
 
     return c
 

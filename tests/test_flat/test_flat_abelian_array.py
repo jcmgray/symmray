@@ -343,4 +343,4 @@ def test_tensordot(symmetry, seed):
         == 0
     )
 
-    assert fc.to_blocksparse().allclose(c)
+    fc.to_blocksparse().test_allclose(c)
