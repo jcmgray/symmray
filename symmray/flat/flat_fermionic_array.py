@@ -5,7 +5,6 @@ import autoray as ar
 from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
 from ..fermionic_common import FermionicCommon
-from ..interface import tensordot
 from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
@@ -526,6 +525,9 @@ class FermionicArrayFlat(
     def einsum(self, eq: str, preserve_array=False):
         raise NotImplementedError
 
+    def tensordot(self, other, axes=2, mode="auto", preserve_array=False):
+        raise NotImplementedError
+
     def __matmul__(self, other: "FermionicArrayFlat"):
         raise NotImplementedError
 
@@ -540,11 +542,6 @@ class FermionicArrayFlat(
 
     def trace(self):
         raise NotImplementedError
-
-
-@tensordot.register(FermionicArrayFlat)
-def tensordot_fermionic_flat(a, b, axes=2, preserve_array=False, **kwargs):
-    raise NotImplementedError
 
 
 class Z2FermionicArrayFlat(FermionicArrayFlat):

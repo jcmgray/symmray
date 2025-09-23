@@ -146,6 +146,31 @@ class AbelianArray(
         """
         return self._einsum_abelian(eq, preserve_array=preserve_array)
 
+    def tensordot(self, other, axes=2, mode="auto", preserve_array=False):
+        """Tensordot between two block sparse abelian symmetric arrays.
+
+        Parameters
+        ----------
+        a, b : SparseArrayCommon
+            The arrays to be contracted.
+        axes : int or tuple[int]
+            The axes to contract. If an integer, the last ``axes`` axes of
+            ``a`` will be contracted with the first ``axes`` axes of ``b``. If
+            a tuple, the axes to contract in ``a`` and ``b`` respectively.
+        mode : {"auto", "fused", "blockwise"}
+            The mode to use for the contraction. If "auto", it will choose
+            between "fused" and "blockwise" based on the number of axes to
+            contract.
+        preserve_array : bool, optional
+            Whether to return a scalar if the result is a scalar.
+        """
+        return self._tensordot_abelian(
+            other,
+            axes=axes,
+            mode=mode,
+            preserve_array=preserve_array,
+        )
+
     def __matmul__(self, other, preserve_array=False):
         return self._matmul_abelian(other, preserve_array=preserve_array)
 

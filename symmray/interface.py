@@ -1,7 +1,5 @@
 """Common interface functions for `symmray` array objects."""
 
-import functools
-
 import autoray as ar
 
 
@@ -129,7 +127,6 @@ def reshape(a, newshape, **kwargs):
     return a.reshape(newshape, **kwargs)
 
 
-@functools.singledispatch
 def tensordot(a, b, axes=2, **kwargs):
     """Contract two `symmray` arrays along the specified axes.
 
@@ -146,10 +143,7 @@ def tensordot(a, b, axes=2, **kwargs):
     if getattr(a, "ndim", 0) == 0:
         # likely called as effective scalar multiplication of block array
         return a * b
-
-    raise NotImplementedError(
-        f"Not implemented for types {type(a)} and {type(b)}."
-    )
+    return a.tensordot(b, axes, **kwargs)
 
 
 def einsum(eq, x):

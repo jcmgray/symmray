@@ -6,7 +6,6 @@ from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
 from ..fermionic_common import FermionicCommon
 from ..fermionic_local_operators import FermionicOperator
-from ..interface import tensordot
 from ..symmetries import calc_phase_permutation, get_symmetry
 from ..utils import DEBUG
 from .sparse_array import (
@@ -627,6 +626,23 @@ class FermionicArray(
 
         return new
 
+    def tensordot(self, other, axes=2, preserve_array=False, **kwargs):
+        """Contract two fermionic arrays along the specified axes, accounting
+        for phases from both transpositions and contractions.
+
+        Parameters
+        ----------
+        a : FermionicArray
+            The first fermionic array.
+        b : FermionicArray
+            The second fermionic array.
+        axes : int or (tuple[int], tuple[int]), optional
+            The axes to contract over, by default 2.
+        """
+        return tensordot_fermionic(
+            self, other, axes, preserve_array=preserve_array, **kwargs
+        )
+
     def __matmul__(self, other):
         # shortcut of matrx/vector products
         if self.ndim > 2 or other.ndim > 2:
@@ -652,7 +668,6 @@ class FermionicArray(
         return c
 
 
-@tensordot.register(FermionicArray)
 def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
     """Contract two fermionic arrays along the specified axes, accounting for
     phases from both transpositions and contractions.
@@ -706,8 +721,7 @@ def tensordot_fermionic(a, b, axes=2, preserve_array=False, **kwargs):
     b.phase_sync(inplace=True)
 
     # perform blocked contraction!
-    c = tensordot_abelian(
-        a,
+    c = a._tensordot_abelian(
         b,
         axes=(new_axes_a, new_axes_b),
         # preserve array for resolving oddposs

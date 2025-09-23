@@ -10,7 +10,6 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
-from ..interface import tensordot
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..sparse.sparse_array import calc_fuse_group_info, parse_tensordot_axes
 from ..utils import DEBUG, get_array_cls
@@ -1117,7 +1116,9 @@ class FlatArrayCommon:
 
         return a, b
 
-    def tensordot_inner(self, other, axes_a, axes_b, preserve_array=False):
+    def _tensordot_inner_abelian(
+        self, other, axes_a, axes_b, preserve_array=False
+    ):
         """Perform the tensor inner product of two flat abelian arrays along
         the specified axes.
 
@@ -1157,7 +1158,9 @@ class FlatArrayCommon:
 
         return c
 
-    def tensordot_outer(self, other: "FlatArrayCommon") -> "FlatArrayCommon":
+    def _tensordot_outer_abelian(
+        self, other: "FlatArrayCommon"
+    ) -> "FlatArrayCommon":
         """Perform the tensor outer product of two flat abelian arrays.
 
         Parameters
@@ -1198,6 +1201,27 @@ class FlatArrayCommon:
             sectors=new_sectors,
             indices=new_indices,
             blocks=new_blocks,
+        )
+
+    def trace(self):
+        raise NotImplementedError()
+
+    def einsum(self, eq, preserve_array=False):
+        raise NotImplementedError
+
+    def _tensordot_abelian(
+        self,
+        other,
+        axes=2,
+        mode="auto",
+        preserve_array=False,
+    ):
+        return tensordot_abelian_flat(
+            self,
+            other,
+            axes=axes,
+            mode=mode,
+            preserve_array=preserve_array,
         )
 
     def __matmul__(
@@ -1247,25 +1271,6 @@ class FlatArrayCommon:
 
         # scalar output
         return new_blocks[0]
-
-    def allclose(self, other: "FlatArrayCommon", **allclose_opts):
-        """Check if two flat abelian arrays are equal to within some tolerance,
-        including their sectors and signature.
-        """
-        # blocks might not be stored in the same order
-        a = self.sort_stack()
-        b = other.sort_stack()
-
-        if a.duals != b.duals:
-            return False
-
-        if not ar.do("allclose", a.sectors, b.sectors, **allclose_opts):
-            return False
-
-        return ar.do("allclose", a.blocks, b.blocks, **allclose_opts)
-
-    def trace(self):
-        raise NotImplementedError()
 
     def multiply_diagonal(
         self,
@@ -1326,8 +1331,21 @@ class FlatArrayCommon:
     def rddiv(self, v, inplace=False):
         return self.multiply_diagonal(v, axis=-1, power=-1, inplace=inplace)
 
-    def einsum(self, eq, preserve_array=False):
-        raise NotImplementedError()
+    def allclose(self, other: "FlatArrayCommon", **allclose_opts):
+        """Check if two flat abelian arrays are equal to within some tolerance,
+        including their sectors and signature.
+        """
+        # blocks might not be stored in the same order
+        a = self.sort_stack()
+        b = other.sort_stack()
+
+        if a.duals != b.duals:
+            return False
+
+        if not ar.do("allclose", a.sectors, b.sectors, **allclose_opts):
+            return False
+
+        return ar.do("allclose", a.blocks, b.blocks, **allclose_opts)
 
 
 def tensordot_flat_fused(
@@ -1484,13 +1502,12 @@ def tensordot_flat_direct(
     return new_blocks[0]
 
 
-@tensordot.register(FlatArrayCommon)
-def tensordot_flat(
+def tensordot_abelian_flat(
     a: FlatArrayCommon,
     b: FlatArrayCommon,
     axes=2,
-    preserve_array=False,
     mode="auto",
+    preserve_array=False,
 ):
     """Contract two flat abelian arrays along the specified axes."""
     left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
@@ -1499,11 +1516,11 @@ def tensordot_flat(
 
     if not axes_a:
         # outer product
-        return a.tensordot_outer(b)
+        return a._tensordot_outer_abelian(b)
 
     if not (left_axes or right_axes):
         # inner product
-        return a.tensordot_inner(b, axes_a, axes_b, preserve_array)
+        return a._tensordot_inner_abelian(b, axes_a, axes_b, preserve_array)
 
     if mode == "auto":
         if left_axes and right_axes:

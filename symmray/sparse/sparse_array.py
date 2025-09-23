@@ -13,7 +13,6 @@ from collections import OrderedDict, defaultdict
 
 import autoray as ar
 
-from ..interface import tensordot
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 from .sparse_base import BlockVector
 from .sparse_index import BlockIndex, SubIndexInfo
@@ -1717,6 +1716,34 @@ class SparseArrayCommon:
     def einsum(self, eq, preserve_array=False):
         pass
 
+    def _tensordot_abelian(
+        self, other, axes=2, mode="auto", preserve_array=False
+    ):
+        """Tensordot between two block sparse abelian symmetric arrays.
+
+        Parameters
+        ----------
+        a, b : SparseArrayCommon
+            The arrays to be contracted.
+        axes : int or tuple[int]
+            The axes to contract. If an integer, the last ``axes`` axes of
+            ``a`` will be contracted with the first ``axes`` axes of ``b``. If
+            a tuple, the axes to contract in ``a`` and ``b`` respectively.
+        mode : {"auto", "fused", "blockwise"}
+            The mode to use for the contraction. If "auto", it will choose
+            between "fused" and "blockwise" based on the number of axes to
+            contract.
+        preserve_array : bool, optional
+            Whether to return a scalar if the result is a scalar.
+        """
+        return tensordot_abelian(
+            self,
+            other,
+            axes=axes,
+            mode=mode,
+            preserve_array=preserve_array,
+        )
+
     def _to_dense_abelian(self):
         """Convert this block array to a dense array."""
         backend = self.backend
@@ -2029,7 +2056,6 @@ def parse_tensordot_axes(axes, ndim_a, ndim_b):
     return left_axes, axes_a, axes_b, right_axes
 
 
-@tensordot.register(SparseArrayCommon)
 def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     """Tensordot between two block sparse abelian symmetric arrays.
 
@@ -2087,6 +2113,7 @@ def tensordot_abelian(a, b, axes=2, mode="auto", preserve_array=False):
     if DEBUG:
         c.check()
         c.check_chargemaps_aligned()
+
     # cf = _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes)
     # cb = _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes)
     # if not cf.allclose(cb):

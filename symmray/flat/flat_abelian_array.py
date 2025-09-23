@@ -278,6 +278,17 @@ class AbelianArrayFlat(
         """
         return self._unfuse_abelian(axis, inplace=inplace)
 
+    def tensordot(
+        self,
+        other,
+        axes=2,
+        mode="auto",
+        preserve_array=False,
+    ):
+        return self._tensordot_abelian(
+            other, axes=axes, mode=mode, preserve_array=preserve_array
+        )
+
 
 class Z2ArrayFlat(AbelianArrayFlat):
     static_symmetry = get_symmetry("Z2")
