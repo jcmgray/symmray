@@ -3,6 +3,14 @@ import pytest
 import symmray as sr
 
 
+def test_random_state():
+    import numpy
+
+    seed = 42
+    rng = sr.utils.get_rng(numpy.random.RandomState(seed))
+    assert rng.normal() == pytest.approx(0.4967141530112327)
+
+
 @pytest.mark.parametrize(
     "symm,fermionic,flat,D,subsizes,seed,zex",
     [
