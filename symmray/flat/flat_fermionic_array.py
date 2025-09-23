@@ -591,9 +591,6 @@ class FermionicArrayFlat(
     def to_dense(self):
         raise NotImplementedError
 
-    def allclose(self, other: "FermionicArrayFlat", **kwargs):
-        raise NotImplementedError
-
     def test_allclose(self, other: "FermionicArrayFlat", **kwargs):
         raise NotImplementedError
 

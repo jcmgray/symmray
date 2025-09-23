@@ -127,22 +127,6 @@ def lexsort_sectors(sectors, stable=True):
     # return kord1
 
 
-@ar.compose
-def select_slice(x, i):
-    """Select the i'th slice of the input array."""
-    return x[i]
-
-
-@select_slice.register("torch")
-def select_slice_torch(x, i):
-    """`torch` doesn't support vmapping the above operation."""
-    import torch
-
-    i = torch.unsqueeze(i, 0)
-    xi = torch.index_select(x, 0, i)
-    return torch.squeeze(xi, 0)
-
-
 def zn_combine(order, sectors, duals=None, like=None):
     """Implement vectorized addition modulo group order, with signature.
 
@@ -399,6 +383,22 @@ def _calc_fuse_rearrange_pattern(
 
     pattern = "".join(pattern)
     return pattern, unmerged_batch_sizes
+
+
+@ar.compose
+def select_slice(x, i):
+    """Select the i'th slice of the input array."""
+    return x[i]
+
+
+@select_slice.register("torch")
+def select_slice_torch(x, i):
+    """`torch` doesn't support vmapping the above operation."""
+    import torch
+
+    i = torch.unsqueeze(i, 0)
+    xi = torch.index_select(x, 0, i)
+    return torch.squeeze(xi, 0)
 
 
 class FlatArrayCommon:
@@ -1020,55 +1020,6 @@ class FlatArrayCommon:
             indices=new_indices,
         )
 
-    def squeeze(self, axis, inplace=False):
-        """Assuming `axis` has total size 1, remove it from this array."""
-        axs_rem = tuple(i for i in range(self.ndim) if i != axis)
-
-        new_sectors = self.sectors[:, axs_rem]
-        new_indices = tuple(self._indices[i] for i in axs_rem)
-        block_selector = tuple(
-            slice(None) if i != axis + 1 else 0 for i in range(self.ndim + 1)
-        )
-        new_blocks = self.blocks[block_selector]
-
-        return self._modify_or_copy(
-            sectors=new_sectors,
-            indices=new_indices,
-            blocks=new_blocks,
-            inplace=inplace,
-        )
-
-    def isel(self, axis, idx, inplace=False):
-        """Select a single index along the specified axis."""
-        if axis < 0:
-            axis += self.ndim
-        new = self.select_charge(axis, idx, inplace=inplace)
-        return new.squeeze(axis, inplace=True)
-
-    def __getitem__(self, item):
-        axis = None
-        idx = None
-
-        if not isinstance(item, tuple):
-            raise TypeError(
-                f"Expected a tuple for indexing, got {type(item)}: {item}"
-            )
-
-        for i, s in enumerate(item):
-            if isinstance(s, slice):
-                if not s.start is s.stop is s.step is None:
-                    raise NotImplementedError("Can only slice whole axes.")
-            else:
-                if axis is not None:
-                    raise ValueError(
-                        "Can only index one axis at a time, "
-                        f"got {item} with multiple indices."
-                    )
-                axis = i
-                idx = s
-
-        return self.isel(axis, idx)
-
     def align_axes(
         self: "FlatArrayCommon",
         other: "FlatArrayCommon",
@@ -1331,7 +1282,9 @@ class FlatArrayCommon:
     def rddiv(self, v, inplace=False):
         return self.multiply_diagonal(v, axis=-1, power=-1, inplace=inplace)
 
-    def allclose(self, other: "FlatArrayCommon", **allclose_opts):
+    def _allclose_abelian(
+        self, other: "FlatArrayCommon", **allclose_opts
+    ) -> bool:
         """Check if two flat abelian arrays are equal to within some tolerance,
         including their sectors and signature.
         """
