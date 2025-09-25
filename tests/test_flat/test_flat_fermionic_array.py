@@ -203,6 +203,27 @@ def test_conj(
     y.test_allclose(xc)
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("dtype", ["complex128", "float64"])
+def test_dagger(symmetry, ndim, seed, dtype):
+    rng = sr.utils.get_rng(seed)
+    N = int(symmetry[1:])
+    x = sr.utils.get_rand(
+        symmetry,
+        shape=[N] * ndim,
+        fermionic=True,
+        dtype=dtype,
+        flat=True,
+        subsizes="equal",
+        seed=rng,
+    )
+    x.modify(phases=rng.choice([-1, 1], size=x.num_blocks))
+    x.dagger().test_allclose(x.H)
+    x.dagger().test_allclose(x.conj().transpose())
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize(

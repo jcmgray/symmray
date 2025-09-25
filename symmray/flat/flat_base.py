@@ -79,89 +79,30 @@ class FlatCommon:
             # params is possibly a placeholder of some kind
             pass
 
+    def apply_to_arrays(self, fn):
+        self._blocks = fn(self._blocks)
+
     def item(self):
         """Convert the block array to a scalar if it is a scalar block array."""
         return self._blocks.item()
 
-    def __mul__(self, other):
-        return self.copy_with(blocks=self._blocks * other)
+    def _binary_blockwise_op_abelian(
+        self, other, fn, missing=None, inplace=False
+    ):
+        xy = self.sort_stack(inplace=inplace)
+        other = other.sort_stack()
 
-    def __rmul__(self, other):
-        return self.copy_with(blocks=other * self._blocks)
+        # XXX: check matching sectors
+        xy.modify(blocks=fn(xy._blocks, other._blocks))
+        return xy
 
-    def __truediv__(self, other):
-        return self.copy_with(blocks=self._blocks / other)
-
-    def __neg__(self):
-        return self.copy_with(blocks=-self._blocks)
-
-    def __float__(self):
-        return float(self.item())
-
-    def __complex__(self):
-        return complex(self.item())
-
-    def __int__(self):
-        return int(self.item())
-
-    def __bool__(self):
-        return bool(self.item())
-
-    def _do_unary_op(self, fn, inplace=False):
-        """Perform a unary operation on blocks of the array."""
-        new = self if inplace else self.copy()
+    def _do_reduction(self, fn):
         if isinstance(fn, str):
             fn = ar.get_lib_fn(self.backend, fn)
-        new._blocks = fn(new._blocks)
-        return new
-
-    def abs(self):
-        """Get the absolute value of all elements in the array."""
-        return self._do_unary_op("abs")
-
-    def isfinite(self):
-        """Check if all elements in the array are finite."""
-        return self._do_unary_op("isfinite")
-
-    def sqrt(self):
-        """Get the square root of all elements in the array."""
-        return self._do_unary_op("sqrt")
-
-    def clip(self, a_min, a_max):
-        """Clip the values in the array."""
-        new = self.copy()
-        _clip = ar.get_lib_fn(self.backend, "clip")
-        new._blocks = _clip(new._blocks, a_min, a_max)
-        return new
-
-    def max(self):
-        """Get the maximum element from any block in the array."""
-        _max = ar.get_lib_fn(self.backend, "max")
-        return _max(self._blocks)
-
-    def min(self):
-        """Get the minimum element from any block in the array."""
-        _min = ar.get_lib_fn(self.backend, "min")
-        return _min(self._blocks)
-
-    def sum(self):
-        """Get the sum of all elements in the array."""
-        _sum = ar.get_lib_fn(self.backend, "sum")
-        return _sum(self._blocks)
-
-    def all(self):
-        """Check if all elements in the array are True."""
-        _all = ar.get_lib_fn(self.backend, "all")
-        return _all(self._blocks)
-
-    def any(self):
-        """Check if any element in the array is True."""
-        _any = ar.get_lib_fn(self.backend, "any")
-        return _any(self._blocks)
+        return fn(self._blocks)
 
     def norm(self):
-        _norm = ar.get_lib_fn(self.backend, "linalg.norm")
-        return _norm(self._blocks)
+        return ar.do("linalg.norm", self._blocks, like=self.backend)
 
 
 class FlatVector(FlatCommon, SymmrayCommon):

@@ -38,6 +38,23 @@ def test_flat_qr(symmetry, d1, d2, charge, seed):
     assert fy.to_blocksparse().allclose(sx)
 
 
+@pytest.mark.parametrize("symmetry", ("Z2",))
+@pytest.mark.parametrize("seed", range(5))
+def test_qr_with_expand_dims(symmetry, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        [4, 6, 6],
+        seed=seed,
+        flat=True,
+        subsizes="maximal",
+    )
+    y = x.reshape((1, 4 * 6 * 6))
+    q, r = sr.linalg.qr(y)
+    xqr = q @ r
+    z = xqr.reshape((4, 6, 6))
+    z.test_allclose(x)
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("d1", [6, 8])
 @pytest.mark.parametrize("d2", [6, 8])
@@ -89,9 +106,11 @@ def test_eigh_flat(symmetry, d, seed, duals):
         seed=seed,
     )
     # need to make sure x is hermitian
-    sx.apply_to_arrays(lambda x: (x + x.T) / 2)
-
     fx = sx.to_flat()
+
+    sx = sx + sx.H
+    fx = fx + fx.H
+
     fx.check()
     fevals, fvecs = sr.linalg.eigh(fx)
     fvecs.check()

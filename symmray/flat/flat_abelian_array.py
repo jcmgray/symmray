@@ -203,12 +203,15 @@ class AbelianArrayFlat(
             Default is False, which returns a new array.
         """
         kord = self.get_sorting_indices(axes=axes, all_axes=all_axes)
-
-        new_sectors = self._sectors[kord]
-        new_blocks = self._blocks[kord]
-
         return self._modify_or_copy(
-            sectors=new_sectors, blocks=new_blocks, inplace=inplace
+            sectors=self._sectors[kord],
+            blocks=self._blocks[kord],
+            inplace=inplace,
+        )
+
+    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
+        return self._binary_blockwise_op_abelian(
+            other, fn, missing=missing, inplace=inplace
         )
 
     def transpose(
@@ -296,12 +299,6 @@ class AbelianArrayFlat(
             other, axes=axes, mode=mode, preserve_array=preserve_array
         )
 
-    def allclose(self, other: "AbelianArrayFlat", **allclose_opts) -> bool:
-        """Check if two flat abelian arrays are equal to within some tolerance,
-        including their sectors and signature.
-        """
-        return self._allclose_abelian(other, **allclose_opts)
-
     def squeeze(self, axis, inplace=False):
         """Assuming `axis` has total size 1, remove it from this array."""
         axs_rem = tuple(i for i in range(self.ndim) if i != axis)
@@ -350,6 +347,32 @@ class AbelianArrayFlat(
                 idx = s
 
         return self.isel(axis, idx)
+
+    def allclose(self, other: "AbelianArrayFlat", **allclose_opts) -> bool:
+        """Check if two flat abelian arrays are equal to within some tolerance,
+        including their sectors and signature.
+        """
+        return self._allclose_abelian(other, **allclose_opts)
+
+    def test_allclose(self, other: "AbelianArrayFlat", **allclose_opts):
+        """Assert that this ``AbelianArrayFlat`` is close to another,
+        that is, has all the same sectors, and the corresponding arrays are
+        close. Unlike `allclose`, this raises an AssertionError with details
+        if not.
+
+        Parameters
+        ----------
+        other : AbelianArrayFlat
+            The other array to compare to.
+        allclose_opts
+            Keyword arguments to pass to `allclose`.
+
+        Raises
+        ------
+        AssertionError
+            If the arrays are not close.
+        """
+        return self._test_allclose_abelian(other, **allclose_opts)
 
 
 class Z2ArrayFlat(AbelianArrayFlat):

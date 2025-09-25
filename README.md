@@ -203,10 +203,10 @@ match the dense specification.
 
 The key function `tensordot` can use one of two methods.
 
-- `tensordot(x, y, axes, method="fused")`: fuse the two arrays into block
+- `tensordot(x, y, axes, mode="fused")`: fuse the two arrays into block
   diagonal matrices and then unfuse the result. This can be much faster, though
   possibly requires explicitly filling missing blocks with zeros.
-- `tensordot(x, y, axes, method="blockwise")`: compute the contraction by
+- `tensordot(x, y, axes, mode="blockwise")`: compute the contraction by
   directly looping over the blocks of `x` and `y` and contracting them. This
   has quite high overhead for large numbers of blocks.
 

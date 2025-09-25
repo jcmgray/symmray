@@ -110,8 +110,8 @@ def resolve_combined_oddpos(left, right, new):
 class FermionicArray(
     FermionicCommon,
     SparseArrayCommon,
-    AbelianCommon,
     BlockCommon,
+    AbelianCommon,
     SymmrayCommon,
 ):
     """A fermionic block symmetry array.
@@ -406,23 +406,6 @@ class FermionicArray(
                 new._phases[sector] = phase
         return new
 
-    def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
-        """Need to sync phases before performing blockwise operations.
-
-        This is used across many basic methods defined in `BlockCommon` such as
-        `__add__`, `__imul__` etc.
-        """
-        xy = self if inplace else self.copy()
-        xy.phase_sync(inplace=True)
-
-        if isinstance(other, FermionicArray):
-            if other.phases:
-                other = other.phase_sync()
-
-        return xy._binary_blockwise_op_blockcommon(
-            other, fn, inplace=True, **kwargs
-        )
-
     def _map_blocks(self, fn_block=None, fn_sector=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
         self._map_blocks_blockcommon(fn_block, fn_sector)
@@ -598,6 +581,7 @@ class FermionicArray(
         for sector, array in new.get_sector_block_pairs():
             new_sector = sector[::-1]
 
+            # keep -1 phases and update dict with reversed sector
             if new._phases.pop(sector, 1) == -1:
                 new_phases[new_sector] = -1
 

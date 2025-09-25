@@ -12,8 +12,8 @@ from .sparse_base import BlockCommon
 
 class AbelianArray(
     SparseArrayCommon,
-    AbelianCommon,
     BlockCommon,
+    AbelianCommon,
     SymmrayCommon,
 ):
     """A block sparse array with symmetry constraints.
@@ -84,7 +84,7 @@ class AbelianArray(
         return self
 
     def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
-        return self._binary_blockwise_op_blockcommon(
+        return self._binary_blockwise_op_abelian(
             other, fn, missing=missing, inplace=inplace
         )
 

@@ -4,6 +4,21 @@ from .abelian_common import parse_tensordot_axes
 
 
 class FermionicCommon:
+    def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
+        """Need to sync phases before performing blockwise operations.
+
+        This is used across many basic methods defined in `AbelianArray` such
+        as `__add__`, `__imul__` etc.
+        """
+        xy = self.phase_sync(inplace=inplace)
+
+        if isinstance(other, FermionicCommon):
+            other = other.phase_sync()
+
+        return xy._binary_blockwise_op_abelian(
+            other, fn, inplace=True, **kwargs
+        )
+
     def _fuse_core(
         self,
         *axes_groups,

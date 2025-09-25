@@ -107,6 +107,11 @@ class FermionicArrayFlat(
             self._phases = ar.do("ones", self.num_blocks, like=self._blocks)
         return self._phases
 
+    @property
+    def oddpos(self):
+        """Any labels of dummy fermionic modes for odd parity tensors."""
+        return self._oddpos
+
     def check(self):
         """Check the internal consistency of the array."""
         self._check_abelian()
@@ -511,6 +516,7 @@ class FermionicArrayFlat(
         if phase_permutation:
             # perform the phase accumulation separately first
             new.phase_transpose(inplace=True)
+            assert not new.oddpos
 
         if phase_dual:
             axs_conj = tuple(
@@ -523,7 +529,9 @@ class FermionicArrayFlat(
 
     def dagger(self, phase_dual=False, inplace=False):
         """Fermionic conjugate transpose."""
-        raise NotImplementedError
+        new = self._conj_flatarraycommon(inplace=inplace)
+        new._transpose_flatarraycommon(inplace=True)
+        return new
 
     def einsum(self, eq: str, preserve_array=False):
         raise NotImplementedError
@@ -589,9 +597,6 @@ class FermionicArrayFlat(
         return c
 
     def to_dense(self):
-        raise NotImplementedError
-
-    def test_allclose(self, other: "FermionicArrayFlat", **kwargs):
         raise NotImplementedError
 
     def trace(self):

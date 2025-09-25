@@ -251,7 +251,7 @@ def svd_truncated(
 
 
 @eigh.register(AbelianArrayFlat)
-def eigh_flat(
+def eigh_abelian(
     a: AbelianArrayFlat,
 ) -> tuple[AbelianArrayFlat, FlatVector]:
     if a.ndim != 2:
@@ -271,6 +271,23 @@ def eigh_flat(
     if DEBUG:
         eigenvectors.check()
         eigenvalues.check()
+
+    return eigenvalues, eigenvectors
+
+
+@eigh.register(FermionicArrayFlat)
+def eigh_fermionic(a: FermionicArrayFlat):
+    eigenvalues, eigenvectors = eigh_abelian(a)
+
+    if not a.indices[1].dual:
+        # inner index is like |x><x| so introduce a phase flip,
+        # we don't explicitly have Wdag so put phase in eigenvalues
+        # XXX: is this the most compatible thing to do?
+        # it means ev @ diag(el) @ ev.H == a always
+        parities = eigenvalues._sectors % 2
+        eigenvalues.modify(
+            blocks=eigenvalues._blocks * ((-1) ** parities)[:, None]
+        )
 
     return eigenvalues, eigenvectors
 
@@ -295,7 +312,7 @@ def eigh_truncated(
             UserWarning,
         )
 
-    s, U = eigh_flat(a)
+    s, U = eigh(a)
 
     # make sure to sort by descending absolute value
     if not positive:

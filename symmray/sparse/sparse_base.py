@@ -169,23 +169,11 @@ class BlockCommon:
         (array,) = self.get_all_blocks()
         return array.item()
 
-    def __float__(self):
-        return float(self.item())
-
-    def __complex__(self):
-        return complex(self.item())
-
-    def __int__(self):
-        return int(self.item())
-
-    def __bool__(self):
-        return bool(self.item())
-
-    def _binary_blockwise_op_blockcommon(
+    def _binary_blockwise_op_abelian(
         self, other, fn, missing=None, inplace=False
     ):
         """Apply a binary blockwise operation to two block arrays, which must
-        have exactly the same sectors/keys.
+        have exactly the same sectors/keys, depending on `missing`.
 
         Parameters
         ----------
@@ -198,7 +186,7 @@ class BlockCommon:
             Second block array.
         missing : str, optional
             How to handle missing blocks. Can be "outer", "inner" or None.
-            Default is None which reuires 1:1 matching blocks. If missing
+            Default is None which requires 1:1 matching blocks. If missing
             "outer" is specified, blocks present in only one of either array
             are simply kept. If missing "inner" is specified, blocks present
             in only one of either array are simply dropped.
@@ -256,105 +244,6 @@ class BlockCommon:
 
         return xy
 
-    @lazyabstractmethod
-    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
-        pass
-
-    def __add__(self, other):
-        if isinstance(other, BlockCommon):
-            return self._binary_blockwise_op(
-                other,
-                fn=operator.add,
-                missing="outer",
-                inplace=False,
-            )
-
-        # addition with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Addition with {type(other)} not implemented."
-        )
-
-    def __iadd__(self, other):
-        if isinstance(other, BlockCommon):
-            return self._binary_blockwise_op(
-                other, fn=operator.add, missing="outer", inplace=True
-            )
-
-        # addition with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Addition with {type(other)} not implemented."
-        )
-
-    def __sub__(self, other):
-        if isinstance(other, BlockCommon):
-            return self._binary_blockwise_op(
-                other,
-                fn=operator.sub,
-                inplace=False,
-            )
-
-        # subtraction with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Subtraction with {type(other)} not implemented."
-        )
-
-    def __isub__(self, other):
-        if isinstance(other, BlockCommon):
-            return self._binary_blockwise_op(
-                other, fn=operator.sub, inplace=True
-            )
-
-        # subtraction with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Subtraction with {type(other)} not implemented."
-        )
-
-    def __mul__(self, other):
-        if isinstance(other, BlockCommon):
-            return self._binary_blockwise_op(
-                other, fn=operator.mul, missing="inner"
-            )
-        new = self.copy()
-        new.apply_to_arrays(lambda x: x * other)
-        return new
-
-    def __imul__(self, other):
-        if isinstance(other, BlockCommon):
-            return self._binary_blockwise_op(
-                other, fn=operator.mul, missing="inner", inplace=True
-            )
-        self.apply_to_arrays(lambda x: x * other)
-        return self
-
-    def __rmul__(self, other):
-        return self * other
-
-    def __truediv__(self, other):
-        if isinstance(other, BlockCommon):
-            if self.shape == other.shape and all(d == 1 for d in self.shape):
-                return self._binary_blockwise_op(other, fn=operator.truediv)
-            # deviding by implicit zeros not defined
-            return NotImplemented
-
-        # assume scalar
-        new = self.copy()
-        new.apply_to_arrays(lambda x: x / other)
-        return new
-
-    def __itruediv__(self, other):
-        if isinstance(other, BlockCommon):
-            # deviding by implicit zeros not defined
-            return NotImplemented
-
-        # assume scalar
-        self.apply_to_arrays(lambda x: x / other)
-        return self
-
-    def __neg__(self):
-        new = self.copy()
-        new.apply_to_arrays(operator.neg)
-        return new
-
     def _do_reduction(self, fn):
         """Perform an (associative) reduction operation on blocks of the array."""
         if isinstance(fn, str):
@@ -362,53 +251,6 @@ class BlockCommon:
             _stack = ar.get_lib_fn(self.backend, "stack")
         block_results = tuple(map(fn, self.get_all_blocks()))
         return fn(_stack(block_results))
-
-    def max(self):
-        """Get the maximum element from any block in the array."""
-        return self._do_reduction("max")
-
-    def min(self):
-        """Get the minimum element from any block in the array."""
-        return self._do_reduction("min")
-
-    def sum(self):
-        """Get the sum of all elements in the array."""
-        return self._do_reduction("sum")
-
-    def all(self):
-        """Check if all elements in the array are True."""
-        return self._do_reduction("all")
-
-    def any(self):
-        """Check if any element in the array is True."""
-        return self._do_reduction("any")
-
-    def _do_unary_op(self, fn, inplace=False):
-        """Perform a unary operation on blocks of the array."""
-        new = self if inplace else self.copy()
-        if isinstance(fn, str):
-            fn = ar.get_lib_fn(self.backend, fn)
-        new.apply_to_arrays(fn)
-        return new
-
-    def abs(self):
-        """Get the absolute value of all elements in the array."""
-        return self._do_unary_op("abs")
-
-    def isfinite(self):
-        """Check if all elements in the array are finite."""
-        return self._do_unary_op("isfinite")
-
-    def sqrt(self):
-        """Get the square root of all elements in the array."""
-        return self._do_unary_op("sqrt")
-
-    def clip(self, a_min, a_max):
-        """Clip the values in the array."""
-        new = self.copy()
-        _clip = ar.get_lib_fn(self.backend, "clip")
-        new.apply_to_arrays(lambda x: _clip(x, a_min, a_max))
-        return new
 
     def norm(self):
         """Get the frobenius norm of the block array."""
@@ -530,7 +372,7 @@ class BlockVector(BlockCommon, SymmrayCommon):
         return (self.size,)
 
     def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
-        return self._binary_blockwise_op_blockcommon(
+        return self._binary_blockwise_op_abelian(
             other, fn, missing=missing, inplace=inplace
         )
 

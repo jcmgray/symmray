@@ -4,10 +4,11 @@ backend.
 
 import functools
 
-from autoray.lazy.core import find_full_reshape
+import autoray as ar
 
 from .index_common import Index
 from .symmetries import Symmetry, get_symmetry
+from .utils import lazyabstractmethod
 
 
 @functools.lru_cache(maxsize=2**15)
@@ -245,16 +246,18 @@ class AbelianCommon:
     def signature(self) -> str:
         return "".join("-" if f else "+" for f in self.duals)
 
-    def _modify_or_copy(self, inplace=False, **kwargs) -> "AbelianCommon":
-        if inplace:
-            return self.modify(**kwargs)
-        else:
-            return self.copy_with(**kwargs)
+    @lazyabstractmethod
+    def transpose(self, axes=None, inplace=False) -> "AbelianCommon":
+        pass
 
     @property
     def T(self) -> "AbelianCommon":
         """The transpose of the block array."""
         return self.transpose()
+
+    @lazyabstractmethod
+    def conj(self, inplace=False) -> "AbelianCommon":
+        pass
 
     def dagger(self, inplace=False) -> "AbelianCommon":
         """Return the adjoint of this block array."""
@@ -263,6 +266,14 @@ class AbelianCommon:
     @property
     def H(self) -> "AbelianCommon":
         return self.dagger()
+
+    @lazyabstractmethod
+    def _fuse_core(self, *axes_groups, inplace=False, **kwargs):
+        pass
+
+    @lazyabstractmethod
+    def expand_dims(self, ax, inplace=False) -> "AbelianCommon":
+        pass
 
     def fuse(
         self,
@@ -330,6 +341,10 @@ class AbelianCommon:
                 xf.expand_dims(g0 + ax, inplace=True)
 
         return xf
+
+    @lazyabstractmethod
+    def unfuse(self, ax, inplace=False) -> "AbelianCommon":
+        pass
 
     def unfuse_all(self, inplace=False) -> "AbelianCommon":
         """Unfuse all indices that carry subindex information, likely from a
@@ -402,7 +417,7 @@ class AbelianCommon:
 
         if not isinstance(newshape, tuple):
             newshape = tuple(newshape)
-        newshape = find_full_reshape(newshape, self.size)
+        newshape = ar.lazy.core.find_full_reshape(newshape, self.size)
 
         subshapes = tuple(ix.subshape for ix in x.indices)
 
@@ -438,6 +453,10 @@ class AbelianCommon:
             )
         )
         return "\n".join(lines)
+
+    @lazyabstractmethod
+    def get_any_array(self):
+        pass
 
     def __repr__(self):
         if self.static_symmetry is not None:

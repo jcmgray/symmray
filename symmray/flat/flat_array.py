@@ -1300,6 +1300,45 @@ class FlatArrayCommon:
 
         return ar.do("allclose", a.blocks, b.blocks, **allclose_opts)
 
+    def _test_allclose_abelian(
+        self, other: "FlatArrayCommon", **allclose_opts
+    ):
+        """Assert that this ``FlatArayCommon`` is close to another,
+        that is, has all the same sectors, and the corresponding arrays are
+        close. Unlike `allclose`, this raises an AssertionError with details
+        if not.
+
+        Parameters
+        ----------
+        other : FlatArayCommon
+            The other array to compare to.
+        allclose_opts
+            Keyword arguments to pass to `allclose`.
+
+        Raises
+        ------
+        AssertionError
+            If the arrays are not close.
+        """
+        # blocks might not be stored in the same order
+        a = self.sort_stack()
+        b = other.sort_stack()
+
+        if a.duals != b.duals:
+            raise AssertionError(
+                f"Signature mismatch: {self.duals} != {other.duals}"
+            )
+
+        if not ar.do("allclose", a.sectors, b.sectors, **allclose_opts):
+            raise AssertionError(
+                f"Sectors not equal:\n{a.sectors}\n{b.sectors}"
+            )
+
+        if not ar.do("allclose", a.blocks, b.blocks, **allclose_opts):
+            raise AssertionError(f"Blocks not equal:\n{a.blocks}\n{b.blocks}")
+
+        return True
+
 
 def tensordot_flat_fused(
     a: FlatArrayCommon,
