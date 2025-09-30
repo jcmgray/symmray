@@ -500,7 +500,7 @@ def _fuse_blocks_via_concat(
 
 
 class SparseArrayCommon:
-    def _init_sparsearraycommon(
+    def _init_abelian(
         self,
         indices,
         charge=None,
@@ -527,7 +527,7 @@ class SparseArrayCommon:
         else:
             self._charge = charge
 
-    def _copy_sparsearraycommon(self):
+    def _copy_abelian(self):
         """Copy this abelian block sparse array."""
         new = self._copy_blockcommon()
         new._indices = self._indices
@@ -539,9 +539,7 @@ class SparseArrayCommon:
     def copy(self):
         pass
 
-    def _copy_with_sparsearraycommon(
-        self, indices=None, charge=None, blocks=None
-    ):
+    def _copy_with_abelian(self, indices=None, charge=None, blocks=None):
         """A copy of this block array with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
         internal use.
@@ -556,9 +554,7 @@ class SparseArrayCommon:
     def copy_with(self, indices=None, charge=None, blocks=None):
         pass
 
-    def _modify_sparsearraycommon(
-        self, indices=None, charge=None, blocks=None
-    ):
+    def _modify_abelian(self, indices=None, charge=None, blocks=None):
         """Modify this block array in place with some attributes replaced. Note
         that checks are not performed on the new properties, this is intended
         for internal use.
@@ -1118,7 +1114,7 @@ class SparseArrayCommon:
             **kwargs,
         )
 
-    def _transpose_sparsearraycommon(self, axes=None, inplace=False):
+    def _transpose_abelian(self, axes=None, inplace=False):
         """Transpose this block sparse abelian array.
 
         Parameters

@@ -158,7 +158,7 @@ class FermionicArray(
         oddpos=None,
         symmetry=None,
     ):
-        self._init_sparsearraycommon(
+        self._init_abelian(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -204,7 +204,7 @@ class FermionicArray(
         FermionicArray
             The copied array.
         """
-        new = self._copy_sparsearraycommon()
+        new = self._copy_abelian()
         new._phases = self.phases.copy()
         new._oddpos = self.oddpos
         return new
@@ -223,7 +223,7 @@ class FermionicArray(
         phases : dict, optional
             The new phases, if None, the original phases are used.
         """
-        new = self._copy_with_sparsearraycommon(
+        new = self._copy_with_abelian(
             indices=indices, blocks=blocks, charge=charge
         )
         new._phases = self.phases.copy() if phases is None else phases
@@ -262,7 +262,7 @@ class FermionicArray(
             self._phases = phases
         if oddpos is not None:
             self._oddpos = oddpos
-        return self._modify_sparsearraycommon(
+        return self._modify_abelian(
             indices=indices, blocks=blocks, charge=charge
         )
 
@@ -462,7 +462,7 @@ class FermionicArray(
         new.modify(phases=new_phases)
 
         # then transpose block arrays
-        new._transpose_sparsearraycommon(axes=axes, inplace=True)
+        new._transpose_abelian(axes=axes, inplace=True)
 
         return new
 

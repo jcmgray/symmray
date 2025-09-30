@@ -80,7 +80,7 @@ class FermionicArrayFlat(
         oddpos=(),
         symmetry=None,
     ):
-        self._init_flatarraycommon(
+        self._init_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -121,7 +121,7 @@ class FermionicArrayFlat(
 
     def copy(self, deep=False) -> "FermionicArrayFlat":
         """Create a copy of the array."""
-        new = self._copy_flatarraycommon(deep=deep)
+        new = self._copy_abelian(deep=deep)
 
         if self._phases is not None:
             if deep:
@@ -146,7 +146,7 @@ class FermionicArrayFlat(
         Note that checks are not performed on the new properties, this is
         intended for internal use.
         """
-        new = self._copy_with_flatarraycommon(
+        new = self._copy_with_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -166,7 +166,7 @@ class FermionicArrayFlat(
         replaced. Note that checks are not performed on the new properties,
         this is intended for internal use.
         """
-        self._modify_flatarraycommon(
+        self._modify_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -265,7 +265,7 @@ class FermionicArrayFlat(
         FermionicArray
             The equivalent fermionic blocksparse array.
         """
-        new = self._to_blocksparse_flatarraycommon()
+        new = self._to_blocksparse_abelian()
 
         if self._phases is None:
             phases = {}
@@ -478,7 +478,7 @@ class FermionicArrayFlat(
             new.phase_transpose(axes, inplace=True)
 
         # transpose the actual arrays
-        return new._transpose_flatarraycommon(axes, inplace=True)
+        return new._transpose_abelian(axes, inplace=True)
 
     def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
         """Conjugate this flat fermionic array. By default this include phases
@@ -525,12 +525,12 @@ class FermionicArrayFlat(
             new.phase_flip(*axs_conj, inplace=True)
 
         # conjugate the actual arrays
-        return new._conj_flatarraycommon(inplace=True)
+        return new._conj_abelian(inplace=True)
 
     def dagger(self, phase_dual=False, inplace=False):
         """Fermionic conjugate transpose."""
-        new = self._conj_flatarraycommon(inplace=inplace)
-        new._transpose_flatarraycommon(inplace=True)
+        new = self._conj_abelian(inplace=inplace)
+        new._transpose_abelian(inplace=True)
         return new
 
     def einsum(self, eq: str, preserve_array=False):

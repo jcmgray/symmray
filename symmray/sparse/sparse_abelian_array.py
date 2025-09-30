@@ -43,7 +43,7 @@ class AbelianArray(
         blocks=(),
         symmetry=None,
     ):
-        self._init_sparsearraycommon(
+        self._init_abelian(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -55,14 +55,14 @@ class AbelianArray(
 
     def copy(self):
         """Copy this abelian block sparse array."""
-        return self._copy_sparsearraycommon()
+        return self._copy_abelian()
 
     def copy_with(self, indices=None, charge=None, blocks=None):
         """A copy of this block array with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        new = self._copy_with_sparsearraycommon(
+        new = self._copy_with_abelian(
             indices=indices,
             charge=charge,
             blocks=blocks,
@@ -76,9 +76,7 @@ class AbelianArray(
         that checks are not performed on the new properties, this is intended
         for internal use.
         """
-        self._modify_sparsearraycommon(
-            indices=indices, charge=charge, blocks=blocks
-        )
+        self._modify_abelian(indices=indices, charge=charge, blocks=blocks)
         if DEBUG:
             self.check()
         return self
@@ -107,7 +105,7 @@ class AbelianArray(
         -------
         AbelianArray
         """
-        return self._transpose_sparsearraycommon(axes=axes, inplace=inplace)
+        return self._transpose_abelian(axes=axes, inplace=inplace)
 
     def conj(self, inplace=False):
         """Return the complex conjugate of this block array, including the

@@ -402,7 +402,7 @@ def select_slice_torch(x, i):
 
 
 class FlatArrayCommon:
-    def _init_flatarraycommon(
+    def _init_abelian(
         self,
         sectors,
         blocks,
@@ -447,7 +447,7 @@ class FlatArrayCommon:
             ix.check()
             assert ds == ix.charge_size
 
-    def _copy_flatarraycommon(self, deep=False) -> "FlatArrayCommon":
+    def _copy_abelian(self, deep=False) -> "FlatArrayCommon":
         """Create a copy of the array."""
         if deep:
             sectors = ar.do("copy", self._sectors, like=self.backend)
@@ -459,7 +459,7 @@ class FlatArrayCommon:
             sectors, blocks, self._indices, symmetry=self._symmetry
         )
 
-    def _copy_with_flatarraycommon(
+    def _copy_with_abelian(
         self,
         sectors=None,
         blocks=None,
@@ -477,7 +477,7 @@ class FlatArrayCommon:
         new.backend = self.backend
         return new
 
-    def _modify_flatarraycommon(
+    def _modify_abelian(
         self,
         sectors=None,
         blocks=None,
@@ -530,7 +530,7 @@ class FlatArrayCommon:
         blocks = ar.do("reshape", x, (1,))
         return cls(sectors, blocks, indices, symmetry=symmetry)
 
-    def _to_blocksparse_flatarraycommon(self) -> AbelianArray:
+    def _to_blocksparse_abelian(self) -> AbelianArray:
         """Create a blocksparse abelian array from this flat abelian array."""
         cls = get_array_cls(
             self.symmetry,
@@ -595,7 +595,7 @@ class FlatArrayCommon:
         cols = self._sectors[:, axes]
         return lexsort_sectors(cols)
 
-    def _transpose_flatarraycommon(
+    def _transpose_abelian(
         self,
         axes=None,
         inplace=False,
@@ -638,7 +638,7 @@ class FlatArrayCommon:
             inplace=inplace,
         )
 
-    def _conj_flatarraycommon(self, inplace=False) -> "FlatArrayCommon":
+    def _conj_abelian(self, inplace=False) -> "FlatArrayCommon":
         """Return the complex conjugate of this block array, including the
         indices and any subindex fusing information.
 

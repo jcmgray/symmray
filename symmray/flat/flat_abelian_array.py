@@ -66,7 +66,7 @@ class AbelianArrayFlat(
         indices,
         symmetry=None,
     ):
-        self._init_flatarraycommon(
+        self._init_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -83,7 +83,7 @@ class AbelianArrayFlat(
 
     def copy(self, deep=False) -> "AbelianArrayFlat":
         """Create a copy of the array."""
-        return self._copy_flatarraycommon(deep=deep)
+        return self._copy_abelian(deep=deep)
 
     def copy_with(
         self,
@@ -95,7 +95,7 @@ class AbelianArrayFlat(
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        new = self._copy_with_flatarraycommon(
+        new = self._copy_with_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -114,7 +114,7 @@ class AbelianArrayFlat(
         that checks are not performed on the new properties, this is intended
         for internal use.
         """
-        self._modify_flatarraycommon(
+        self._modify_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
@@ -174,7 +174,7 @@ class AbelianArrayFlat(
 
     def to_blocksparse(self) -> AbelianArray:
         """Create a blocksparse abelian array from this flat abelian array."""
-        return self._to_blocksparse_flatarraycommon()
+        return self._to_blocksparse_abelian()
 
     def sort_stack(
         self,
@@ -233,7 +233,7 @@ class AbelianArrayFlat(
         -------
         AbelianArrayFlat
         """
-        return self._transpose_flatarraycommon(axes=axes, inplace=inplace)
+        return self._transpose_abelian(axes=axes, inplace=inplace)
 
     def conj(self, inplace=False) -> "AbelianArrayFlat":
         """Return the complex conjugate of this flat abelian array, including
@@ -248,7 +248,7 @@ class AbelianArrayFlat(
         -------
         AbelianArrayFlat
         """
-        return self._conj_flatarraycommon(inplace=inplace)
+        return self._conj_abelian(inplace=inplace)
 
     def _fuse_core(
         self,
