@@ -1039,7 +1039,7 @@ class SparseArrayCommon:
         SparseArrayCommon
         """
         # XXX: warn if invalid blocks are non-zero?
-        symmetry = cls.get_class_symmetry()
+        symmetry = cls.get_class_symmetry(symmetry)
 
         if charge is None:
             charge = symmetry.combine()
