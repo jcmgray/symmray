@@ -292,7 +292,7 @@ class AbelianCommon:
             # deviding by implicit zeros not defined
             return NotImplemented
 
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Division {self} / {other} not supported.")
 
         # assume scalar

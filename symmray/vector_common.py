@@ -18,7 +18,7 @@ class VectorCommon:
             # XXX: possibly support 0-dimensional symmray objects?
             return NotImplemented
 
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Addition {self} + {other} not supported.")
 
         # assume scalar
@@ -30,7 +30,7 @@ class VectorCommon:
         return self.__add__(other, inplace=True)
 
     def __radd__(self, other):
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Addition {other} + {self} not supported.")
         # assume scalar
         new = self.copy()
@@ -49,7 +49,7 @@ class VectorCommon:
             # XXX: possibly support 0-dimensional symmray objects?
             return NotImplemented
 
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Subtraction {self} - {other} not supported.")
 
         # assume scalar
@@ -62,7 +62,7 @@ class VectorCommon:
 
     def __rsub__(self, other):
         # assume scalar
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Subtraction {other} - {self} not supported.")
         new = self.copy()
         new.apply_to_arrays(lambda x: other - x)
@@ -80,7 +80,7 @@ class VectorCommon:
             # XXX: possibly support 0-dimensional symmray objects?
             return NotImplemented
 
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Division {self} / {other} not supported.")
 
         # assume scalar
@@ -93,7 +93,7 @@ class VectorCommon:
 
     def __rtruediv__(self, other):
         # assume scalar
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Division {other} / {self} not supported.")
         new = self.copy()
         new.apply_to_arrays(lambda x: other / x)
@@ -110,7 +110,7 @@ class VectorCommon:
             # XXX: possibly support 0-dimensional symmray objects?
             return NotImplemented
 
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Exponential {self} ** {other} not supported.")
 
         # assume scalar
@@ -122,7 +122,7 @@ class VectorCommon:
         return self.__pow__(other, inplace=True)
 
     def __rpow__(self, other):
-        if DEBUG and getattr(other, "ndim", None) != 0:
+        if DEBUG and getattr(other, "ndim", 0) != 0:
             raise ValueError(f"Exponential {other} ** {self} not supported.")
         # assume scalar
         new = self.copy()
