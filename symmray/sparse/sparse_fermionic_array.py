@@ -7,7 +7,7 @@ from ..common import SymmrayCommon
 from ..fermionic_common import FermionicCommon
 from ..fermionic_local_operators import FermionicOperator
 from ..symmetries import calc_phase_permutation, get_symmetry
-from ..utils import DEBUG
+from ..utils import DEBUG, get_rng
 from .sparse_array import (
     SparseArrayCommon,
     permuted,
@@ -49,7 +49,7 @@ def oddpos_dag(oddpos):
 
 def resolve_combined_oddpos(left, right, new):
     """Given we have contracted two fermionic arrays, resolve the oddpos
-    of the new array, possibly flipping the global phase.
+    into the `new` array, possibly flipping the global phase.
 
     Parameters
     ----------
@@ -265,6 +265,29 @@ class FermionicArray(
         return self._modify_abelian(
             indices=indices, blocks=blocks, charge=charge
         )
+
+    def randomize_phases(self, seed=None, inplace=False) -> "FermionicArray":
+        """Randomize the phases of each sector to either +1 or -1. This is
+        useful for testing.
+
+        Parameters
+        ----------
+        seed : int or numpy.random.Generator, optional
+            The random seed or generator, by default None.
+        inplace : bool, optional
+            Whether to perform the operation in place.
+
+        Returns
+        -------
+        FermionicArray
+            The phase randomized array.
+        """
+        rng = get_rng(seed)
+        new_phases = {}
+        for sector in self.sectors:
+            if rng.uniform() > 0.5:
+                new_phases[sector] = -1
+        return self._modify_or_copy(inplace=inplace, phases=new_phases)
 
     def phase_sync(self, inplace=False) -> "FermionicArray":
         """Multiply all lazy phases into the block arrays.

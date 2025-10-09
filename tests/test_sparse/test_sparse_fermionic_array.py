@@ -18,7 +18,7 @@ def test_fermi_norm(symmetry, subsizes, seed):
         duals=False,
         seed=seed,
     )
-    x.phase_flip(1, 3, inplace=True)
+    x.randomize_phases(seed + 1, inplace=True)
     ne = x.norm()
     xc = x.conj()
     assert xc.phases != x.phases
@@ -49,6 +49,7 @@ def test_transpose(symmetry, subsizes, seed):
         fermionic=True,
         subsizes=subsizes,
     )
+    x.randomize_phases(seed + 1, inplace=True)
     perm = tuple(rng.permutation(x.ndim))
     y = x.transpose(perm)
     y.phase_sync(inplace=True)
@@ -96,10 +97,12 @@ def test_fuse_with_tensordot(seed):
         indices=[ixs[k] for k in left],
         seed=rng,
     )
+    x.randomize_phases(seed + 1, inplace=True)
     y = sr.Z2FermionicArray.random(
         indices=[ixs[k].conj() for k in right],
         seed=rng,
     )
+    y.randomize_phases(seed + 2, inplace=True)
 
     # basic
     z_b = sr.tensordot(
@@ -189,6 +192,7 @@ def test_fuse_unfuse(symmetry, seed, subsizes):
         seed=rng,
         subsizes=subsizes,
     )
+    x.randomize_phases(rng, inplace=True)
     nfuse = rng.integers(1, x.ndim)
     axes = tuple(rng.choice(x.ndim, size=nfuse, replace=False))
     position = min(axes)
@@ -220,7 +224,7 @@ def test_fuse_unfuse_matrix(symmetry, seed, subsizes):
         seed=rng,
         subsizes=subsizes,
     )
-
+    x.randomize_phases(rng, inplace=True)
     axes = tuple(rng.permutation(x.ndim))
     nleft = rng.integers(1, x.ndim - 1)
 
@@ -252,7 +256,7 @@ def test_transpose_vs_pyblock3(seed):
         dist="uniform",
         seed=rng,
     )
-
+    x.randomize_phases(seed + 1, inplace=True)
     perma = tuple(rng.permutation(x.ndim))
     permb = tuple(rng.permutation(x.ndim))
 
@@ -324,23 +328,29 @@ def test_tensordot_vs_pyblock3(seed, method):
 
 
 @pytest.mark.parametrize("symm", all_symmetries)
-def test_einsum_vs_tensordot(symm):
+@pytest.mark.parametrize("seed", range(3))
+def test_einsum_vs_tensordot(symm, seed):
     a = sr.utils.rand_index(symm, 4)
     b = sr.utils.rand_index(symm, 5)
     c = sr.utils.rand_index(symm, 6)
     d = sr.utils.rand_index(symm, 3)
     e = sr.utils.rand_index(symm, 2)
     eq = "abcd,baed->ec"
+    rng = sr.utils.get_rng(seed)
     x = sr.utils.get_rand(
         symm,
         shape=(a, b, c, d),
         fermionic=True,
+        seed=rng,
     )
+    x.randomize_phases(rng, inplace=True)
     y = sr.utils.get_rand(
         symm,
         shape=(b.conj(), a.conj(), e, d.conj()),
         fermionic=True,
+        seed=rng,
     )
+    y.randomize_phases(rng, inplace=True)
     z1 = sr.tensordot(x, y, [(1, 0, 3), (0, 1, 3)]).transpose()
     xy = xy = sr.tensordot(x, y, ((), ()))
     seq = eq.replace(",", "")
