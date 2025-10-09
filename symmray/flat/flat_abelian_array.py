@@ -326,8 +326,7 @@ class AbelianArrayFlat(
         )
 
     def trace(self):
-        """Compute the trace of the flat array, assuming it is a square matrix.
-        """
+        """Compute the trace of the flat array, assuming it is a square matrix."""
         return self._trace_abelian()
 
     def einsum(self, eq, preserve_array=False):

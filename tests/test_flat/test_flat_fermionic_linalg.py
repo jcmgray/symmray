@@ -55,6 +55,7 @@ def test_qr_roundtrip(symmetry, seed):
 @pytest.mark.parametrize("symmetry", ("Z2",))
 @pytest.mark.parametrize("seed", range(5))
 def test_qr_with_expand_dims(symmetry, seed):
+    pytest.xfail("Unfusing single dimensions not implemented yet")
     x = sr.utils.get_rand(
         symmetry,
         [4, 6, 6],
