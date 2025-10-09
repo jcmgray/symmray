@@ -6,8 +6,8 @@ from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
-from .sparse_array import SparseArrayCommon
-from .sparse_base import BlockCommon
+from .sparse_array_common import SparseArrayCommon
+from .sparse_data_common import BlockCommon
 
 
 class AbelianArray(

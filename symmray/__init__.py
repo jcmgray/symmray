@@ -73,14 +73,11 @@ from .sparse.sparse_abelian_array import (
     Z2Array,
     Z2Z2Array,
 )
-from .sparse.sparse_array import (
+from .sparse.sparse_array_common import (
     BlockIndex,
     default_tensordot_mode,
     get_default_tensordot_mode,
     set_default_tensordot_mode,
-)
-from .sparse.sparse_vector import (
-    BlockVector,
 )
 from .sparse.sparse_fermionic_array import (
     FermionicArray,
@@ -88,6 +85,9 @@ from .sparse.sparse_fermionic_array import (
     U1U1FermionicArray,
     Z2FermionicArray,
     Z2Z2FermionicArray,
+)
+from .sparse.sparse_vector import (
+    BlockVector,
 )
 from .symmetries import (
     U1,

@@ -8,11 +8,11 @@ from ..fermionic_common import FermionicCommon
 from ..fermionic_local_operators import FermionicOperator
 from ..symmetries import calc_phase_permutation, get_symmetry
 from ..utils import DEBUG, get_rng
-from .sparse_array import (
+from .sparse_array_common import (
     SparseArrayCommon,
     permuted,
 )
-from .sparse_base import BlockCommon
+from .sparse_data_common import BlockCommon
 
 
 def argsort(seq):

@@ -4,7 +4,7 @@ import autoray as ar
 
 from ..common import SymmrayCommon
 from ..vector_common import VectorCommon
-from .sparse_base import BlockCommon
+from .sparse_data_common import BlockCommon
 
 
 class BlockVector(BlockCommon, SymmrayCommon, VectorCommon):
