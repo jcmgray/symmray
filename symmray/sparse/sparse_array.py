@@ -15,7 +15,7 @@ import autoray as ar
 
 from ..abelian_common import parse_tensordot_axes, without
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
-from .sparse_base import BlockVector
+from .sparse_vector import BlockVector
 from .sparse_index import BlockIndex, SubIndexInfo
 
 # --------------------------------------------------------------------------- #

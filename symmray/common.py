@@ -61,99 +61,24 @@ class SymmrayCommon:
     ) -> "SymmrayCommon":
         pass
 
-    def __add__(self, other):
-        if isinstance(other, self.__class__):
-            return self._binary_blockwise_op(
-                other,
-                fn=operator.add,
-                missing="outer",
-                inplace=False,
-            )
-
-        # addition with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Addition with {type(self)} and {type(other)} not implemented."
-        )
-
-    def __iadd__(self, other):
-        if isinstance(other, self.__class__):
-            return self._binary_blockwise_op(
-                other, fn=operator.add, missing="outer", inplace=True
-            )
-
-        # addition with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Addition with {type(self)} and {type(other)} not implemented."
-        )
-
-    def __sub__(self, other):
-        if isinstance(other, self.__class__):
-            return self._binary_blockwise_op(
-                other,
-                fn=operator.sub,
-                inplace=False,
-            )
-
-        # subtraction with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Subtraction with {type(self)} and {type(other)} not implemented."
-        )
-
-    def __isub__(self, other):
-        if isinstance(other, self.__class__):
-            return self._binary_blockwise_op(
-                other, fn=operator.sub, inplace=True
-            )
-
-        # subtraction with non-matching block array breaks sparsity
-        raise NotImplementedError(
-            f"Subtraction with {type(self)} and {type(other)} not implemented."
-        )
-
     @lazyabstractmethod
     def apply_to_arrays(self, fn):
         pass
 
-    def __mul__(self, other):
+    def __mul__(self, other, inplace=False):
         if isinstance(other, self.__class__):
             return self._binary_blockwise_op(
-                other, fn=operator.mul, missing="inner"
+                other, fn=operator.mul, missing="inner", inplace=inplace
             )
-        new = self.copy()
+        new = self if inplace else self.copy()
         new.apply_to_arrays(lambda x: x * other)
         return new
 
     def __imul__(self, other):
-        if isinstance(other, self.__class__):
-            return self._binary_blockwise_op(
-                other, fn=operator.mul, missing="inner", inplace=True
-            )
-        self.apply_to_arrays(lambda x: x * other)
-        return self
+        return self.__mul__(other, inplace=True)
 
     def __rmul__(self, other):
         return self * other
-
-    def __truediv__(self, other):
-        if isinstance(other, self.__class__):
-            if self.shape == other.shape and all(d == 1 for d in self.shape):
-                return self._binary_blockwise_op(other, fn=operator.truediv)
-            # deviding by implicit zeros not defined
-            return NotImplemented
-
-        # assume scalar
-        new = self.copy()
-        new.apply_to_arrays(lambda x: x / other)
-        return new
-
-    def __itruediv__(self, other):
-        if isinstance(other, self.__class__):
-            # deviding by implicit zeros not defined
-            return NotImplemented
-
-        # assume scalar
-        self.apply_to_arrays(lambda x: x / other)
-        return self
 
     def __neg__(self) -> "SymmrayCommon":
         new = self.copy()

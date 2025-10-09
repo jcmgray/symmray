@@ -17,7 +17,7 @@ from ..linalg import (
 from ..utils import DEBUG
 from .sparse_abelian_array import AbelianArray
 from .sparse_array import BlockIndex, SparseArrayCommon
-from .sparse_base import BlockVector
+from .sparse_vector import BlockVector
 from .sparse_fermionic_array import FermionicArray
 
 

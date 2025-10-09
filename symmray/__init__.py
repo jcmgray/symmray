@@ -79,7 +79,7 @@ from .sparse.sparse_array import (
     get_default_tensordot_mode,
     set_default_tensordot_mode,
 )
-from .sparse.sparse_base import (
+from .sparse.sparse_vector import (
     BlockVector,
 )
 from .sparse.sparse_fermionic_array import (

@@ -3,12 +3,13 @@ backend.
 """
 
 import functools
+import operator
 
 import autoray as ar
 
 from .index_common import Index
 from .symmetries import Symmetry, get_symmetry
-from .utils import lazyabstractmethod
+from .utils import DEBUG, lazyabstractmethod
 
 
 @functools.lru_cache(maxsize=2**15)
@@ -245,6 +246,62 @@ class AbelianCommon:
     @property
     def signature(self) -> str:
         return "".join("-" if f else "+" for f in self.duals)
+
+    def __add__(self, other, inplace=False):
+        if isinstance(other, self.__class__):
+            # can add arrays with matching sparsity and structure
+            return self._binary_blockwise_op(
+                other,
+                fn=operator.add,
+                missing="outer",
+                inplace=inplace,
+            )
+
+        # addition with anything else incld scalars breaks sparsity
+        raise NotImplementedError(
+            f"Addition with {type(self)} and {type(other)} not implemented."
+        )
+
+    def __iadd__(self, other):
+        return self.__add__(other, inplace=True)
+
+    def __sub__(self, other, inplace=False):
+        if isinstance(other, self.__class__):
+            # can subtract arrays with matching sparsity and structure
+            return self._binary_blockwise_op(
+                other,
+                fn=operator.sub,
+                inplace=inplace,
+            )
+
+        # subtraction with anything else incld scalars breaks sparsity
+        raise NotImplementedError(
+            f"Subtraction with {type(self)} and {type(other)} not implemented."
+        )
+
+    def __isub__(self, other):
+        return self.__sub__(other, inplace=True)
+
+    def __truediv__(self, other, inplace=False):
+        if isinstance(other, self.__class__):
+            if self.shape == other.shape and all(d == 1 for d in self.shape):
+                # print("when does this happen??")
+                return self._binary_blockwise_op(
+                    other, fn=operator.truediv, inplace=inplace
+                )
+            # deviding by implicit zeros not defined
+            return NotImplemented
+
+        if DEBUG and getattr(other, "ndim", None) != 0:
+            raise ValueError(f"Division {self} / {other} not supported.")
+
+        # assume scalar
+        new = self if inplace else self.copy()
+        new.apply_to_arrays(lambda x: x / other)
+        return new
+
+    def __itruediv__(self, other):
+        return self.__truediv__(other, inplace=True)
 
     @lazyabstractmethod
     def transpose(self, axes=None, inplace=False) -> "AbelianCommon":

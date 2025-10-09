@@ -188,7 +188,7 @@ class FlatVector(FlatCommon, SymmrayCommon):
         assert ar.do("ndim", self._blocks, like=self.backend) == 2
 
     def to_blockvector(self):
-        from ..sparse.sparse_base import BlockVector
+        from ..sparse.sparse_vector import BlockVector
 
         return BlockVector(
             {k.item(): b for k, b in zip(self.sectors, self.blocks)}
