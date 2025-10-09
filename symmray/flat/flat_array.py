@@ -11,7 +11,10 @@ import autoray as ar
 import cotengra as ctg
 
 from ..sparse.sparse_abelian_array import AbelianArray
-from ..sparse.sparse_array import calc_fuse_group_info, parse_tensordot_axes
+from ..sparse.sparse_array_common import (
+    calc_fuse_group_info,
+    parse_tensordot_axes,
+)
 from ..utils import DEBUG, get_array_cls
 from .flat_base import FlatVector
 from .flat_index import FlatIndex, FlatSubIndexInfo
@@ -336,7 +339,7 @@ def _calc_fuse_rearrange_pattern(
     axes_groups,
     axes_before,
     axes_after,
-    order,
+    axes_ncharges,
     ndim,
 ):
     # now we create the unmerge/merge pattern for einops:
@@ -369,10 +372,14 @@ def _calc_fuse_rearrange_pattern(
         pattern.append(f" (B{g}")
         for ax in gaxes:
             pattern.append(f" p{ax}")
+
+            # XXX: need to handle singlet dims somehow?
+            # if axes_ncharges[ax] > 1:
+
             bax = f"B{g}"
             # keep track of the unmerged
             if bax in unmerged_batch_sizes:
-                unmerged_batch_sizes[bax] *= order
+                unmerged_batch_sizes[bax] *= axes_ncharges[ax]
             else:
                 unmerged_batch_sizes[bax] = 1
         pattern.append(")")
@@ -767,6 +774,9 @@ class FlatArrayCommon:
             _,  # new_axes,
         ) = calc_fuse_group_info(axes_groups, self.duals)
 
+        # the actual number of charges in each axis (typically == order)
+        axes_ncharges = tuple(ix.num_charges for ix in self._indices)
+
         # create the new sectors, starting with the unfused axes before
         new_sectors = [self._sectors[:, ax] for ax in axes_before]
         for axs, dg in zip(axes_groups, group_duals):
@@ -802,7 +812,7 @@ class FlatArrayCommon:
             axes_groups,
             axes_before,
             axes_after,
-            self.order,
+            axes_ncharges,
             self.ndim,
         )
         # perform the rearrangement!
