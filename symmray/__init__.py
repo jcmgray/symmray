@@ -16,11 +16,11 @@ from .flat.flat_abelian_array import (
     AbelianArrayFlat,
     Z2ArrayFlat,
 )
-from .flat.flat_base import FlatVector
 from .flat.flat_fermionic_array import (
     FermionicArrayFlat,
     Z2FermionicArrayFlat,
 )
+from .flat.flat_vector import FlatVector
 from .hamiltonians import (
     ham_fermi_hubbard_from_edges,
     ham_fermi_hubbard_spinless_from_edges,

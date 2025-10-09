@@ -12,10 +12,10 @@ from ..linalg import (
 )
 from ..utils import DEBUG
 from .flat_abelian_array import AbelianArrayFlat
-from .flat_array import FlatArrayCommon
-from .flat_base import FlatVector
+from .flat_array_common import FlatArrayCommon
 from .flat_fermionic_array import FermionicArrayFlat
 from .flat_index import FlatIndex
+from .flat_vector import FlatVector
 
 
 @qr.register(AbelianArrayFlat)

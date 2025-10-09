@@ -18,8 +18,8 @@ from ..common import SymmrayCommon
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
-from .flat_array import FlatArrayCommon
-from .flat_base import FlatCommon
+from .flat_array_common import FlatArrayCommon
+from .flat_data_common import FlatCommon
 
 
 class AbelianArrayFlat(

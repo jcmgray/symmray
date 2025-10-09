@@ -8,8 +8,8 @@ from ..fermionic_common import FermionicCommon
 from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
-from .flat_array import FlatArrayCommon
-from .flat_base import FlatCommon
+from .flat_array_common import FlatArrayCommon
+from .flat_data_common import FlatCommon
 
 
 def perm_to_swaps(perm):

@@ -1,4 +1,4 @@
-import operator
+"""Sparse backend block vector class."""
 
 import autoray as ar
 
@@ -7,8 +7,17 @@ from ..vector_common import VectorCommon
 from .sparse_data_common import BlockCommon
 
 
-class BlockVector(BlockCommon, SymmrayCommon, VectorCommon):
-    """A vector stored as a dict of blocks."""
+class BlockVector(BlockCommon, VectorCommon, SymmrayCommon):
+    """Class for storing block vectors with sparse storage, e.g. for the
+    singular- or eigen- values of a matrix.
+
+    This is equivalent to the diagonal of a zero charge abelian matrix.
+
+    Parameters
+    ----------
+    blocks : dict
+        A dictionary mapping sector keys to array blocks.
+    """
 
     __slots__ = ("_blocks",)
     ndim = 1

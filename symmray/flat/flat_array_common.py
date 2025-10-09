@@ -16,8 +16,8 @@ from ..sparse.sparse_array_common import (
     parse_tensordot_axes,
 )
 from ..utils import DEBUG, get_array_cls
-from .flat_base import FlatVector
 from .flat_index import FlatIndex, FlatSubIndexInfo
+from .flat_vector import FlatVector
 
 try:
     from einops import rearrange as _einops_rearrange
