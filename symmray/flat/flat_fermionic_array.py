@@ -531,10 +531,9 @@ class FermionicArrayFlat(
         """Fermionic conjugate transpose."""
         new = self._conj_abelian(inplace=inplace)
         new._transpose_abelian(inplace=True)
+        assert not phase_dual
+        assert not new.oddpos
         return new
-
-    def einsum(self, eq: str, preserve_array=False):
-        raise NotImplementedError
 
     def tensordot(
         self, other, axes=2, preserve_array=False, **kwargs
@@ -595,12 +594,6 @@ class FermionicArrayFlat(
             return c.get_scalar_element()
 
         return c
-
-    def to_dense(self):
-        raise NotImplementedError
-
-    def trace(self):
-        raise NotImplementedError
 
 
 class Z2FermionicArrayFlat(FermionicArrayFlat):

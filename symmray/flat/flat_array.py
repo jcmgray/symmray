@@ -550,6 +550,9 @@ class FlatArrayCommon:
             symmetry=self.symmetry,
         )
 
+    def _to_dense_abelian(self):
+        raise NotImplementedError()
+
     def get_sorting_indices(
         self,
         axes=None,
@@ -1154,10 +1157,10 @@ class FlatArrayCommon:
             blocks=new_blocks,
         )
 
-    def trace(self):
+    def _trace_abelian(self):
         raise NotImplementedError()
 
-    def einsum(self, eq, preserve_array=False):
+    def _einsum_abelian(self, eq, preserve_array=False):
         raise NotImplementedError
 
     def _tensordot_abelian(

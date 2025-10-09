@@ -16,6 +16,7 @@ from .flat.flat_abelian_array import (
     AbelianArrayFlat,
     Z2ArrayFlat,
 )
+from .flat.flat_base import FlatVector
 from .flat.flat_fermionic_array import (
     FermionicArrayFlat,
     Z2FermionicArrayFlat,
@@ -126,6 +127,7 @@ __all__ = (
     "FermionicArrayFlat",
     "FermionicOperator",
     "flat_linalg",
+    "FlatVector",
     "fuse",
     "get_default_tensordot_mode",
     "get_symmetry",

@@ -337,15 +337,6 @@ class BlockCommon:
     def test_allclose(self, other, **allclose_opts):
         pass
 
-    def __repr__(self):
-        return "".join(
-            [
-                f"{self.__class__.__name__}(",
-                f"total_size={self.size}, ",
-                f"num_blocks={self.num_blocks})",
-            ]
-        )
-
 
 class BlockVector(BlockCommon, SymmrayCommon):
     """A vector stored as a dict of blocks."""
@@ -527,3 +518,12 @@ class BlockVector(BlockCommon, SymmrayCommon):
         """Like `allclose` but raises an AssertionError with details if not
         close."""
         return self._test_allclose_blockcommon(other, **allclose_opts)
+
+    def __repr__(self):
+        return "".join(
+            [
+                f"{self.__class__.__name__}(",
+                f"total_size={self.size}, ",
+                f"num_blocks={self.num_blocks})",
+            ]
+        )

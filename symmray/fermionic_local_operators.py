@@ -229,8 +229,8 @@ def build_local_fermionic_array(
         sequence of multiple FermionicOperator instances acting on the vacuum.
     symmetry : str
         The symmetry of the model. Either "Z2", "U1", "Z2Z2" or "U1U1".
-    index_maps : Sequence[Dict[int, hashable]]
-        For each basis, a mapping of linear index to charge.
+    index_maps : Sequence[Sequence[hashable]]
+        For each basis, the sequence mapping linear index to charge sector.
 
     Returns
     -------

@@ -176,6 +176,17 @@ class AbelianArrayFlat(
         """Create a blocksparse abelian array from this flat abelian array."""
         return self._to_blocksparse_abelian()
 
+    def to_dense(self):
+        """Convert this abelian array to a dense array, by combining all the
+        blocks into a single large array, filling in zeros where necessary.
+
+        Returns
+        -------
+        array_like
+            A dense array with the same shape as this abelian array.
+        """
+        return self._to_dense_abelian()
+
     def sort_stack(
         self,
         axes=None,
@@ -250,6 +261,21 @@ class AbelianArrayFlat(
         """
         return self._conj_abelian(inplace=inplace)
 
+    def dagger(self, inplace=False) -> "AbelianArrayFlat":
+        """Return the adjoint of this flat abelian array, including the
+        indices and any subindex fusing information.
+
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArrayFlat
+        """
+        return self._dagger_abelian(inplace=inplace)
+
     def _fuse_core(
         self,
         *axes_groups,
@@ -298,6 +324,29 @@ class AbelianArrayFlat(
         return self._tensordot_abelian(
             other, axes=axes, mode=mode, preserve_array=preserve_array
         )
+
+    def trace(self):
+        """Compute the trace of the flat array, assuming it is a square matrix.
+        """
+        return self._trace_abelian()
+
+    def einsum(self, eq, preserve_array=False):
+        """Einsum for flat abelian arrays, currently only single term.
+
+        Parameters
+        ----------
+        eq : str
+            The einsum equation, e.g. "abcb->ca". The output indices must be
+            specified and only trace and permutations are allowed.
+        preserve_array : bool, optional
+            If tracing to a scalar, whether to return an AbelainArray object
+            with no indices, or simply scalar itself (the default).
+
+        Returns
+        -------
+        FlatAbelianArray or scalar
+        """
+        return self._einsum_abelian(eq, preserve_array=preserve_array)
 
     def squeeze(self, axis, inplace=False):
         """Assuming `axis` has total size 1, remove it from this array."""

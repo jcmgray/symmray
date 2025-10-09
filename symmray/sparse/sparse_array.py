@@ -1019,11 +1019,11 @@ class SparseArrayCommon:
         Parameters
         ----------
         array : array_like
-            The dense array.
-        index_maps : tuple[dict[int, hashable]]
-            A mapping for each axis that labels each linear index with a
-            particular charge. There should be ``ndim`` such mappings, each of
-            size ``shape[i]``.
+                The dense array.
+        index_maps : Sequence[Sequence[hashable]]
+            For each dimension, the sequence mapping linear index to charge
+            sector. There should be ``ndim`` such mappings, each of length
+            ``shape[i]``.
         duals : tuple[bool]
             The dualness of each index.
         charge : hashable
@@ -1148,6 +1148,20 @@ class SparseArrayCommon:
     @lazyabstractmethod
     def transpose(self, axes=None, inplace=False):
         pass
+
+    def _conj_abelian(self, inplace=False) -> "SparseArrayCommon":
+        """Return the complex conjugate of this block array, including the
+        indices."""
+        new = self if inplace else self.copy()
+        _conj = ar.get_lib_fn(new.backend, "conj")
+        new.apply_to_arrays(_conj)
+
+        new.modify(
+            indices=tuple(ix.conj() for ix in self._indices),
+            charge=self.symmetry.sign(self._charge),
+        )
+
+        return new
 
     def select_charge(self, axis, charge, inplace=False):
         """Drop all but the specified charge along the specified axis. Note the
@@ -1471,23 +1485,6 @@ class SparseArrayCommon:
         return self._modify_or_copy(
             indices=new_indices, blocks=new_blocks, inplace=inplace
         )
-
-    def unfuse(self, axis, inplace=False):
-        """Unfuse the ``axis`` index, which must carry subindex information,
-        likely generated automatically from a fusing operation.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to unfuse. It must have subindex information (`.subinfo`).
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        SparseArrayCommon
-        """
-        return self._unfuse_abelian(axis, inplace=inplace)
 
     def _matmul_abelian(self, other, preserve_array=False):
         if self.ndim > 2 or other.ndim > 2:
@@ -1981,7 +1978,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     # unfuse result into (*left_axes, *right_axes)
     for ax in reversed(range(cf.ndim)):
         if cf.is_fused(ax):
-            SparseArrayCommon.unfuse(cf, ax, inplace=True)
+            cf._unfuse_abelian(ax, inplace=True)
 
     return cf
 

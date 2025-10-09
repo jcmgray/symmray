@@ -107,24 +107,47 @@ class AbelianArray(
         """
         return self._transpose_abelian(axes=axes, inplace=inplace)
 
-    def conj(self, inplace=False):
+    def conj(self, inplace=False) -> "AbelianArray":
         """Return the complex conjugate of this block array, including the
         indices."""
-        new = self if inplace else self.copy()
-        _conj = ar.get_lib_fn(new.backend, "conj")
-        new.apply_to_arrays(_conj)
+        return self._conj_abelian(inplace=inplace)
 
-        new.modify(
-            indices=tuple(ix.conj() for ix in self._indices),
-            charge=self.symmetry.sign(self._charge),
-        )
+    def dagger(self, inplace=False) -> "AbelianArray":
+        """Return the adjoint of this abelian array, including the
+        indices and any subindex fusing information.
 
-        return new
+        Parameters
+        ----------
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+        """
+        return self._dagger_abelian(inplace=inplace)
 
     def _fuse_core(self, *axes_groups, mode="auto", inplace=False):
         return self._fuse_core_abelian(
             *axes_groups, mode=mode, inplace=inplace
         )
+
+    def unfuse(self, axis, inplace=False) -> "AbelianArray":
+        """Unfuse the ``axis`` index, which must carry subindex information,
+        likely generated automatically from a fusing operation.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to unfuse. It must have subindex information (`.subinfo`).
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+        """
+        return self._unfuse_abelian(axis, inplace=inplace)
 
     def einsum(self, eq, preserve_array=False):
         """Einsum for abelian arrays, currently only single term.
@@ -140,7 +163,7 @@ class AbelianArray(
 
         Returns
         -------
-        SparseArrayCommon or scalar
+        AbelianArray or scalar
         """
         return self._einsum_abelian(eq, preserve_array=preserve_array)
 

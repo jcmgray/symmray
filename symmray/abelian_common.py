@@ -259,9 +259,11 @@ class AbelianCommon:
     def conj(self, inplace=False) -> "AbelianCommon":
         pass
 
-    def dagger(self, inplace=False) -> "AbelianCommon":
-        """Return the adjoint of this block array."""
-        return self.conj(inplace=inplace).transpose(inplace=True)
+    def _dagger_abelian(self, inplace=False) -> "AbelianCommon":
+        """Conjugate transpose or adjoint, implements the .H property."""
+        new = self._transpose_abelian(inplace=inplace)
+        new._conj_abelian(inplace=True)
+        return new
 
     @property
     def H(self) -> "AbelianCommon":
