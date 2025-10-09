@@ -393,7 +393,9 @@ class FermionicArrayFlat(
         N = new.ndim
         if axes is None:
             # full reversal, shortcut to count the swaps
-            nswap = ar.do("sum", new.sectors % 2, axis=1) // 2
+            nswap = (
+                ar.do("sum", new.sectors % 2, axis=1, like=self.backend) // 2
+            )
         elif all(ax == i for i, ax in enumerate(axes)):
             # identity, nothing to do
             return new

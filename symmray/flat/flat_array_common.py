@@ -558,7 +558,7 @@ class FlatArrayCommon:
         )
 
     def _to_dense_abelian(self):
-        raise NotImplementedError()
+        return self._to_blocksparse_abelian()._to_dense_abelian()
 
     def get_sorting_indices(
         self,
@@ -1168,7 +1168,17 @@ class FlatArrayCommon:
         )
 
     def _trace_abelian(self):
-        raise NotImplementedError()
+        """Compute the trace of the flat array, assuming it is a square
+        matrix.
+        """
+        if self.ndim != 2:
+            raise ValueError("Trace requires a 2D array.")
+
+        _trace = ar.get_lib_fn(self.backend, "trace")
+        _sum = ar.get_lib_fn(self.backend, "sum")
+        new_blocks = _trace(self.blocks, axis1=1, axis2=2)
+        sector_equals = self._sectors[:, 0] == self._sectors[:, 1]
+        return _sum(sector_equals * new_blocks)
 
     def _einsum_abelian(self, eq, preserve_array=False):
         raise NotImplementedError
@@ -1262,26 +1272,52 @@ class FlatArrayCommon:
         if axis < 0:
             axis += self.ndim
 
-        # find the order that sorts the sectors of `v` to match
-        k = ar.do("argsort", self._sectors[:, axis])[v.sectors]
+        # first we sort the vector by sector
+        k = ar.do("argsort", v.sectors)
         vblocks_aligned = v.blocks[k]
 
-        # expand with new dimensions
-        reshaper = (
+        # expand with new broadcasting dimensions
+        v_expander = (
+            # sector axis we are multiplying along (aligned with blocks)
             slice(None),
-            *repeat(None, axis),
+            # the other sectors axis we broadcast over +
+            # the data axes before axis we broadcast over
+            *repeat(None, axis + 1),
+            # the actual axis we are multiplying along
             slice(None),
+            # the data axes after axis we broadcast over
             *repeat(None, self.ndim - axis - 1),
         )
+        vblocks_aligned = vblocks_aligned[v_expander]
+
+        # align block sectors to the vector sectors
+        new = self.sort_stack(axis, inplace=inplace)
+        shape_block = new.shape_block
+
+        b_reshaper = (
+            # sector axis we are multiplying along (aligned with blocks)
+            new.indices[axis].num_charges,
+            # other sectors axis we broadcast over
+            -1,
+            *shape_block,
+        )
+        new_blocks = ar.do("reshape", new.blocks, b_reshaper, like=new.backend)
 
         if power == 1:
-            new_blocks = self._blocks * vblocks_aligned[reshaper]
+            new_blocks = new_blocks * vblocks_aligned
         elif power == -1:
-            new_blocks = self._blocks / vblocks_aligned[reshaper]
+            new_blocks = new_blocks / vblocks_aligned
         else:
+            # XXX: support other powers?
             raise ValueError("Invalid power value")
 
-        return self._modify_or_copy(blocks=new_blocks, inplace=inplace)
+        # fuse axis and other sectors back into a single dimension
+        new_blocks = ar.do(
+            "reshape", new_blocks, (-1, *shape_block), like=new.backend
+        )
+
+        new.modify(blocks=new_blocks)
+        return new
 
     def ldmul(self, v, inplace=False):
         return self.multiply_diagonal(v, axis=-2, inplace=inplace)

@@ -344,3 +344,30 @@ def test_tensordot(symmetry, seed):
     )
 
     fc.to_blocksparse().test_allclose(c)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("axis", [0, 1, 2, 3])
+def test_block_multiply_diagonal(symmetry, charge, axis):
+    import autoray as ar
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        (4, 2, 6, 2),
+        seed=rng,
+        charge=charge,
+    ).to_flat()
+
+    v = sr.FlatVector.rand(symmetry, x.indices[axis].charge_size)
+    y = ar.do("multiply_diagonal", x, v, axis=axis)
+
+    # check dense reference
+    xd = x.to_dense()
+    vd = v.to_dense()
+    yd = y.to_dense()
+    lhs = "abcd"
+    rhs = lhs[axis]
+    np.testing.assert_allclose(yd, np.einsum(f"{lhs},{rhs}->{lhs}", xd, vd))
