@@ -102,6 +102,27 @@ def test_solve(symmetry, d):
     x.check()
     assert (a @ x).allclose(b)
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d0", (2, 7, 31))
+@pytest.mark.parametrize("d1", (2, 3, 4))
+def test_solve_2d(symmetry, d0, d1):
+    ind = sr.utils.rand_index(symmetry, d0)
+    ind1 = sr.utils.rand_index(symmetry, d1)
+
+    a = sr.utils.get_rand(
+        symmetry,
+        shape=(ind, ind.conj()),
+        dtype="complex128",
+    )
+    b = sr.utils.get_rand(
+        symmetry,
+        shape=(ind, ind1),
+        dtype="complex128",
+    )
+    x = sr.linalg.solve(a, b)
+    x.check()
+    assert (a @ x).allclose(b)
+
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
