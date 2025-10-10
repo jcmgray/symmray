@@ -583,3 +583,23 @@ def test_rdmul_and_rddiv(symmetry, seed, fn):
     fy = ar.do(fn, fx, fv)
     fy.check()
     fy.to_blocksparse().test_allclose(sy)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("seed", range(2))
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
+def test_norm(symmetry, ndim, seed):
+    rng = sr.utils.get_rng(seed)
+    shape = [rng.choice([2, 4]) for _ in range(ndim)]
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=shape,
+        charge=0,
+        fermionic=True,
+        seed=rng,
+    )
+    x.randomize_phases(seed + 1, inplace=True)
+    n1 = x.norm()
+    fx = x.to_flat()
+    n2 = fx.norm()
+    assert n1 == pytest.approx(n2)
