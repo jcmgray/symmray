@@ -62,6 +62,14 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
         """
         return cls.from_blocks(blockvector.blocks)
 
+    def to_blockvector(self):
+        """Convert to a sparse backend BlockVector."""
+        from ..sparse.sparse_vector import BlockVector
+
+        return BlockVector(
+            {k.item(): b for k, b in zip(self.sectors, self.blocks)}
+        )
+
     @classmethod
     def from_fill_fn(cls, fill_fn, sectors, charge_size):
         """Create a flat vector by filling blocks using a function that takes

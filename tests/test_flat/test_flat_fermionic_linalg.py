@@ -16,15 +16,17 @@ def invert_permutation(p):
 def test_qr_roundtrip(symmetry, seed):
     rng = sr.utils.get_rng(seed)
 
-    x = sr.utils.get_rand(
+    sx = sr.utils.get_rand(
         symmetry=symmetry,
         shape=[4, 4, 6, 6, 8],
         fermionic=True,
         dist="uniform",
         seed=rng,
-        flat=True,
+        flat=False,
         subsizes="equal",
     )
+    sx.randomize_phases(seed=rng, inplace=True)
+    x = sx.to_flat()
 
     axes = tuple(rng.permutation(x.ndim))
     nleft = rng.integers(1, x.ndim - 1)
@@ -50,6 +52,7 @@ def test_qr_roundtrip(symmetry, seed):
     xr = xrt.transpose(perm_back)
 
     x.test_allclose(xr)
+    x.to_blocksparse().test_allclose(sx)
 
 
 @pytest.mark.parametrize("symmetry", ("Z2",))
@@ -75,15 +78,16 @@ def test_qr_with_expand_dims(symmetry, seed):
 def test_svd_roundtrip(symmetry, seed):
     rng = sr.utils.get_rng(seed)
 
-    x = sr.utils.get_rand(
+    sx = sr.utils.get_rand(
         symmetry=symmetry,
         shape=[4, 6, 6, 8, 8],
         fermionic=True,
         dist="normal",
         seed=rng,
-        flat=True,
         subsizes="equal",
     )
+    sx.randomize_phases(seed=rng, inplace=True)
+    x = sx.to_flat()
 
     axes = tuple(rng.permutation(x.ndim))
     nleft = rng.integers(1, x.ndim - 1)
@@ -109,16 +113,18 @@ def test_svd_roundtrip(symmetry, seed):
     xr = xrt.transpose(perm_back)
 
     x.test_allclose(xr)
+    x.to_blocksparse().test_allclose(sx)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2",))
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([84, 96], [96, 96], [96, 84]))
 @pytest.mark.parametrize("seed", range(20))
-def test_svd_truncated_cutoff_max_bond(symmetry, seed):
+def test_svd_truncated_cutoff_max_bond(symmetry, shape, seed):
     rng = sr.utils.get_rng(seed)
 
     x = sr.utils.get_rand(
         symmetry=symmetry,
-        shape=[100, 100],
+        shape=shape,
         fermionic=True,
         dist="uniform",
         seed=rng,
@@ -140,10 +146,10 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
         "svd_truncated",
         x,
         cutoff=0.0,
-        max_bond=6,
+        max_bond=12,
         absorb=None,
     )
-    assert s.size == 6
+    assert s.size == 12
 
     # # both
     # _, s, _ = ar.do(
