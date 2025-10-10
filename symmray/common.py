@@ -135,3 +135,13 @@ class SymmrayCommon:
     def any(self):
         """Check if any element in the array is True."""
         return self._do_reduction("any")
+
+    @property
+    def real(self):
+        """Return the real part of the array."""
+        return self._do_unary_op("real")
+
+    @property
+    def imag(self):
+        """Return the imaginary part of the array."""
+        return self._do_unary_op("imag")

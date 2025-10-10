@@ -107,6 +107,24 @@ def log10(x):
         return ar.do("log10", x)
 
 
+def real(x):
+    """Return the real part of a `symmray` array."""
+    try:
+        return x.real
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("real", x)
+
+
+def imag(x):
+    """Return the imaginary part of a `symmray` array."""
+    try:
+        return x.imag
+    except AttributeError:
+        # called on non symmray array
+        return ar.do("imag", x)
+
+
 def clip(x, a_min, a_max):
     """Clip the values of a `symmray` array."""
     return x.clip(a_min, a_max)
