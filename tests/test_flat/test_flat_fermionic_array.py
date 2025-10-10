@@ -154,37 +154,36 @@ def test_phase_transpose(
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
-@pytest.mark.parametrize("seed", [42, 43, 44])
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("sync", [False, True])
-@pytest.mark.parametrize(
-    "perm",
-    [
-        None,
-        (2, 1, 0),
-        (2, 0, 1),
-        (0, 1, 2),
-        (0, 2, 1),
-        (1, 0, 2),
-        (1, 2, 0),
-    ],
-)
 def test_transpose(
     symmetry,
     charge,
+    ndim,
     seed,
     sync,
-    perm,
 ):
     if charge:
         pytest.xfail("oddpos not implemented yet.")
 
+    rng = sr.utils.get_rng(seed)
+
+    shape = [rng.choice([2, 4]) for _ in range(ndim)]
+
+    if rng.random() < 0.2:
+        perm = None
+    else:
+        perm = rng.permutation(ndim)
+
     x = get_zn_blocksparse_flat_compat(
         symmetry,
-        (2, 4, 6),
+        shape,
         charge=charge,
         fermionic=True,
-        seed=seed,
+        seed=rng,
     )
+    x.randomize_phases(rng, inplace=True)
     xt = x.transpose(perm)
     fx = x.to_flat()
     fxt = fx.transpose(perm)
@@ -243,8 +242,6 @@ def test_conj(
 @pytest.mark.parametrize("dtype", ["complex128", "float64"])
 def test_dagger(symmetry, ndim, seed, dtype):
     rng = sr.utils.get_rng(seed)
-    N = int(symmetry[1:])
-
     xs = get_zn_blocksparse_flat_compat(
         symmetry,
         shape=[2] * ndim,
@@ -324,7 +321,7 @@ def test_fuse_unfuse(symmetry, charge, seed):
         fermionic=True,
         seed=rng,
     )
-
+    x.randomize_phases(seed + 1, inplace=True)
     fx = x.to_flat()
 
     nfuse = rng.integers(1, x.ndim)
@@ -386,6 +383,7 @@ def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
     sx = get_zn_blocksparse_flat_compat(
         symmetry, shape, charge, fermionic=True, seed=42
     )
+    sx.randomize_phases(43, inplace=True)
     sy = sx.fuse(*axes_groups)
     fx = sx.to_flat()
     fx.check()
@@ -419,6 +417,8 @@ def test_tensordot(symmetry, seed):
         subsizes="equal",
         seed=seed,
     )
+    a.randomize_phases(seed + 1, inplace=True)
+    b.randomize_phases(seed + 2, inplace=True)
     c = a.tensordot(b, axes=axes, preserve_array=True)
 
     fa = a.to_flat()
