@@ -588,21 +588,36 @@ def eigh_truncated_abelian(
 
 
 @solve.register(AbelianArray)
-def solve_abelian(a: AbelianArray, b: BlockVector):
-    if (a.ndim, b.ndim) != (2, 1):
-        raise NotImplementedError(
-            "solve only implemented for 2D AbelianArrays and 1D BlockVectors,"
-            f" got {a.ndim}D and {b.ndim}D. Consider fusing first."
-        )
-
+def solve_abelian(a: AbelianArray, b: AbelianArray):
     _solve = ar.get_lib_fn(a.backend, "linalg.solve")
 
     x_blocks = {}
-    for sector, array in a.get_sector_block_pairs():
-        b_sector = (sector[0],)
-        if b.has_sector(b_sector):
-            x_sector = (sector[1],)
-            x_blocks[x_sector] = _solve(array, b.get_block(b_sector))
+    if (a.ndim, b.ndim) == (2, 1):
+        for sector, array in a.get_sector_block_pairs():
+            b_sector = (sector[0],)
+            if b.has_sector(b_sector):
+                x_sector = (sector[1],)
+                x_blocks[x_sector] = _solve(array, b.get_block(b_sector))
+        x_indices = (a.indices[1].conj(),)
+    elif (a.ndim, b.ndim) == (2, 2):
+        map_b_sector = {}
+        for sector in b.gen_valid_sectors():
+            # charge of b array is fixed, 
+            # so each sector has unique sector[0]
+            map_b_sector[sector[0]] = sector
+        x_blocks = {}
+        for sector, array in a.get_sector_block_pairs():
+            if sector[0] in map_b_sector:
+                b_sector = map_b_sector[sector[0]]
+                b_array = b.get_block(b_sector)
+                x_sector = (sector[1], b_sector[1])
+                x_blocks[x_sector] = _solve(array, b_array)
+        x_indices = (a.indices[1].conj(), b.indices[1])
+    else:
+        raise NotImplementedError(
+            "solve only implemented for 2D and 1D or 2D and 2D AbelianArrays,"
+            f" got {a.ndim}D and {b.ndim}D. Consider fusing first."
+        )
 
     # c_x = c_b - c_A
     sym = a.symmetry
@@ -610,7 +625,7 @@ def solve_abelian(a: AbelianArray, b: BlockVector):
 
     x = b.copy_with(
         blocks=x_blocks,
-        indices=(a.indices[1].conj(),),
+        indices=x_indices,
         charge=x_charge,
     )
 
@@ -622,7 +637,7 @@ def solve_abelian(a: AbelianArray, b: BlockVector):
 
 
 @solve.register(FermionicArray)
-def solve_fermionic(a: FermionicArray, b: BlockVector):
+def solve_fermionic(a: FermionicArray, b: FermionicArray):
     x = solve_abelian(a, b)
 
     if x.indices[0].dual:
