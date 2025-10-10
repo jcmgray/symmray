@@ -521,3 +521,65 @@ def test_block_multiply_diagonal(symmetry, charge, axis):
     lhs = "abcd"
     rhs = lhs[axis]
     np.testing.assert_allclose(yd, np.einsum(f"{lhs},{rhs}->{lhs}", xd, vd))
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("fn", ["ldmul", "lddiv"])
+def test_ldmul_and_lddiv(symmetry, seed, fn):
+    import autoray as ar
+
+    rng = sr.utils.get_rng(seed)
+    da = rng.choice([12, 24, 36])
+    db = rng.choice([12, 24, 36])
+    shape_x = (da, db)
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape_x,
+        charge=0,
+        fermionic=True,
+        seed=rng,
+    )
+    sx.randomize_phases(rng, inplace=True)
+    vblocks = {
+        c: rng.standard_normal(dc) + 1j * rng.standard_normal(dc)
+        for c, dc in sx.indices[0].chargemap.items()
+    }
+    sv = sr.BlockVector(vblocks)
+    sy = ar.do(fn, sv, sx)
+    fx = sx.to_flat()
+    fv = sv.to_flat()
+    fy = ar.do(fn, fv, fx)
+    fy.check()
+    fy.to_blocksparse().test_allclose(sy)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("fn", ["rdmul", "rddiv"])
+def test_rdmul_and_rddiv(symmetry, seed, fn):
+    import autoray as ar
+
+    rng = sr.utils.get_rng(seed)
+    da = rng.choice([12, 24, 36])
+    db = rng.choice([12, 24, 36])
+    shape_x = (da, db)
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape_x,
+        charge=0,
+        fermionic=True,
+        seed=rng,
+    )
+    sx.randomize_phases(rng, inplace=True)
+    vblocks = {
+        c: rng.standard_normal(dc) + 1j * rng.standard_normal(dc)
+        for c, dc in sx.indices[1].chargemap.items()
+    }
+    sv = sr.BlockVector(vblocks)
+    sy = ar.do(fn, sx, sv)
+    fx = sx.to_flat()
+    fv = sv.to_flat()
+    fy = ar.do(fn, fx, fv)
+    fy.check()
+    fy.to_blocksparse().test_allclose(sy)

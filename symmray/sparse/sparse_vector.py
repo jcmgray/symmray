@@ -52,6 +52,12 @@ class BlockVector(BlockCommon, VectorCommon, SymmrayCommon):
             raise ValueError(f"blocks have different ndims: {ndims}")
         assert self.size == sum(ar.size(s) for s in self.get_all_blocks())
 
+    def to_flat(self):
+        """Convert the block sparse vector to a flat vector."""
+        from ..flat.flat_vector import FlatVector
+
+        return FlatVector.from_blocks(self.blocks)
+
     def to_dense(self):
         """Convert the block vector to a dense array."""
         arrays = tuple(map(self.get_block, sorted(self.sectors)))

@@ -39,6 +39,30 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
             self.check()
 
     @classmethod
+    def from_blocks(cls, blocks):
+        """Create a flat vector from a dictionary of blocks.
+
+        Parameters
+        ----------
+        blocks : dict
+            Dictionary mapping sector (charge) to block (array).
+        """
+        new_blocks = ar.do("stack", tuple(blocks.values()))
+        sectors = ar.do("array", tuple(blocks.keys()), like=new_blocks)
+        return cls(sectors, new_blocks)
+
+    @classmethod
+    def from_blockvector(cls, blockvector):
+        """Create a flat backend vector from a sparse backend BlockVector.
+
+        Parameters
+        ----------
+        blockvector : BlockVector
+            The BlockVector to convert.
+        """
+        return cls.from_blocks(blockvector.blocks)
+
+    @classmethod
     def from_fill_fn(cls, fill_fn, sectors, charge_size):
         """Create a flat vector by filling blocks using a function that takes
         a shape and returns an array.
