@@ -582,7 +582,7 @@ class FermionicArrayFlat(
 
         # shortcut of matrx/vector products
         if self.ndim > 2 or other.ndim > 2:
-            raise ValueError("Matrix multiplication requires 2D arrays.")
+            raise ValueError("Matrix multiplication requires <=2D arrays.")
 
         if other.indices[0].dual:
             # have |x><x| -> want <x|x>

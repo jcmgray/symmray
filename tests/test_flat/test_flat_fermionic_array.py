@@ -454,8 +454,10 @@ def test_tensordot(symmetry, seed):
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("ndim_a", [1, 2])
+@pytest.mark.parametrize("ndim_b", [1, 2])
 @pytest.mark.parametrize("seed", range(10))
-def test_matmul(symmetry, seed):
+def test_matmul(symmetry, ndim_a, ndim_b, seed):
     rng = sr.utils.get_rng(seed)
     da = rng.choice([12, 24, 36])
     db = rng.choice([12, 24, 36])
@@ -463,16 +465,29 @@ def test_matmul(symmetry, seed):
     a = sr.utils.rand_index(symmetry, da, subsizes="equal", seed=rng)
     b = sr.utils.rand_index(symmetry, db, subsizes="equal", seed=rng)
     c = sr.utils.rand_index(symmetry, dc, subsizes="equal", seed=rng)
-    x = sr.utils.get_rand(symmetry, [a, b], seed=rng, fermionic=True)
+    if ndim_a == 1:
+        shape_a = [b]
+    else:
+        shape_a = [a, b]
+    x = sr.utils.get_rand(symmetry, shape_a, seed=rng, fermionic=True)
     x.randomize_phases(rng, inplace=True)
-    y = sr.utils.get_rand(symmetry, [b.conj(), c], seed=rng, fermionic=True)
+    if ndim_b == 1:
+        shape_b = [b.conj()]
+    else:
+        shape_b = [b.conj(), c]
+    y = sr.utils.get_rand(symmetry, shape_b, seed=rng, fermionic=True)
     y.randomize_phases(rng, inplace=True)
     z = x @ y
     fx = x.to_flat()
     fy = y.to_flat()
     fz = fx @ fy
-    fz.check()
-    fz.to_blocksparse().test_allclose(z)
+
+    if hasattr(fz, "check"):
+        fz.check()
+        fz.to_blocksparse().test_allclose(z)
+    else:
+        # scalar
+        assert fz == pytest.approx(z)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
