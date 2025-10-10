@@ -595,7 +595,7 @@ class FermionicArrayFlat(
         # XXX: need to implement
         # resolve_combined_oddpos(a, b, c)
 
-        if c.ndim == 0:
+        if c.ndim == 0 and (not preserve_array):
             c.phase_sync(inplace=True)
             return c.get_scalar_element()
 
