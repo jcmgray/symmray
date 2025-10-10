@@ -136,7 +136,7 @@ def test_phase_transpose(
         seed=seed,
     )
     # add some non-trivial phases
-    x.modify(phases={sector: rng.choice([-1, 1]) for sector in x.sectors})
+    x.randomize_phases(seed + 1, inplace=True)
     fx = x.to_flat()
 
     x_phase_transposed = x.phase_transpose(perm)
@@ -150,6 +150,26 @@ def test_phase_transpose(
         # phases should have been absorbed into blocks
         assert not y.phases
     y.test_allclose(x_phase_transposed)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", [42, 43, 44])
+def test_phase_global(symmetry, charge, seed):
+    if charge:
+        pytest.xfail("oddpos not implemented yet.")
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        (2, 4, 6),
+        charge=charge,
+        fermionic=True,
+        seed=seed,
+    )
+    # add some non-trivial phases
+    x.randomize_phases(seed + 1, inplace=True)
+    fx = x.to_flat()
+    fxg = fx.phase_global()
+    fxg.to_blocksparse().test_allclose(x.phase_global())
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
@@ -431,6 +451,28 @@ def test_tensordot(symmetry, seed):
         return
 
     fc.to_blocksparse().test_allclose(c)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("seed", range(10))
+def test_matmul(symmetry, seed):
+    rng = sr.utils.get_rng(seed)
+    da = rng.choice([12, 24, 36])
+    db = rng.choice([12, 24, 36])
+    dc = rng.choice([12, 24, 36])
+    a = sr.utils.rand_index(symmetry, da, subsizes="equal", seed=rng)
+    b = sr.utils.rand_index(symmetry, db, subsizes="equal", seed=rng)
+    c = sr.utils.rand_index(symmetry, dc, subsizes="equal", seed=rng)
+    x = sr.utils.get_rand(symmetry, [a, b], seed=rng, fermionic=True)
+    x.randomize_phases(rng, inplace=True)
+    y = sr.utils.get_rand(symmetry, [b.conj(), c], seed=rng, fermionic=True)
+    y.randomize_phases(rng, inplace=True)
+    z = x @ y
+    fx = x.to_flat()
+    fy = y.to_flat()
+    fz = fx @ fy
+    fz.check()
+    fz.to_blocksparse().test_allclose(z)
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
