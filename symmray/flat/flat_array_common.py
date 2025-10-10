@@ -1071,8 +1071,8 @@ class FlatArrayCommon:
                 b.sort_stack(axes[1], inplace=True)
 
             # branchless set to zero
-            a._blocks = a._blocks * matching
-            b._blocks = b._blocks * matching
+            a.modify(blocks=a.blocks * matching)
+            b.modify(blocks=b.blocks * matching)
 
         if DEBUG:
             a.check()

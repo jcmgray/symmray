@@ -271,8 +271,8 @@ class FermionicArrayFlat(
             phases = {}
         else:
             phases = {
-                sector: int(phase)
-                for sector, phase in zip(new.sectors, self._phases)
+                tuple(map(int, sector)): int(phase)
+                for sector, phase in zip(self._sectors, self._phases)
                 if phase != 1
             }
         new.modify(phases=phases, oddpos=self._oddpos)
@@ -304,6 +304,10 @@ class FermionicArrayFlat(
             Whether to perform the operation inplace or return a new array.
             Default is False, which returns a new array.
         """
+        if self.ndim <= 1:
+            # nothing to do
+            return self if inplace else self.copy()
+
         kord = self.get_sorting_indices(axes=axes, all_axes=all_axes)
 
         new_sectors = self._sectors[kord]

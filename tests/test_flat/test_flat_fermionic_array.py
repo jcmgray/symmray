@@ -5,6 +5,39 @@ import symmray as sr
 from .test_flat_abelian_array import get_zn_blocksparse_flat_compat
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("all_axes", [False, True])
+def test_sort_sectors(
+    symmetry,
+    seed,
+    ndim,
+    all_axes,
+):
+    rng = sr.utils.get_rng(seed)
+    shape = [rng.choice([2, 4]) for _ in range(ndim)]
+    if ndim > 2:
+        num_sort = rng.integers(1, ndim)
+    else:
+        num_sort = 1
+    axes_sort = tuple(rng.choice(ndim, size=num_sort, replace=False))
+    x = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=shape,
+        charge=0,
+        fermionic=True,
+        seed=rng,
+    )
+    x.randomize_phases(seed + 1, inplace=True)
+    fx: sr.FermionicArrayFlat = x.to_flat()
+    fx.sort_stack(axes_sort, all_axes=all_axes, inplace=True)
+    fx.check()
+    y = fx.to_blocksparse()
+    y.check()
+    y.test_allclose(x)
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
@@ -61,8 +94,7 @@ def test_phase_flip(
         fermionic=True,
         seed=seed,
     )
-    # add some non-trivial phases
-    x.transpose((2, 0, 1), inplace=True)
+    x.randomize_phases(seed + 1, inplace=True)
     assert x.phases
     fx = x.to_flat()
     xflipped = x.phase_flip(*axs)
@@ -165,6 +197,7 @@ def test_transpose(
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("shape", [(2, 6, 4), (2, 2, 2, 2)])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
 @pytest.mark.parametrize("sync", [False, True])
@@ -172,6 +205,7 @@ def test_transpose(
 @pytest.mark.parametrize("phase_dual", [False, True])
 def test_conj(
     symmetry,
+    shape,
     charge,
     seed,
     sync,
@@ -183,13 +217,13 @@ def test_conj(
 
     x = get_zn_blocksparse_flat_compat(
         symmetry,
-        (2, 4, 6),
+        shape,
         charge=charge,
         fermionic=True,
         seed=seed,
     )
     # add some non-trivial phases
-    x.transpose((2, 0, 1), inplace=True)
+    x.randomize_phases(seed + 1, inplace=True)
     assert x.phases
     xc = x.conj(phase_permutation=phase_permutation, phase_dual=phase_dual)
 
@@ -210,18 +244,20 @@ def test_conj(
 def test_dagger(symmetry, ndim, seed, dtype):
     rng = sr.utils.get_rng(seed)
     N = int(symmetry[1:])
-    x = sr.utils.get_rand(
+
+    xs = get_zn_blocksparse_flat_compat(
         symmetry,
-        shape=[N] * ndim,
+        shape=[2] * ndim,
+        charge=0,
         fermionic=True,
-        dtype=dtype,
-        flat=True,
-        subsizes="equal",
         seed=rng,
+        dtype=dtype,
     )
-    x.modify(phases=rng.choice([-1, 1], size=x.num_blocks))
+    xs.randomize_phases(seed + 1, inplace=True)
+    x = xs.to_flat()
     x.dagger().test_allclose(x.H)
     x.dagger().test_allclose(x.conj().transpose())
+    x.dagger().to_blocksparse().test_allclose(xs.dagger())
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
@@ -229,9 +265,16 @@ def test_dagger(symmetry, ndim, seed, dtype):
 @pytest.mark.parametrize(
     "shape,axes_groups",
     [
+        ((2, 4, 6, 4), ((0,), (1,), (2,), (3,))),
+        ((2, 4, 6, 4), ()),
+        ((2, 4, 6, 4), ((0, 1),)),
+        ((2, 4, 6, 4), ((1, 2),)),
+        ((2, 4, 6, 4), ((1, 3),)),
+        ((2, 4, 6, 4), ((2, 3),)),
         ((2, 4, 6, 4), ((0, 1), (2, 3))),
         ((2, 4, 6, 4), ((0, 2), (1, 3))),
         ((2, 4, 6, 4), ((0, 3), (1, 2))),
+        ((2, 4, 6, 4), ((0, 3, 1, 2),)),
         ((2, 4, 6, 4, 6), ((0, 1), (2, 3, 4))),
         ((2, 4, 6, 4, 6), ((0, 2), (1, 3, 4))),
         ((2, 4, 6, 4, 6), ((0, 4), (1, 2, 3))),
@@ -256,6 +299,7 @@ def test_fuse(
         fermionic=True,
         seed=42,
     )
+    x.randomize_phases(43, inplace=True)
     x_fused = x.fuse(*axes_groups, inplace=False)
     fx = x.to_flat()
     fx_fused = fx.fuse(*axes_groups, inplace=False)

@@ -194,7 +194,7 @@ def _truncate_svd_result(
                 ),
             ),
         )
-        s._blocks = s._blocks[:, :charge_size]
+        s.modify(blocks=s._blocks[:, :charge_size])
         VH.modify(
             blocks=VH._blocks[:, :charge_size, :],
             indices=(

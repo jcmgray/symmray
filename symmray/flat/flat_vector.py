@@ -158,6 +158,22 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
     def check(self):
         assert ar.do("ndim", self._blocks, like=self.backend) == 2
 
+    def sort_stack(self, inplace=False):
+        """Sort the sectors and associated blocks in ascending order of
+        charge.
+        """
+        k = ar.do("argsort", self._sectors, like=self.backend)
+        return self._modify_or_copy(
+            sectors=self._sectors[k],
+            blocks=self._blocks[k],
+            inplace=inplace,
+        )
+
+    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
+        return self._binary_blockwise_op_abelian(
+            other, fn, missing=missing, inplace=inplace
+        )
+
     def to_blockvector(self):
         from ..sparse.sparse_vector import BlockVector
 
