@@ -108,7 +108,7 @@ def qr_abelian(x: AbelianArray, stabilized=False):
         indices=(x.indices[0], bond_index),
         blocks=q_blocks,
     )
-    # XXX: use copy_with here?
+    # XXX: use copy_with here? -> only if we drop phases/oddpos...
     r = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
         charge=x.symmetry.combine(),
@@ -127,7 +127,6 @@ def qr_abelian(x: AbelianArray, stabilized=False):
 @qr.register(FermionicArray)
 def qr_fermionic(x: FermionicArray, stabilized=False):
     q, r = qr_abelian(x, stabilized=stabilized)
-
     if r.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
         r.phase_flip(0, inplace=True)
@@ -190,7 +189,7 @@ def svd_abelian(x: AbelianArray):
         blocks=u_blocks,
     )
     s = BlockVector(s_store)
-    # XXX: use copy_with here?
+    # XXX: use copy_with here? -> only if we drop phases/oddpos...
     v = x.__class__(
         indices=(bond_index.conj(), x.indices[1]),
         charge=x.symmetry.combine(),

@@ -11,6 +11,86 @@ def invert_permutation(p):
     return tuple(pinv)
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_qr(symmetry, shape, duals, seed=42):
+    import autoray as ar
+
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+    q, r = ar.do("linalg.qr", x)
+
+    fx = x.to_flat()
+    fx.check()
+    fx.to_blocksparse().test_allclose(x)
+    fq, fr = ar.do("linalg.qr", fx)
+    fq.check()
+    fq.to_blocksparse().test_allclose(q)
+    fr.check()
+    fr.to_blocksparse().test_allclose(r)
+
+    fxr = fq @ fr
+    fxr.check()
+    fxr.to_blocksparse().test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_svd(symmetry, shape, duals, seed=42):
+    import autoray as ar
+
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+    u, s, vh = ar.do("linalg.svd", x)
+
+    fx = x.to_flat()
+    fx.check()
+    fx.to_blocksparse().test_allclose(x)
+    fu, fs, fvh = ar.do("linalg.svd", fx)
+    fu.check()
+    fu.to_blocksparse().test_allclose(u)
+    fs.check()
+    fs.to_blockvector().test_allclose(s)
+    fvh.check()
+    fvh.to_blocksparse().test_allclose(vh)
+
+    fxr = fu @ fvh.multiply_diagonal(fs, axis=0)
+    fxr.check()
+    fxr.to_blocksparse().test_allclose(x)
+
+
 @pytest.mark.parametrize("symmetry", ("Z2",))
 @pytest.mark.parametrize("seed", range(10))
 def test_qr_roundtrip(symmetry, seed):
@@ -187,3 +267,51 @@ def test_eigh_fermionic(symm, seed, dtype):
     # reconstruct the matrix
     y = sr.multiply_diagonal(ev, el, 1) @ ev.H
     y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_lq_via_qr(symmetry, shape, duals, seed=42):
+    import autoray as ar
+
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+
+    xt = ar.do("transpose", x)
+    QT, _, LT = ar.do("qr_stabilized", xt)
+    Q = ar.do("transpose", QT)
+    L = ar.do("transpose", LT)
+
+    fx = x.to_flat()
+    fx.check()
+    fx.to_blocksparse().test_allclose(x)
+    fxt = ar.do("transpose", fx)
+    fxt.check()
+    fxt.to_blocksparse().test_allclose(xt)
+    fQT, _, fLT = ar.do("qr_stabilized", fxt)
+    fQT.check()
+    fQT.to_blocksparse().test_allclose(QT)
+    fLT.check()
+    fLT.to_blocksparse().test_allclose(LT)
+    fQ = ar.do("transpose", fQT)
+    fQ.check()
+    fQ.to_blocksparse().test_allclose(Q)
+    fL = ar.do("transpose", fLT)
+    fL.check()
+    fL.to_blocksparse().test_allclose(L)

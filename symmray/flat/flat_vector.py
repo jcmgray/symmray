@@ -206,13 +206,6 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
             other, fn, missing=missing, inplace=inplace
         )
 
-    def to_blockvector(self):
-        from ..sparse.sparse_vector import BlockVector
-
-        return BlockVector(
-            {k.item(): b for k, b in zip(self.sectors, self.blocks)}
-        )
-
     def to_dense(self):
         return ar.do("reshape", self._blocks, (-1,), like=self.backend)
 

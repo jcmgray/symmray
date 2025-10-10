@@ -17,7 +17,7 @@ def test_qr_basics(symmetry, d0, d1, f0, f1, c):
     q, r = sr.linalg.qr(x)
     q.check()
     r.check()
-    assert sr.tensordot(q, r, 1).allclose(x)
+    assert (q @ r).allclose(x)
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "U1U1", "Z2Z2"))

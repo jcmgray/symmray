@@ -52,10 +52,12 @@ def qr_abelian(
     )
 
     # R is always charge 0 and thus block diagonal
-    r = x.copy_with(
+    # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
+    r = x.__class__(
         sectors=x.sectors[:, (1, 1)],
         blocks=rb,
         indices=(bond_ind.conj(), ixr),
+        symmetry=x.symmetry,
     )
 
     return q, r
@@ -114,10 +116,12 @@ def svd_abelian(
     )
 
     # VH is always charge 0 and thus block diagonal
-    vh = x.copy_with(
+    # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
+    vh = x.__class__(
         sectors=x.sectors[:, (1, 1)],
         blocks=vb,
         indices=(bond_ind.conj(), ixr),
+        symmetry=x.symmetry,
     )
 
     if DEBUG:
