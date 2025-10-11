@@ -15,6 +15,8 @@ class FermionicOperator:
     __slots__ = ("_label", "_dual")
 
     def __init__(self, label, dual=False):
+        if label == ():
+            raise ValueError("Label cannot be an empty tuple.")
         self._label = label
         self._dual = dual
 

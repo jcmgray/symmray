@@ -27,10 +27,12 @@ def oddpos_parse(oddpos, parity):
             "contractions with odd parity fermionic arrays."
         )
 
-    if isinstance(oddpos, list):
-        # XXX: needed at all?
-        # an explicit sequence of subsumed odd ranks
-        return tuple(oddpos)
+    if isinstance(oddpos, (list, tuple)):
+        if len(oddpos) == 0:
+            return ()
+        elif isinstance(oddpos[0], FermionicOperator):
+            # an explicit sequence of subsumed odd ranks
+            return tuple(oddpos)
 
     if not parity:
         # we can just drop even parity labels
@@ -128,12 +130,10 @@ class FermionicArray(
         The blocks of the array, by default empty.
     phases : dict, optional
         The lazy phases of each block, by default empty.
-    oddpos : int or tuple of int, optional
+    oddpos : object or FermionicOperator, optional
         If the array has odd parity, the 'position' of it, or the ordering of
-        subsumed positions. If a single integer is given, it is assumed to be
-        the position of the odd rank. The integer must be non-zero so that it
-        is still sortable after negation. If a tuple is given, it is assumed to
-        be the sorted ordering of subsumed odd ranks. By default empty.
+        subsumed positions. This can be an arbitrary hashable, sortable type,
+        in which case it will be wrapped in a FermionicOperator.
     symmetry : str or Symmetry, optional
         The symmetry of the array, if not using a specific symmetry class.
     """
@@ -255,7 +255,7 @@ class FermionicArray(
             The new total charge, if None, the original charge is used.
         phases : dict, optional
             The new phases, if None, the original phases are used.
-        oddpos : int or tuple of int, optional
+        oddpos : object or FermionicOperator, optional
             The new oddpos, if None, the original oddpos is used.
         """
         if phases is not None:
@@ -567,7 +567,7 @@ class FermionicArray(
 
         if phase_permutation and new.parity and (len(new._oddpos) % 2 == 1):
             # moving oddpos charges back to left
-            # # after flipping will generate sign
+            # after flipping will generate sign
             new.phase_global(inplace=True)
 
         return new

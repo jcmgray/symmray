@@ -537,7 +537,7 @@ class FlatArrayCommon:
         blocks = ar.do("reshape", x, (1,))
         return cls(sectors, blocks, indices, symmetry=symmetry)
 
-    def _to_blocksparse_abelian(self) -> AbelianArray:
+    def _to_blocksparse_abelian(self, **kwargs) -> AbelianArray:
         """Create a blocksparse abelian array from this flat abelian array."""
         cls = get_array_cls(
             self.symmetry,
@@ -555,6 +555,7 @@ class FlatArrayCommon:
             blocks,
             duals=self.duals,
             symmetry=self.symmetry,
+            **kwargs,
         )
 
     def _to_dense_abelian(self):

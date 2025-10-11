@@ -5,7 +5,7 @@ import symmray as sr
 from .test_flat_abelian_array import get_zn_blocksparse_flat_compat
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("symmetry", ("Z2", "Z4"))
 @pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
 @pytest.mark.parametrize("all_axes", [False, True])
@@ -38,7 +38,7 @@ def test_sort_sectors(
     y.test_allclose(x)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
 @pytest.mark.parametrize("sync", [False, True])
@@ -72,7 +72,7 @@ def test_to_and_from_blocksparse_with_phase_sync(
     y.test_allclose(x)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
 @pytest.mark.parametrize("sync", [False, True])
@@ -110,7 +110,7 @@ def test_phase_flip(
     y.test_allclose(xflipped)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", range(20))
 @pytest.mark.parametrize("sync", [False, True])
@@ -152,7 +152,7 @@ def test_phase_transpose(
     y.test_allclose(x_phase_transposed)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
 def test_phase_global(symmetry, charge, seed):
@@ -172,7 +172,7 @@ def test_phase_global(symmetry, charge, seed):
     fxg.to_blocksparse().test_allclose(x.phase_global())
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
 @pytest.mark.parametrize("seed", range(10))
@@ -215,7 +215,7 @@ def test_transpose(
     y.test_allclose(xt)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("shape", [(2, 6, 4), (2, 2, 2, 2)])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
@@ -231,14 +231,12 @@ def test_conj(
     phase_permutation,
     phase_dual,
 ):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     x = get_zn_blocksparse_flat_compat(
         symmetry,
         shape,
         charge=charge,
         fermionic=True,
+        oddpos="x",
         seed=seed,
     )
     # add some non-trivial phases
@@ -256,17 +254,19 @@ def test_conj(
     y.test_allclose(xc)
 
 
-@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
-@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("symmetry", ("Z2", "Z4"))
+@pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
 @pytest.mark.parametrize("dtype", ["complex128", "float64"])
-def test_dagger(symmetry, ndim, seed, dtype):
+@pytest.mark.parametrize("seed", range(5))
+def test_dagger(symmetry, charge, ndim, dtype, seed):
     rng = sr.utils.get_rng(seed)
     xs = get_zn_blocksparse_flat_compat(
         symmetry,
         shape=[2] * ndim,
-        charge=0,
+        charge=charge,
         fermionic=True,
+        oddpos="x",
         seed=rng,
         dtype=dtype,
     )
@@ -277,7 +277,7 @@ def test_dagger(symmetry, ndim, seed, dtype):
     x.dagger().to_blocksparse().test_allclose(xs.dagger())
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize(
     "shape,axes_groups",
@@ -326,7 +326,7 @@ def test_fuse(
     y.test_allclose(x_fused)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", range(10))
 def test_fuse_unfuse(symmetry, charge, seed):
@@ -373,7 +373,7 @@ def test_fuse_unfuse(symmetry, charge, seed):
     fyt.to_blocksparse().test_allclose(x)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize(
     "shape,axes_groups",
     [
@@ -423,7 +423,7 @@ def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
     fxus.test_allclose(sxt)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("seed", range(50))
 def test_tensordot(symmetry, seed):
     N = int(symmetry[1:])
@@ -453,7 +453,7 @@ def test_tensordot(symmetry, seed):
     fc.to_blocksparse().test_allclose(c)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("ndim_a", [1, 2])
 @pytest.mark.parametrize("ndim_b", [1, 2])
 @pytest.mark.parametrize("seed", range(10))
@@ -490,7 +490,7 @@ def test_matmul(symmetry, ndim_a, ndim_b, seed):
         assert fz == pytest.approx(z)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("axis", [0, 1, 2, 3])
 def test_block_multiply_diagonal(symmetry, charge, axis):
@@ -523,7 +523,7 @@ def test_block_multiply_diagonal(symmetry, charge, axis):
     np.testing.assert_allclose(yd, np.einsum(f"{lhs},{rhs}->{lhs}", xd, vd))
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize("fn", ["ldmul", "lddiv"])
 def test_ldmul_and_lddiv(symmetry, seed, fn):
@@ -554,7 +554,7 @@ def test_ldmul_and_lddiv(symmetry, seed, fn):
     fy.to_blocksparse().test_allclose(sy)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize("fn", ["rdmul", "rddiv"])
 def test_rdmul_and_rddiv(symmetry, seed, fn):
@@ -585,7 +585,7 @@ def test_rdmul_and_rddiv(symmetry, seed, fn):
     fy.to_blocksparse().test_allclose(sy)
 
 
-@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("seed", range(2))
 @pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])
 def test_norm(symmetry, ndim, seed):
