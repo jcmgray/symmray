@@ -647,6 +647,9 @@ def get_rand(
         for d, dual in zip(shape, duals)
     ]
 
+    if not fermionic:
+        kwargs.pop("oddpos", None)
+
     x = cls.random(
         indices=indices,
         charge=charge,
