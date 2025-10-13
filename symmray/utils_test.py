@@ -115,7 +115,21 @@ def rand_valid_tensordot(
     if charge_b is None:
         charge_b = symmetry.random_charge(rng)
 
-    a = get_rand(symmetry, indices_a, charge=charge_a, seed=rng, **kwargs)
-    b = get_rand(symmetry, indices_b, charge=charge_b, seed=rng, **kwargs)
+    a = get_rand(
+        symmetry,
+        indices_a,
+        charge=charge_a,
+        seed=rng,
+        oddpos="a",
+        **kwargs,
+    )
+    b = get_rand(
+        symmetry,
+        indices_b,
+        charge=charge_b,
+        seed=rng,
+        oddpos="b",
+        **kwargs,
+    )
 
     return a, b, axes

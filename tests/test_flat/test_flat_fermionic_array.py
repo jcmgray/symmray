@@ -431,8 +431,6 @@ def test_tensordot(symmetry, seed):
     a, b, axes = sr.utils_test.rand_valid_tensordot(
         symmetry=symmetry,
         fermionic=True,
-        charge_a=0,
-        charge_b=0,
         dimension_multiplier=N,
         subsizes="equal",
         seed=seed,
@@ -456,8 +454,10 @@ def test_tensordot(symmetry, seed):
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("ndim_a", [1, 2])
 @pytest.mark.parametrize("ndim_b", [1, 2])
+@pytest.mark.parametrize("charge_a", [0, 1])
+@pytest.mark.parametrize("charge_b", [0, 1])
 @pytest.mark.parametrize("seed", range(10))
-def test_matmul(symmetry, ndim_a, ndim_b, seed):
+def test_matmul(symmetry, ndim_a, ndim_b, charge_a, charge_b, seed):
     rng = sr.utils.get_rng(seed)
     da = rng.choice([12, 24, 36])
     db = rng.choice([12, 24, 36])
@@ -469,13 +469,27 @@ def test_matmul(symmetry, ndim_a, ndim_b, seed):
         shape_a = [b]
     else:
         shape_a = [a, b]
-    x = sr.utils.get_rand(symmetry, shape_a, seed=rng, fermionic=True)
+    x = sr.utils.get_rand(
+        symmetry,
+        shape_a,
+        seed=rng,
+        charge=charge_a,
+        fermionic=True,
+        oddpos="x",
+    )
     x.randomize_phases(rng, inplace=True)
     if ndim_b == 1:
         shape_b = [b.conj()]
     else:
         shape_b = [b.conj(), c]
-    y = sr.utils.get_rand(symmetry, shape_b, seed=rng, fermionic=True)
+    y = sr.utils.get_rand(
+        symmetry,
+        shape_b,
+        seed=rng,
+        charge=charge_b,
+        fermionic=True,
+        oddpos="y",
+    )
     y.randomize_phases(rng, inplace=True)
     z = x @ y
     fx = x.to_flat()

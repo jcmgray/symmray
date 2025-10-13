@@ -714,7 +714,7 @@ def tensordot_fermionic(
     c = a._tensordot_abelian(
         b,
         axes=(new_axes_a, new_axes_b),
-        # preserve array for resolving oddposs
+        # preserve array for resolving oddpos
         preserve_array=True,
         **kwargs,
     )

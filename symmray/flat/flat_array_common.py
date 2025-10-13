@@ -1416,7 +1416,7 @@ def tensordot_flat_fused(
     else:
         bf = b
 
-    cf = af.__matmul__(bf, preserve_array=preserve_array)
+    cf = af._matmul_abelian(bf, preserve_array=preserve_array)
 
     if isinstance(cf, FlatArrayCommon):
         # if we got a new flat array, unfuse all axes

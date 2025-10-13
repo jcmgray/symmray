@@ -108,6 +108,50 @@ def resolve_oddpos_conj(x, phase_permutation=True):
         x.modify(phases=x.phases * sign)
 
 
+def resolve_combined_oddpos(a, b, c):
+    """Given we have effectively contracted `a` and `b` to form `c`, resolve
+    the global phase associated with combining their dummy oddpos modes.
+    """
+    l_oddpos = a.oddpos
+    r_oddpos = b.oddpos
+    if not l_oddpos and not r_oddpos:
+        # no odd modes to resolve
+        c._oddpos = c._odd_parities = ()
+        return
+
+    l_odd_parities = a.odd_parities
+    r_odd_parities = b.odd_parities
+
+    oddpos = [*l_oddpos, *r_oddpos]
+    odd_parities = [*l_odd_parities, *r_odd_parities]
+
+    # 1. initially we have:
+    # left dummy modes | left real modes | right dummy modes | right real modes
+    # so we must calc phase from moving right dummy modes past left real modes
+    phase = (-1) ** (
+        a.parity * ar.do("sum", r_odd_parities, like=b.backend) % 2
+    )
+
+    # then we want to sort the joint set of left and right dummy modes,
+    perm = sorted(range(len(oddpos)), key=lambda i: oddpos[i])
+    swaps = perm_to_swaps(perm)
+    for i, j in swaps:
+        a, b = oddpos[i], oddpos[j]
+        pa, pb = odd_parities[i], odd_parities[j]
+        # compute sign from swap
+        phase = phase * (-1) ** (pa * pb)
+        # perform swap
+        oddpos[i], oddpos[j] = b, a
+        odd_parities[i], odd_parities[j] = pb, pa
+
+    # do the global phase, and set the new sorted oddpos labels and parities
+    c.modify(
+        oddpos=tuple(oddpos),
+        odd_parities=tuple(odd_parities),
+        phases=c.phases * phase,
+    )
+
+
 class FermionicArrayFlat(
     FermionicCommon,
     FlatArrayCommon,
@@ -663,8 +707,7 @@ class FermionicArrayFlat(
             **kwargs,
         )
 
-        # XXX: need flat resolve_combined_oddpos
-        # resolve_combined_oddpos(a, b, c)
+        resolve_combined_oddpos(a, b, c)
 
         if (c.ndim == 0) and (not preserve_array):
             c.phase_sync(inplace=True)
@@ -687,8 +730,7 @@ class FermionicArrayFlat(
         b = other.phase_sync()
         c = a._matmul_abelian(b, preserve_array=True)
 
-        # XXX: need to implement
-        # resolve_combined_oddpos(a, b, c)
+        resolve_combined_oddpos(a, b, c)
 
         if c.ndim == 0 and (not preserve_array):
             c.phase_sync(inplace=True)
