@@ -11,20 +11,24 @@ def test_random_state():
     assert rng.normal() == pytest.approx(0.4967141530112327)
 
 
+cases = [
+    ("Z2", 0, 0, 4, "equal", "even", 42, -290.561185093364, 5.361656689527674),
+    ("Z2", 0, 1, 4, "equal", "even", 42, -290.561185093364, 5.361656689527674),
+    ("Z2", 1, 0, 4, "equal", "even", 42, 439.7998261718692, 5.36165668952767),
+    ("Z2", 1, 1, 4, "equal", "even", 42, 439.7998261718692, 5.36165668952767),
+    ("Z3", 0, 0, 6, "equal", "even", 42, -2412.31787914518, 9.01095171457521),
+    ("Z3", 0, 1, 6, "equal", "even", 42, -2412.31787914518, 9.01095171457521),
+    ("Z4", 0, 0, 8, "equal", "even", 42, -14188.8464163049, 11.6961500793490),
+    ("Z4", 0, 1, 8, "equal", "even", 42, -14188.8464163049, 11.6961500793490),
+    ("Z4", 1, 0, 8, "equal", "even", 42, 2919.78337956447, 11.69615007934904),
+    ("Z4", 1, 1, 8, "equal", "even", 42, 2919.78337956447, 11.69615007934904),
+    ("Z2", 1, 0, 4, "equal", "odd", 42, 1133.7492549693638, 5.36165668952767),
+    ("Z2", 1, 1, 4, "equal", "odd", 42, 1133.7492549693638, 5.36165668952767),
+]
+
+
 @pytest.mark.parametrize(
-    "symm,fermionic,flat,D,subsizes,seed,zex,x5norm",
-    [
-        ("Z2", 0, 0, 4, "equal", 42, -290.561185093364, 5.361656689527674),
-        ("Z2", 0, 1, 4, "equal", 42, -290.561185093364, 5.361656689527674),
-        ("Z2", 1, 0, 4, "equal", 42, 439.79982617186926, 5.361656689527674),
-        ("Z2", 1, 1, 4, "equal", 42, 439.79982617186926, 5.361656689527674),
-        ("Z3", 0, 0, 6, "equal", 42, -2412.317879145185, 9.010951714575212),
-        ("Z3", 0, 1, 6, "equal", 42, -2412.317879145185, 9.010951714575212),
-        ("Z4", 0, 0, 8, "equal", 42, -14188.846416304901, 11.696150079349046),
-        ("Z4", 0, 1, 8, "equal", 42, -14188.846416304901, 11.696150079349046),
-        ("Z4", 1, 0, 8, "equal", 42, 2919.783379564473, 11.696150079349046),
-        ("Z4", 1, 1, 8, "equal", 42, 2919.783379564473, 11.696150079349046),
-    ],
+    "symm,fermionic,flat,D,subsizes,site_charge,seed,zex,x5norm", cases
 )
 def test_tn_contract_exact_rand_reg(
     symm,
@@ -32,6 +36,7 @@ def test_tn_contract_exact_rand_reg(
     flat,
     D,
     subsizes,
+    site_charge,
     seed,
     zex,
     x5norm,
@@ -61,6 +66,22 @@ def test_tn_contract_exact_rand_reg(
         (6, 7),
         (7, 8),
     )
+
+    if site_charge == "even":
+
+        def site_charge(site):
+            return 0
+
+    elif site_charge == "odd":
+
+        def site_charge(site):
+            return 1
+
+    elif site_charge == "mix":
+
+        def site_charge(site):
+            return site % 2
+
     tn = sr.networks.TN_abelian_from_edges_rand(
         symm,
         edges,
@@ -69,6 +90,7 @@ def test_tn_contract_exact_rand_reg(
         subsizes=subsizes,
         fermionic=fermionic,
         flat=flat,
+        site_charge=site_charge,
     )
 
     assert tuple(tn.sites) == (0, 3, 6, 7, 1, 5, 9, 2, 8, 4)
@@ -90,106 +112,108 @@ def test_tn_contract_exact_rand_reg(
     assert z == pytest.approx(zex)
 
 
+cases = [
+    (
+        "Z2",
+        False,
+        False,
+        4,
+        5,
+        3,
+        "random",
+        42,
+        1249314432979625.8,
+        1249385300902835.5,
+    ),
+    (
+        "Z2",
+        True,
+        False,
+        4,
+        5,
+        3,
+        "random",
+        42,
+        1462312495716125.5,
+        1461925059050817.5,
+    ),
+    (
+        "U1",
+        False,
+        False,
+        4,
+        5,
+        3,
+        "random",
+        42,
+        12420102974.57941,
+        12420102974.579369,
+    ),
+    (
+        "U1",
+        True,
+        False,
+        4,
+        5,
+        3,
+        "random",
+        42,
+        12423392649.02872,
+        12423392649.028677,
+    ),
+    (
+        "Z2",
+        False,
+        False,
+        4,
+        5,
+        4,
+        "equal",
+        42,
+        3.699916651272369e18,
+        3.5217058858073923e18,
+    ),
+    (
+        "Z2",
+        False,
+        True,
+        4,
+        5,
+        4,
+        "equal",
+        42,
+        3.699916651272369e18,
+        3.5167108363602043e18,
+    ),
+    (
+        "Z2",
+        True,
+        False,
+        4,
+        5,
+        4,
+        "equal",
+        42,
+        4.2460299722958316e18,
+        4.125147271299068e18,
+    ),
+    (
+        "Z2",
+        True,
+        True,
+        4,
+        5,
+        4,
+        "equal",
+        42,
+        4.2460299722958316e18,
+        4.1306686155615053e18,
+    ),
+]
+
+
 @pytest.mark.parametrize(
-    "symm,fermionic,flat,Lx,Ly,D,subsizes,seed,zex,zap",
-    [
-        (
-            "Z2",
-            False,
-            False,
-            4,
-            5,
-            3,
-            "random",
-            42,
-            1249314432979625.8,
-            1249385300902835.5,
-        ),
-        (
-            "Z2",
-            True,
-            False,
-            4,
-            5,
-            3,
-            "random",
-            42,
-            1462312495716125.5,
-            1461925059050817.5,
-        ),
-        (
-            "U1",
-            False,
-            False,
-            4,
-            5,
-            3,
-            "random",
-            42,
-            12420102974.57941,
-            12420102974.579369,
-        ),
-        (
-            "U1",
-            True,
-            False,
-            4,
-            5,
-            3,
-            "random",
-            42,
-            12423392649.02872,
-            12423392649.028677,
-        ),
-        (
-            "Z2",
-            False,
-            False,
-            4,
-            5,
-            4,
-            "equal",
-            42,
-            3.699916651272369e18,
-            3.5217058858073923e18,
-        ),
-        (
-            "Z2",
-            False,
-            True,
-            4,
-            5,
-            4,
-            "equal",
-            42,
-            3.699916651272369e18,
-            3.5167108363602043e18,
-        ),
-        (
-            "Z2",
-            True,
-            False,
-            4,
-            5,
-            4,
-            "equal",
-            42,
-            4.2460299722958316e18,
-            4.125147271299068e18,
-        ),
-        (
-            "Z2",
-            True,
-            True,
-            4,
-            5,
-            4,
-            "equal",
-            42,
-            4.2460299722958316e18,
-            4.1306686155615053e18,
-        ),
-    ],
+    "symm,fermionic,flat,Lx,Ly,D,subsizes,seed,zex,zap", cases
 )
 def test_peps_approx_norm_abelian(
     symm, fermionic, flat, Lx, Ly, D, subsizes, seed, zex, zap
