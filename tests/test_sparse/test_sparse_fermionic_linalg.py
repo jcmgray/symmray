@@ -281,7 +281,7 @@ def test_solve_fermionic(symm, seed, b_charge):
     )
     x = sr.linalg.solve(A, b)
     (A @ x).test_allclose(b)
-    
+
 
 @pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("seed", range(10))

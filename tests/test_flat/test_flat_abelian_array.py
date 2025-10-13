@@ -48,7 +48,7 @@ def get_zn_blocksparse_flat_compat(
 def test_transpose_roundtrip(symmetry, shape, perm, charge):
     sx = get_zn_blocksparse_flat_compat(symmetry, shape, charge, seed=42)
     sy = sx.transpose(perm)
-    perm_inv = tuple(perm.index(i) for i in range(len(perm)))
+    perm_inv = sorted(range(len(perm)), key=lambda i: perm[i])
 
     fx = sx.to_flat()
     fx.check()

@@ -102,6 +102,7 @@ def test_solve(symmetry, d):
     x.check()
     assert (a @ x).allclose(b)
 
+
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d0", (2, 7, 31))
 @pytest.mark.parametrize("d1", (2, 3, 4))

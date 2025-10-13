@@ -352,7 +352,7 @@ def test_fuse_unfuse(symmetry, charge, seed):
         *axes,
         *(ax for ax in range(position, x.ndim) if ax not in axes),
     )
-    perm_back = tuple(new_order.index(ax) for ax in range(x.ndim))
+    perm_back = sorted(range(x.ndim), key=lambda i: new_order[i])
 
     x_fused = x.fuse(axes)
     fx_fused = fx.fuse(axes)

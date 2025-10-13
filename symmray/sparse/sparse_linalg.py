@@ -601,8 +601,7 @@ def solve_abelian(a: AbelianArray, b: AbelianArray):
     elif (a.ndim, b.ndim) == (2, 2):
         map_b_sector = {}
         for sector in b.gen_valid_sectors():
-            # charge of b array is fixed, 
-            # so each sector has unique sector[0]
+            # charge of b array is fixed, so each sector has unique sector[0]
             map_b_sector[sector[0]] = sector
         x_blocks = {}
         for sector, array in a.get_sector_block_pairs():

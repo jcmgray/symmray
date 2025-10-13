@@ -201,7 +201,7 @@ def test_fuse_unfuse(symmetry, seed, subsizes):
         *axes,
         *(ax for ax in range(position, x.ndim) if ax not in axes),
     )
-    perm_back = tuple(new_order.index(ax) for ax in range(x.ndim))
+    perm_back = sorted(range(x.ndim), key=lambda i: new_order[i])
     xf = x.fuse(axes)
     if len(axes) > 1:
         y = xf.unfuse(position)
@@ -231,7 +231,7 @@ def test_fuse_unfuse_matrix(symmetry, seed, subsizes):
     axes_left = axes[:nleft]
     axes_right = axes[nleft:]
     order = (*axes_left, *axes_right)
-    perm_back = tuple(order.index(i) for i in range(x.ndim))
+    perm_back = sorted(range(x.ndim), key=lambda i: order[i])
 
     xf = x.fuse(axes_left, axes_right)
 
