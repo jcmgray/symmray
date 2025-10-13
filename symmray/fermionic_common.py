@@ -185,7 +185,7 @@ class FermionicCommon:
 
     def _prepare_for_tensordot_fermionic(self, other, axes):
         """Perform necessary fermionic phase operations to prepare two arrays
-        for tensordot.
+        for an abelian tensordot.
         """
         ndim_a, ndim_b = self.ndim, other.ndim
         left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
@@ -222,6 +222,91 @@ class FermionicCommon:
         b.phase_sync(inplace=True)
 
         return a, b, new_axes_a, new_axes_b
+
+    def tensordot(
+        self, other, axes=2, preserve_array=False, **kwargs
+    ) -> "FermionicCommon":
+        """Contract two fermionic arrays along the specified axes, accounting
+        for phases from both transpositions and contractions.
+
+        Parameters
+        ----------
+        a : FermionicArray
+            The first fermionic array.
+        b : FermionicArray
+            The second fermionic array.
+        axes : int or (tuple[int], tuple[int]), optional
+            The axes to contract over, by default 2.
+        preserve_array : bool, optional
+            Whether to preserve the array structure even if the result is a
+            scalar, by default False.
+        kwargs
+            Passed to the underlying (non-fermionic) tensordot call.
+
+        Returns
+        -------
+        FermionicCommon or scalar
+        """
+
+        if not isinstance(other, self.__class__):
+            if getattr(other, "ndim", 0) == 0:
+                # assume scalar
+                return self * other
+            else:
+                raise TypeError(
+                    f"Expected {self.__class__}, got {other.__class__}."
+                )
+
+        a, b, new_axes_a, new_axes_b = self._prepare_for_tensordot_fermionic(
+            other, axes
+        )
+
+        # perform blocked contraction!
+        c = a._tensordot_abelian(
+            b,
+            axes=(new_axes_a, new_axes_b),
+            # preserve array for resolving oddposs
+            preserve_array=True,
+            **kwargs,
+        )
+
+        c._resolve_oddpos_combine(a, b)
+
+        if (c.ndim == 0) and (not preserve_array):
+            c.phase_sync(inplace=True)
+            return c.get_scalar_element()
+
+        return c
+
+    def __matmul__(self, other: "FermionicCommon", preserve_array=False):
+        """Matrix or vector multiplication, accounting for fermionic
+        phases.
+
+        Parameters
+        ----------
+        other : FermionicCommon
+            The other fermionic array to multiply.
+        preserve_array : bool, optional
+            Whether to preserve the array structure even if the result is a
+            scalar, by default False.
+        """
+        if self.ndim > 2 or other.ndim > 2:
+            raise ValueError("Matrix multiplication requires <=2D arrays.")
+
+        if other.indices[0].dual:
+            # have |x><x| -> want <x|x>
+            other = other.phase_flip(0)
+
+        a = self.phase_sync()
+        b = other.phase_sync()
+        c = a._matmul_abelian(b, preserve_array=True)
+        c._resolve_oddpos_combine(a, b)
+
+        if c.ndim == 0 and (not preserve_array):
+            c.phase_sync(inplace=True)
+            return c.get_scalar_element()
+
+        return c
 
     def to_dense(self):
         """Return dense representation of the fermionic array, with lazy phases

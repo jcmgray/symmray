@@ -15,6 +15,7 @@ def test_fermi_norm(symmetry, subsizes, seed):
         (3, 4, 5, 6),
         fermionic=True,
         subsizes=subsizes,
+        # set all duals to False
         duals=False,
         seed=seed,
     )
@@ -35,6 +36,53 @@ def test_fermi_norm(symmetry, subsizes, seed):
     xx = sr.tensordot(x, xd, axes=[(0, 1, 2, 3), (3, 2, 1, 0)])
     n4 = float(xx) ** 0.5
     assert ne == pytest.approx(n4)
+
+
+@pytest.mark.parametrize(
+    "symmetry, charge",
+    [
+        ("Z2", 0),
+        ("Z2", 1),
+        ("Z4", 0),
+        ("Z4", 1),
+        ("Z4", 2),
+        ("Z4", 3),
+        ("U1", 0),
+        ("U1", 1),
+        ("U1", -1),
+    ],
+)
+@pytest.mark.parametrize("seed", range(3))
+def test_fermi_norm_phase_dual(symmetry, charge, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        (3, 4, 5, 6),
+        fermionic=True,
+        charge=charge,
+        oddpos="x",
+        seed=seed,
+    )
+    n2 = x.norm() ** 2
+    xd = x.dagger(phase_dual=True)
+    na = sr.tensordot(xd, x, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    nb = sr.tensordot(x, xd, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    assert na == pytest.approx(nb)
+    assert na == pytest.approx(n2)
+    assert nb == pytest.approx(n2)
+
+    xc = x.conj(phase_dual=True)
+    nc = sr.tensordot(xc, x, axes=[(0, 1, 2, 3), (0, 1, 2, 3)])
+    nd = sr.tensordot(x, xc, axes=[(0, 1, 2, 3), (0, 1, 2, 3)])
+    assert nc == pytest.approx(nd)
+    assert nc == pytest.approx(n2)
+    assert nd == pytest.approx(n2)
+
+    xct = x.conj(phase_dual=True).transpose()
+    ne = sr.tensordot(xct, x, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    nf = sr.tensordot(x, xct, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    assert ne == pytest.approx(nf)
+    assert ne == pytest.approx(n2)
+    assert nf == pytest.approx(n2)
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)

@@ -77,78 +77,6 @@ def oddpos_parse(oddpos, parity):
     return (oddpos,), (parity,)
 
 
-def resolve_oddpos_conj(x, phase_permutation=True):
-    """Assuming we have effectively taken the conjugate of a fermionic array
-    with dummy oddpos modes, get their new order and compute any phase changes
-    coming from moving back to the beginning of the index order.
-    """
-    if not x.oddpos:
-        return
-
-    # 1. we get a reversal and conjugation of the oddpos modes
-    #       dummy modes          real indices
-    # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
-    #                     <-->
-    # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-    new_oddpos = tuple(r.dag for r in reversed(x.oddpos))
-    new_odd_parities = tuple(reversed(x.odd_parities))
-    x.modify(oddpos=new_oddpos, odd_parities=new_odd_parities)
-
-    if phase_permutation:
-        # 2. moving oddpos charges back to left
-        # after flipping might generate global sign
-        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-        #                     <--
-        # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-        opar = ar.do("sum", x.odd_parities, like=x.backend) % 2
-        sign = (-1) ** (x.parity * opar)
-        x.modify(phases=x.phases * sign)
-
-
-def resolve_combined_oddpos(a, b, c):
-    """Given we have effectively contracted `a` and `b` to form `c`, resolve
-    the global phase associated with combining their dummy oddpos modes.
-    """
-    l_oddpos = a.oddpos
-    r_oddpos = b.oddpos
-    if not l_oddpos and not r_oddpos:
-        # no odd modes to resolve
-        c._oddpos = c._odd_parities = ()
-        return
-
-    l_odd_parities = a.odd_parities
-    r_odd_parities = b.odd_parities
-
-    oddpos = [*l_oddpos, *r_oddpos]
-    odd_parities = [*l_odd_parities, *r_odd_parities]
-
-    # 1. initially we have:
-    # left dummy modes | left real modes | right dummy modes | right real modes
-    # so we must calc phase from moving right dummy modes past left real modes
-    phase = (-1) ** (
-        a.parity * ar.do("sum", r_odd_parities, like=b.backend) % 2
-    )
-
-    # then we want to sort the joint set of left and right dummy modes,
-    perm = sorted(range(len(oddpos)), key=lambda i: oddpos[i])
-    swaps = perm_to_swaps(perm)
-    for i, j in swaps:
-        a, b = oddpos[i], oddpos[j]
-        pa, pb = odd_parities[i], odd_parities[j]
-        # compute sign from swap
-        phase = phase * (-1) ** (pa * pb)
-        # perform swap
-        oddpos[i], oddpos[j] = b, a
-        odd_parities[i], odd_parities[j] = pb, pa
-
-    # do the global phase, and set the new sorted oddpos labels and parities
-    c.modify(
-        oddpos=tuple(oddpos),
-        odd_parities=tuple(odd_parities),
-        phases=c.phases * phase,
-    )
-
-
 class FermionicArrayFlat(
     FermionicCommon,
     FlatArrayCommon,
@@ -581,6 +509,78 @@ class FermionicArrayFlat(
         new.modify(phases=-new.phases)
         return new
 
+    def _resolve_oddpos_conj(self, phase_permutation=True):
+        """Assuming we have effectively taken the conjugate of a fermionic
+        array with dummy oddpos modes, get their new order and compute any
+        phase changes coming from moving back to the beginning of the index
+        order.
+        """
+        if not self.oddpos:
+            return
+
+        # 1. we get a reversal and conjugation of the oddpos modes
+        #       dummy modes          real indices
+        # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
+        #                     <-->
+        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+        new_oddpos = tuple(r.dag for r in reversed(self.oddpos))
+        new_odd_parities = tuple(reversed(self.odd_parities))
+        self.modify(oddpos=new_oddpos, odd_parities=new_odd_parities)
+
+        if phase_permutation:
+            # 2. moving oddpos charges back to left
+            # after flipping might generate global sign
+            # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+            #                     <--
+            # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
+            opar = ar.do("sum", self.odd_parities, like=self.backend) % 2
+            sign = (-1) ** (self.parity * opar)
+            self.modify(phases=self.phases * sign)
+
+    def _resolve_oddpos_combine(self, a, b):
+        """Calculate the new combined dummy odd modes and any associated global
+        phases combing from contracting two fermionic arrays `a` and `b`. This
+        modifies this array in place.
+        """
+        l_oddpos = a.oddpos
+        r_oddpos = b.oddpos
+        if not l_oddpos and not r_oddpos:
+            # no odd modes to resolve
+            self._oddpos = self._odd_parities = ()
+            return
+
+        l_odd_parities = a.odd_parities
+        r_odd_parities = b.odd_parities
+
+        oddpos = [*l_oddpos, *r_oddpos]
+        odd_parities = [*l_odd_parities, *r_odd_parities]
+
+        # 1. initially we have:
+        # left dummy modes | left real modes | right dummy modes | right real modes
+        # so we must calc phase from moving right dummy modes past left real modes
+        phase = (-1) ** (
+            a.parity * ar.do("sum", r_odd_parities, like=b.backend) % 2
+        )
+
+        # then we want to sort the joint set of left and right dummy modes,
+        perm = sorted(range(len(oddpos)), key=lambda i: oddpos[i])
+        swaps = perm_to_swaps(perm)
+        for i, j in swaps:
+            a, b = oddpos[i], oddpos[j]
+            pa, pb = odd_parities[i], odd_parities[j]
+            # compute sign from swap
+            phase = phase * (-1) ** (pa * pb)
+            # perform swap
+            oddpos[i], oddpos[j] = b, a
+            odd_parities[i], odd_parities[j] = pb, pa
+
+        # do the global phase, and set the new sorted oddpos labels and parities
+        self.modify(
+            oddpos=tuple(oddpos),
+            odd_parities=tuple(odd_parities),
+            phases=self.phases * phase,
+        )
+
     def transpose(
         self,
         axes=None,
@@ -651,18 +651,18 @@ class FermionicArrayFlat(
             # perform the phase accumulation separately first
             new.phase_transpose(inplace=True)
 
-        if phase_dual:
-            axs_conj = tuple(
-                ax for ax, ix in enumerate(new.indices) if ix.dual
-            )
-            new.phase_flip(*axs_conj, inplace=True)
-
         # conjugate the actual arrays
         new._conj_abelian(inplace=True)
 
+        if phase_dual:
+            axs_conj = tuple(
+                ax for ax, ix in enumerate(new.indices) if not ix.dual
+            )
+            new.phase_flip(*axs_conj, inplace=True)
+
         if new.oddpos:
             # handle potential dummy odd modes
-            resolve_oddpos_conj(new, phase_permutation)
+            new._resolve_oddpos_conj(phase_permutation)
 
         return new
 
@@ -671,70 +671,17 @@ class FermionicArrayFlat(
         new = self._conj_abelian(inplace=inplace)
         new._transpose_abelian(inplace=True)
 
-        if new.oddpos:
-            # handle potential dummy odd modes
-            resolve_oddpos_conj(new, True)
+        if phase_dual:
+            axs_conj = tuple(
+                ax for ax, ix in enumerate(new.indices) if not ix.dual
+            )
+            new.phase_flip(*axs_conj, inplace=True)
 
-        assert not phase_dual
+        # handle potential dummy odd modes
+        #     dagger defined by phaseless reversal of all axes
+        new._resolve_oddpos_conj(phase_permutation=True)
+
         return new
-
-    def tensordot(
-        self, other, axes=2, preserve_array=False, **kwargs
-    ) -> "FermionicArrayFlat":
-        # XXX: move into FermionicCommon as a generic
-
-        if not isinstance(other, self.__class__):
-            if getattr(other, "ndim", 0) == 0:
-                # assume scalar
-                return self * other
-            else:
-                raise TypeError(
-                    f"Expected {self.__class__.__name__}, got {type(other)}."
-                )
-
-        a, b, new_axes_a, new_axes_b = self._prepare_for_tensordot_fermionic(
-            other, axes
-        )
-
-        # perform blocked contraction!
-        c = a._tensordot_abelian(
-            b,
-            axes=(new_axes_a, new_axes_b),
-            # preserve array for resolving oddposs
-            preserve_array=True,
-            **kwargs,
-        )
-
-        resolve_combined_oddpos(a, b, c)
-
-        if (c.ndim == 0) and (not preserve_array):
-            c.phase_sync(inplace=True)
-            return c.get_scalar_element()
-
-        return c
-
-    def __matmul__(self, other: "FermionicArrayFlat", preserve_array=False):
-        # XXX: move into FermionicCommon as a generic
-
-        # shortcut of matrx/vector products
-        if self.ndim > 2 or other.ndim > 2:
-            raise ValueError("Matrix multiplication requires <=2D arrays.")
-
-        if other.indices[0].dual:
-            # have |x><x| -> want <x|x>
-            other = other.phase_flip(0)
-
-        a = self.phase_sync()
-        b = other.phase_sync()
-        c = a._matmul_abelian(b, preserve_array=True)
-
-        resolve_combined_oddpos(a, b, c)
-
-        if c.ndim == 0 and (not preserve_array):
-            c.phase_sync(inplace=True)
-            return c.get_scalar_element()
-
-        return c
 
 
 class Z2FermionicArrayFlat(FermionicArrayFlat):

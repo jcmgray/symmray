@@ -277,6 +277,59 @@ def test_dagger(symmetry, charge, ndim, dtype, seed):
     x.dagger().to_blocksparse().test_allclose(xs.dagger())
 
 
+@pytest.mark.parametrize(
+    "symmetry, charge",
+    [
+        ("Z2", 0),
+        ("Z2", 1),
+        ("Z4", 0),
+        ("Z4", 1),
+        ("Z4", 2),
+        ("Z4", 3),
+    ],
+)
+@pytest.mark.parametrize("seed", range(3))
+def test_fermi_norm_phase_dual(symmetry, charge, seed):
+    sx = sr.utils.get_rand(
+        symmetry,
+        (4, 8, 4, 8),
+        subsizes="equal",
+        fermionic=True,
+        charge=charge,
+        oddpos="x",
+        flat=False,
+        seed=seed,
+    )
+    x = sx.to_flat()
+    n2 = x.norm() ** 2
+
+    xd = x.dagger(phase_dual=True)
+    assert xd.to_blocksparse().test_allclose(sx.dagger(phase_dual=True))
+    na = sr.tensordot(xd, x, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    nb = sr.tensordot(x, xd, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    assert na == pytest.approx(nb)
+    assert na == pytest.approx(n2)
+    assert nb == pytest.approx(n2)
+
+    xc = x.conj(phase_dual=True)
+    assert xc.to_blocksparse().test_allclose(sx.conj(phase_dual=True))
+    nc = sr.tensordot(xc, x, axes=[(0, 1, 2, 3), (0, 1, 2, 3)])
+    nd = sr.tensordot(x, xc, axes=[(0, 1, 2, 3), (0, 1, 2, 3)])
+    assert nc == pytest.approx(nd)
+    assert nc == pytest.approx(n2)
+    assert nd == pytest.approx(n2)
+
+    xct = x.conj(phase_dual=True).transpose()
+    assert xct.to_blocksparse().test_allclose(
+        sx.conj(phase_dual=True).transpose()
+    )
+    ne = sr.tensordot(xct, x, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    nf = sr.tensordot(x, xct, axes=[(3, 2, 1, 0), (0, 1, 2, 3)])
+    assert ne == pytest.approx(nf)
+    assert ne == pytest.approx(n2)
+    assert nf == pytest.approx(n2)
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize(

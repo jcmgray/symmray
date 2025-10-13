@@ -44,91 +44,6 @@ def oddpos_parse(oddpos, parity):
     return (oddpos,)
 
 
-def resolve_oddpos_conj(x, phase_permutation=True):
-    """Assuming we have effectively taken the conjugate of a fermionic array
-    with dummy oddpos modes, get their new order and compute any phase changes
-    coming from moving back to the beginning of the index order.
-    """
-    if not x.oddpos:
-        return
-
-    # 1. we get a reversal and conjugation of the oddpos modes
-    #       dummy modes          real indices
-    # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
-    #                     <-->
-    # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-    new_oddpos = tuple(r.dag for r in reversed(x.oddpos))
-    x.modify(oddpos=new_oddpos)
-
-    if phase_permutation and x.parity and len(new_oddpos) % 2:
-        # 2. moving oddpos charges back to left
-        # after flipping might generate global sign
-        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-        #                     <--
-        # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-        x.phase_global(inplace=True)
-
-
-def resolve_combined_oddpos(left, right, new):
-    """Given we have contracted two fermionic arrays, resolve the oddpos
-    into the `new` array, possibly flipping the global phase.
-
-    Parameters
-    ----------
-    left, right, new : FermionicArray
-        The left and right arrays that were contracted, and the new array.
-    """
-    l_oddpos = left.oddpos
-    r_oddpos = right.oddpos
-
-    if not l_oddpos and not r_oddpos:
-        new._oddpos = ()
-        return
-
-    oddpos = [*l_oddpos, *r_oddpos]
-
-    # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
-    if left.parity and len(r_oddpos) % 2 == 1:
-        # moving right oddpos charges over left sectors will generate sign
-        phase = -1
-    else:
-        phase = 1
-
-    # do a phased sort and annihilation of conjugate pairs
-    i = 0
-    while i < len(oddpos) - 1:
-        a = oddpos[i]
-        b = oddpos[i + 1]
-        if a.label == b.label:
-            # 'trace' out the pair
-            if a.dual != b.dual:
-                if b.dual:
-                    # |x><x|, ket-bra contraction
-                    phase = -phase
-                oddpos.pop(i)
-                oddpos.pop(i)
-                # check previous
-                i = max(0, i - 1)
-            else:
-                # detect non conjugate duplicates here as well
-                raise ValueError("`oddpos` must be unique conjugate pairs.")
-        elif b < a:
-            # sort with phased swap
-            oddpos[i] = b
-            oddpos[i + 1] = a
-            # check previous
-            i = max(0, i - 1)
-            phase = -phase
-        else:
-            # already sorted and not conjugate pair, move to next
-            i += 1
-
-    if phase == -1:
-        new.phase_global(inplace=True)
-
-    new._oddpos = tuple(oddpos)
-
-
 class FermionicArray(
     FermionicCommon,
     SparseArrayCommon,
@@ -456,6 +371,88 @@ class FermionicArray(
             # need to update phase keys as well
             self._phases = {fn_sector(s): p for s, p in self._phases.items()}
 
+    def _resolve_oddpos_conj(self, phase_permutation=True):
+        """Assuming we have effectively taken the conjugate of a fermionic
+        array with dummy oddpos modes, get their new order and compute any
+        phase changes coming from moving back to the beginning of the index
+        order.
+        """
+        if not self.oddpos:
+            return
+
+        # 1. we get a reversal and conjugation of the oddpos modes
+        #       dummy modes          real indices
+        # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
+        #                     <-->
+        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+        new_oddpos = tuple(r.dag for r in reversed(self.oddpos))
+        self.modify(oddpos=new_oddpos)
+
+        if phase_permutation and self.parity and len(new_oddpos) % 2:
+            # 2. moving oddpos charges back to left
+            # after flipping might generate global sign
+            # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+            #                     <--
+            # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
+            self.phase_global(inplace=True)
+
+    def _resolve_oddpos_combine(self, left, right):
+        """Calculate the new combined dummy odd modes and any associated global
+        phases combing from contracting two fermionic arrays `a` and `b`. This
+        modifies this array in place.
+        """
+        l_oddpos = left.oddpos
+        r_oddpos = right.oddpos
+
+        if not l_oddpos and not r_oddpos:
+            self._oddpos = ()
+            return
+
+        oddpos = [*l_oddpos, *r_oddpos]
+
+        # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
+        if left.parity and len(r_oddpos) % 2 == 1:
+            # moving right oddpos charges over left sectors will generate sign
+            phase = -1
+        else:
+            phase = 1
+
+        # do a phased sort and annihilation of conjugate pairs
+        i = 0
+        while i < len(oddpos) - 1:
+            a = oddpos[i]
+            b = oddpos[i + 1]
+            if a.label == b.label:
+                # 'trace' out the pair
+                if a.dual != b.dual:
+                    if b.dual:
+                        # |x><x|, ket-bra contraction
+                        phase = -phase
+                    oddpos.pop(i)
+                    oddpos.pop(i)
+                    # check previous
+                    i = max(0, i - 1)
+                else:
+                    # detect non conjugate duplicates here as well
+                    raise ValueError(
+                        "`oddpos` must be unique conjugate pairs."
+                    )
+            elif b < a:
+                # sort with phased swap
+                oddpos[i] = b
+                oddpos[i + 1] = a
+                # check previous
+                i = max(0, i - 1)
+                phase = -phase
+            else:
+                # already sorted and not conjugate pair, move to next
+                i += 1
+
+        if phase == -1:
+            self.phase_global(inplace=True)
+
+        self._oddpos = tuple(oddpos)
+
     def transpose(self, axes=None, phase=True, inplace=False):
         """Transpose the fermionic array, by default accounting for the phases
         accumulated from swapping odd charges.
@@ -584,7 +581,7 @@ class FermionicArray(
             charge=new.symmetry.sign(new._charge),
         )
 
-        resolve_oddpos_conj(new, phase_permutation=phase_permutation)
+        new._resolve_oddpos_conj(phase_permutation=phase_permutation)
 
         return new
 
@@ -635,110 +632,15 @@ class FermionicArray(
 
         if phase_dual:
             axs_conj = tuple(
-                ax for ax, ix in enumerate(new_indices) if ix.dual
+                ax for ax, ix in enumerate(new_indices) if not ix.dual
             )
             new.phase_flip(*axs_conj, inplace=True)
 
-        resolve_oddpos_conj(new, phase_permutation=True)
+        # handle potential dummy odd modes
+        #     dagger defined by phaseless reversal of all axes
+        new._resolve_oddpos_conj(phase_permutation=True)
 
         return new
-
-    def tensordot(self, other, axes=2, preserve_array=False, **kwargs):
-        """Contract two fermionic arrays along the specified axes, accounting
-        for phases from both transpositions and contractions.
-
-        Parameters
-        ----------
-        a : FermionicArray
-            The first fermionic array.
-        b : FermionicArray
-            The second fermionic array.
-        axes : int or (tuple[int], tuple[int]), optional
-            The axes to contract over, by default 2.
-        """
-        return tensordot_fermionic(
-            self, other, axes, preserve_array=preserve_array, **kwargs
-        )
-
-    def __matmul__(self, other):
-        # XXX: move into FermionicCommon as a generic?
-
-        # shortcut of matrx/vector products
-        if self.ndim > 2 or other.ndim > 2:
-            raise ValueError("Matrix multiplication requires 2D arrays.")
-
-        if other.indices[0].dual:
-            # have |x><x| -> want <x|x>
-            other = other.phase_flip(0)
-
-        a = self.phase_sync()
-        b = other.phase_sync()
-        c = a._matmul_abelian(b, preserve_array=True)
-        resolve_combined_oddpos(a, b, c)
-
-        if c.ndim == 0:
-            c.phase_sync(inplace=True)
-            return c.get_scalar_element()
-
-        return c
-
-
-def tensordot_fermionic(
-    a: FermionicArray,
-    b: FermionicArray,
-    axes=2,
-    preserve_array=False,
-    **kwargs,
-):
-    """Contract two fermionic arrays along the specified axes, accounting for
-    phases from both transpositions and contractions.
-
-    Parameters
-    ----------
-    a : FermionicArray
-        The first fermionic array.
-    b : FermionicArray
-        The second fermionic array.
-    axes : int or (tuple[int], tuple[int]), optional
-        The axes to contract over, by default 2.
-    preserve_array : bool, optional
-        Whether to preserve the array structure if the result is a scalar,
-        by default False.
-    kwargs
-        Passed to the underlying (non-fermionic) tensordot call.
-
-    Returns
-    -------
-    FermionicArray or scalar
-    """
-    if not isinstance(b, type(a)):
-        if getattr(b, "ndim", 0) == 0:
-            # assume scalar
-            return a * b
-        else:
-            raise TypeError(
-                f"Expected {type(a).__name__}, got {type(b).__name__}."
-            )
-
-    a, b, new_axes_a, new_axes_b = a._prepare_for_tensordot_fermionic(b, axes)
-
-    # perform blocked contraction!
-    c = a._tensordot_abelian(
-        b,
-        axes=(new_axes_a, new_axes_b),
-        # preserve array for resolving oddpos
-        preserve_array=True,
-        **kwargs,
-    )
-
-    # potential global phase flip from oddpos sorting
-    resolve_combined_oddpos(a, b, c)
-
-    if (c.ndim == 0) and (not preserve_array):
-        c.phase_sync(inplace=True)
-        return c.get_scalar_element()
-
-    return c
 
 
 # --------------- specific fermionic symmetric array classes ---------------- #
