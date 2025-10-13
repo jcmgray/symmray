@@ -77,24 +77,21 @@ def oddpos_parse(oddpos, parity):
     return (oddpos,), (parity,)
 
 
-def oddpos_dag(oddpos, parities):
-    """Conjugate a sequence of `oddpos` charges."""
-    new_oddpos = tuple(r.dag for r in reversed(oddpos))
-    new_parities = tuple(reversed(parities))
-    return new_oddpos, new_parities
-
-
 def resolve_oddpos_conj(x, phase_permutation=True):
     """Assuming we have effectively taken the conjugate of a fermionic array
     with dummy oddpos modes, get their new order and compute any phase changes
     coming from moving back to the beginning of the index order.
     """
+    if not x.oddpos:
+        return
+
     # 1. we get a reversal and conjugation of the oddpos modes
     #       dummy modes          real indices
     # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
     #                     <-->
     # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-    new_oddpos, new_odd_parities = oddpos_dag(x.oddpos, x.odd_parities)
+    new_oddpos = tuple(r.dag for r in reversed(x.oddpos))
+    new_odd_parities = tuple(reversed(x.odd_parities))
     x.modify(oddpos=new_oddpos, odd_parities=new_odd_parities)
 
     if phase_permutation:
@@ -199,6 +196,7 @@ class FermionicArrayFlat(
         if oddpos:
             oddpos, odd_parities = oddpos_parse(oddpos, self.parity)
         else:
+            # None or empty
             oddpos = ()
             odd_parities = ()
 

@@ -44,9 +44,29 @@ def oddpos_parse(oddpos, parity):
     return (oddpos,)
 
 
-def oddpos_dag(oddpos):
-    """Conjugate a sequence of `oddpos` charges."""
-    return tuple(r.dag for r in reversed(oddpos))
+def resolve_oddpos_conj(x, phase_permutation=True):
+    """Assuming we have effectively taken the conjugate of a fermionic array
+    with dummy oddpos modes, get their new order and compute any phase changes
+    coming from moving back to the beginning of the index order.
+    """
+    if not x.oddpos:
+        return
+
+    # 1. we get a reversal and conjugation of the oddpos modes
+    #       dummy modes          real indices
+    # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
+    #                     <-->
+    # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+    new_oddpos = tuple(r.dag for r in reversed(x.oddpos))
+    x.modify(oddpos=new_oddpos)
+
+    if phase_permutation and x.parity and len(new_oddpos) % 2:
+        # 2. moving oddpos charges back to left
+        # after flipping might generate global sign
+        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+        #                     <--
+        # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
+        x.phase_global(inplace=True)
 
 
 def resolve_combined_oddpos(left, right, new):
@@ -562,13 +582,9 @@ class FermionicArray(
         new.modify(
             indices=new_indices,
             charge=new.symmetry.sign(new._charge),
-            oddpos=oddpos_dag(new._oddpos),
         )
 
-        if phase_permutation and new.parity and (len(new._oddpos) % 2 == 1):
-            # moving oddpos charges back to left
-            # after flipping will generate sign
-            new.phase_global(inplace=True)
+        resolve_oddpos_conj(new, phase_permutation=phase_permutation)
 
         return new
 
@@ -615,19 +631,15 @@ class FermionicArray(
             charge=new.symmetry.sign(new._charge),
             blocks=new_blocks,
             phases=new_phases,
-            oddpos=oddpos_dag(new._oddpos),
         )
-
-        if new.parity and (len(new._oddpos) % 2 == 1):
-            # moving oddpos charges back to left
-            # # after flipping will generate sign
-            new.phase_global(inplace=True)
 
         if phase_dual:
             axs_conj = tuple(
                 ax for ax, ix in enumerate(new_indices) if ix.dual
             )
             new.phase_flip(*axs_conj, inplace=True)
+
+        resolve_oddpos_conj(new, phase_permutation=True)
 
         return new
 
