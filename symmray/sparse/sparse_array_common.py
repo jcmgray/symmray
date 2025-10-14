@@ -1163,7 +1163,7 @@ class SparseArrayCommon:
 
         return new
 
-    def select_charge(self, axis, charge, inplace=False):
+    def select_charge(self, axis, charge, subselect=None, inplace=False):
         """Drop all but the specified charge along the specified axis. Note the
         axis is not removed, it is simply restricted to a single charge.
 
@@ -1173,6 +1173,9 @@ class SparseArrayCommon:
             The axis along which to select the charge.
         charge : int
             The charge to select along the specified axis.
+        subselect : slice or array_like, optional
+            If provided, a range of indices within the selected charge block
+            to keep. If not provided, the entire block is kept.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -1186,14 +1189,32 @@ class SparseArrayCommon:
         # update indices
         new_indices = (
             *self.indices[:axis],
-            self.indices[axis].select_charge(charge),
+            self.indices[axis].select_charge(charge, subselect),
             *self.indices[axis + 1 :],
         )
 
-        # and filter blocks
-        new_blocks = {
-            k: v for k, v in self.get_sector_block_pairs() if k[axis] == charge
-        }
+        if subselect is None:
+            # and filter blocks
+            new_blocks = {
+                k: v
+                for k, v in self.get_sector_block_pairs()
+                if k[axis] == charge
+            }
+        else:
+            if isinstance(subselect, int):
+                raise ValueError("subselect must be a slice or sequence.")
+
+            # or filter blocks and slice them at the same time
+            selector = (
+                *itertools.repeat(slice(None), axis),
+                subselect,
+                *itertools.repeat(slice(None), self.ndim - axis - 1),
+            )
+            new_blocks = {
+                k: v[selector]
+                for k, v in self.get_sector_block_pairs()
+                if k[axis] == charge
+            }
 
         return self._modify_or_copy(
             blocks=new_blocks,
@@ -1261,7 +1282,13 @@ class SparseArrayCommon:
         """Select a single index along the specified axis."""
         if axis < 0:
             axis += self.ndim
-        new = self.select_charge(axis, idx, inplace=inplace)
+        charge, offset = self.indices[axis].linear_to_charge_and_offset(idx)
+        new = self.select_charge(
+            axis,
+            charge,
+            subselect=(offset,),
+            inplace=inplace,
+        )
         return new.squeeze(axis, inplace=True)
 
     def __getitem__(self, item):

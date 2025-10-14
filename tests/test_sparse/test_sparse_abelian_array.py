@@ -297,3 +297,24 @@ def test_can_pickle_abelian_array(symm):
         with open(tmp_fname, "rb") as f:
             x_loaded = pickle.load(f)
         x.test_allclose(x_loaded)
+
+
+@pytest.mark.parametrize("symmetry", all_symmetries)
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4])
+@pytest.mark.parametrize("seed", range(10))
+def test_abelian_array_slice(symmetry, ndim, seed):
+    import numpy as np
+
+    rng = sr.utils.get_rng(seed)
+    shape = tuple(map(int, rng.integers(6, 10, size=ndim)))
+    x = sr.utils.get_rand(symmetry, shape, seed=seed)
+
+    for ax in range(ndim):
+        for d in range(shape[ax]):
+            selector = (
+                (slice(None),) * ax + (d,) + (slice(None),) * (ndim - ax - 1)
+            )
+            np.testing.assert_allclose(
+                x.to_dense()[selector],
+                x[selector].to_dense(),
+            )

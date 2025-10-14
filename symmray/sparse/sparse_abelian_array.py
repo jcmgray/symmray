@@ -1,7 +1,5 @@
 """Abelian symmetric arrays with block sparse backend."""
 
-import autoray as ar
-
 from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
 from ..symmetries import get_symmetry

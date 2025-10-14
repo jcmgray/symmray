@@ -133,15 +133,75 @@ class BlockIndex(Index):
             ),
         )
 
-    def select_charge(self, charge):
-        """Drop all but the specified charge from this index."""
+    def select_charge(self, charge, subselect=None):
+        """Drop all but the specified charge from this index.
+
+        Parameters
+        ----------
+        charge : hashable
+            The charge to keep.
+        subselect : slice or array_like, optional
+            If provided, a range of indices within the selected charge block
+            to keep. If not provided, the entire block is kept.
+
+        Returns
+        -------
+        BlockIndex
+        """
         drop = set(self._chargemap)
         drop.remove(charge)
-        return self.drop_charges(drop)
+        new = self.drop_charges(drop)
+        if subselect is None:
+            return new
+
+        # need to update charge size as well
+        new_chargemap = new._chargemap.copy()
+        current_size = new_chargemap[charge]
+
+        if isinstance(subselect, slice):
+            start, stop, step = subselect.indices(current_size)
+            size = len(range(start, stop, step))
+            new_chargemap[charge] = size
+        elif hasattr(subselect, "size"):  # numpy array or similar
+            new_chargemap[charge] = subselect.size
+        else:
+            new_chargemap[charge] = len(subselect)
+
+        # XXX: could we update subinfo rather than remove?
+        return new.copy_with(chargemap=new_chargemap, subinfo=None)
 
     def size_of(self, c):
         """The size of the block with charge ``c``."""
         return self._chargemap[c]
+
+    def linear_to_charge_and_offset(self, i):
+        """Given a linear index ``i`` into this index (as if it were a dense
+        array), return the corresponding charge and offset within that charge
+        block.
+
+        Parameters
+        ----------
+        i : int
+            The linear index into this index.
+
+        Returns
+        -------
+        tuple[hashable, int]
+            The charge and offset within that charge block.
+        """
+        # TODO: generate a index_map and keep it cached for speed/customizing
+
+        if i < 0:
+            i += self.size_total
+        if i < 0 or i >= self.size_total:
+            raise IndexError(
+                f"Index {i} out of bounds for size {self.size_total}."
+            )
+
+        for c, d in self._chargemap.items():
+            if i < d:
+                return c, i
+            i -= d
 
     def check(self):
         """Check that the index is well-formed, i.e. all sizes are positive."""
