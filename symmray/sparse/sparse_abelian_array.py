@@ -31,11 +31,11 @@ class AbelianArray(
     """
 
     __slots__ = (
-        "_indices",
         "_blocks",
         "_charge",
-        "_symmetry",
+        "_indices",
         "_label",
+        "_symmetry",
     )
     fermionic = False
     static_symmetry = None

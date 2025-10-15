@@ -3,6 +3,7 @@ signs pre-computed.
 """
 
 import itertools
+import numbers
 
 import autoray as ar
 
@@ -16,14 +17,14 @@ def labels_lt(labela, labelb):
         # 2. then plain strings
         # 3. then tuples by length
         # XXX: some different length tuples can be compared, might revisit
-        if isinstance(labela, int):
+        if isinstance(labela, numbers.Integral):
             la = -2
         elif isinstance(labela, str):
             la = -1
         else:
             la = len(labela)
 
-        if isinstance(labelb, int):
+        if isinstance(labelb, numbers.Integral):
             lb = -2
         elif isinstance(labelb, str):
             lb = -1

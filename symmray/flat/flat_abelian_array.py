@@ -50,8 +50,9 @@ class AbelianArrayFlat(
 
     __slots__ = (
         "_blocks",
-        "_sectors",
         "_indices",
+        "_label",
+        "_sectors",
         "_symmetry",
         "backend",
     )
@@ -65,12 +66,14 @@ class AbelianArrayFlat(
         blocks,
         indices,
         symmetry=None,
+        label=None,
     ):
         self._init_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
             symmetry=symmetry,
+            label=label,
         )
 
         if DEBUG:
@@ -119,10 +122,8 @@ class AbelianArrayFlat(
             blocks=blocks,
             indices=indices,
         )
-
         if DEBUG:
             self.check()
-
         return self
 
     @classmethod

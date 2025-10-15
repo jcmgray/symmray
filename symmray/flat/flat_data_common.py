@@ -8,6 +8,44 @@ class FlatCommon:
 
     __slots__ = ("_blocks", "_sectors", "backend")
 
+    def _init_flatcommon(self, sectors, blocks):
+        self._blocks = (
+            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
+        )
+        # infer the backend to reuse for efficiency
+        self.backend = ar.infer_backend(self._blocks)
+
+        self._sectors = (
+            sectors
+            if hasattr(sectors, "shape")
+            else ar.do("array", sectors, like=self._blocks)
+        )
+
+    def _copy_flatcommon(self, deep=False):
+        new = self.__new__(self.__class__)
+        if deep:
+            new._sectors = ar.do("copy", self._sectors, like=self.backend)
+            new._blocks = ar.do("copy", self._blocks, like=self.backend)
+        else:
+            new._sectors = self._sectors
+            new._blocks = self._blocks
+        new.backend = self.backend
+        return new
+
+    def _copy_with_flatcommon(self, sectors=None, blocks=None):
+        new = self.__new__(self.__class__)
+        new._sectors = self._sectors if sectors is None else sectors
+        new._blocks = self._blocks if blocks is None else blocks
+        new.backend = self.backend
+        return new
+
+    def _modify_flatcommon(self, sectors=None, blocks=None):
+        if sectors is not None:
+            self._sectors = sectors
+        if blocks is not None:
+            self._blocks = blocks
+        return self
+
     @property
     def sectors(self):
         """The stack of sector keys, with shape (num_blocks, ndim). Each row

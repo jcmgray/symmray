@@ -1,5 +1,7 @@
 """Index objects for abelian arrays with block sparse backend."""
 
+import numbers
+
 from ..index_common import Index, SubInfo
 from ..utils import hasher
 
@@ -20,11 +22,36 @@ class BlockIndex(Index):
     subinfo : SubIndexInfo, optional
         Information about the subindices of this index and their extents if
         this index was formed from fusing.
+    linearmap : Sequence[tuple[hashable, int], ...], optional
+        If provided, a sequence of (charge, offset) pairs for a linear ordering
+        of this index. This can be supplied instead of ``chargemap``, in which
+        case the ``chargemap`` is built from this. If not provided, it is built
+        on demand from ``chargemap``, assuming blocks of sorted charges.
     """
 
-    __slots__ = ("_chargemap", "_dual", "_subinfo", "_hashkey")
+    __slots__ = (
+        "_chargemap",
+        "_dual",
+        "_subinfo",
+        "_hashkey",
+        "_linearmap",
+    )
 
-    def __init__(self, chargemap, dual=False, subinfo=None):
+    def __init__(
+        self,
+        chargemap=None,
+        dual=False,
+        subinfo=None,
+        linearmap=None,
+    ):
+        if chargemap is None:
+            if linearmap is None:
+                raise ValueError("Must provide either chargemap or linearmap.")
+            # build chargemap from linearmap
+            chargemap = {}
+            for c, _ in linearmap:
+                chargemap[c] = chargemap.get(c, 0) + 1
+
         # ensure always sorted
         if not isinstance(chargemap, dict):
             self._chargemap = dict(sorted(chargemap))
@@ -33,11 +60,69 @@ class BlockIndex(Index):
         self._dual = bool(dual)
         self._subinfo = subinfo
         self._hashkey = None
+        self._linearmap = linearmap
+
+    def copy_with(self, **kwargs):
+        """A copy of this index with some attributes replaced. Note that checks
+        are not performed on the new propoerties, this is intended for internal
+        use.
+        """
+        new = self.__new__(self.__class__)
+        keep_linearmap = True
+
+        if "chargemap" in kwargs:
+            chargemap = kwargs.pop("chargemap")
+            new._chargemap = (
+                dict(sorted(chargemap.items()))
+                if isinstance(chargemap, dict)
+                else dict(sorted(chargemap))
+            )
+            keep_linearmap = False
+        else:
+            new._chargemap = self._chargemap.copy()
+
+        if "dual" in kwargs:
+            new._dual = bool(kwargs.pop("dual"))
+        else:
+            new._dual = self._dual
+
+        # need to pop from kwargs to handle 'not-set' vs 'set-to-None'
+        if "subinfo" in kwargs:
+            new._subinfo = kwargs.pop("subinfo")
+        else:
+            new._subinfo = self._subinfo
+
+        # only keep linearmap if chargemap unchanged
+        if keep_linearmap:
+            new._linearmap = self._linearmap
+        else:
+            new._linearmap = None
+
+        # always recompute this
+        new._hashkey = None
+
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {kwargs}")
+
+        return new
 
     @property
     def chargemap(self):
         """A mapping from charge to size."""
         return self._chargemap
+
+    @property
+    def linearmap(self):
+        """A sequence of (charge, offset) pairs for each element of this index,
+        in linear order. This is built on demand if not provided at creation.
+        """
+        if self._linearmap is None:
+            # build a default linearmap in sorted blocks
+            linearmap = []
+            for c, d in sorted(self._chargemap.items()):
+                linearmap.extend((c, i) for i in range(d))
+            self._linearmap = tuple(linearmap)
+        return self._linearmap
 
     @property
     def subshape(self):
@@ -66,42 +151,6 @@ class BlockIndex(Index):
     def num_charges(self):
         """The number of charges."""
         return len(self._chargemap)
-
-    def copy_with(self, **kwargs):
-        """A copy of this index with some attributes replaced. Note that checks
-        are not performed on the new propoerties, this is intended for internal
-        use.
-        """
-        new = self.__new__(self.__class__)
-
-        if "chargemap" in kwargs:
-            chargemap = kwargs.pop("chargemap")
-            new._chargemap = (
-                dict(sorted(chargemap.items()))
-                if isinstance(chargemap, dict)
-                else dict(sorted(chargemap))
-            )
-        else:
-            new._chargemap = self._chargemap.copy()
-
-        if "dual" in kwargs:
-            new._dual = bool(kwargs.pop("dual"))
-        else:
-            new._dual = self._dual
-
-        # need to pop from kwargs to handle 'not-set' vs 'set-to-None'
-        if "subinfo" in kwargs:
-            new._subinfo = kwargs.pop("subinfo")
-        else:
-            new._subinfo = self._subinfo
-
-        # always recompute this
-        new._hashkey = None
-
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {kwargs}")
-
-        return new
 
     def conj(self):
         """A copy of this index with the dualness reversed."""
@@ -186,22 +235,13 @@ class BlockIndex(Index):
 
         Returns
         -------
-        tuple[hashable, int]
-            The charge and offset within that charge block.
+        charge : hashable
+            The charge corresponding to the linear index.
+        offset : int
+            The offset within the charge block corresponding to the linear
+            index.
         """
-        # TODO: generate a index_map and keep it cached for speed/customizing
-
-        if i < 0:
-            i += self.size_total
-        if i < 0 or i >= self.size_total:
-            raise IndexError(
-                f"Index {i} out of bounds for size {self.size_total}."
-            )
-
-        for c, d in self._chargemap.items():
-            if i < d:
-                return c, i
-            i -= d
+        return self.linearmap[i]
 
     def check(self):
         """Check that the index is well-formed, i.e. all sizes are positive."""
@@ -210,7 +250,7 @@ class BlockIndex(Index):
                 raise ValueError(
                     f"Size of charge {c} is {d}, must be positive."
                 )
-            if not isinstance(d, int):
+            if not isinstance(d, numbers.Integral):
                 raise ValueError(f"Size of charge {c} is {d}, must be an int.")
 
         assert sorted(self._chargemap) == list(self._chargemap)
@@ -221,6 +261,30 @@ class BlockIndex(Index):
                 for extent in self.subinfo.extents.values()
                 for d in extent.values()
             )
+
+        if self._linearmap is not None:
+            if len(self._linearmap) != self.size_total:
+                raise ValueError(
+                    f"Index map length {len(self._linearmap)} does not "
+                    f"match index size {self.size_total}."
+                )
+            seen = set()
+            for c, i in self._linearmap:
+                if c not in self._chargemap:
+                    raise ValueError(
+                        f"Index map charge {c} not in chargemap "
+                        f"{self._chargemap}."
+                    )
+                if i < 0 or i >= self._chargemap[c]:
+                    raise ValueError(
+                        f"Index map offset {i} out of bounds for charge {c} "
+                        f"with size {self._chargemap[c]}."
+                    )
+                if (c, i) in seen:
+                    raise ValueError(
+                        f"Index map has duplicate entry {(c, i)}."
+                    )
+                seen.add((c, i))
 
     def matches(self, other):
         """Whether this index matches ``other`` index, namely, whether the

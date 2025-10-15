@@ -86,13 +86,13 @@ class FermionicArrayFlat(
 ):
     __slots__ = (
         "_blocks",
-        "_sectors",
         "_indices",
+        "_odd_parities",
+        "_oddpos",
+        "_phases",
+        "_sectors",
         "_symmetry",
         "backend",
-        "_phases",
-        "_oddpos",
-        "_odd_parities",
     )
     fermionic = True
     static_symmetry = None
@@ -106,12 +106,14 @@ class FermionicArrayFlat(
         oddpos=None,
         odd_parities=None,
         symmetry=None,
+        label=None,
     ):
         self._init_abelian(
             sectors=sectors,
             blocks=blocks,
             indices=indices,
             symmetry=symmetry,
+            label=label,
         )
 
         if phases is None:
@@ -120,6 +122,10 @@ class FermionicArrayFlat(
             self._phases = phases
         else:
             self._phases = ar.do("array", phases, like=self._blocks)
+
+        if oddpos is None and self.label is not None:
+            # default to the array label
+            oddpos = self.label
 
         if oddpos:
             oddpos, odd_parities = oddpos_parse(oddpos, self.parity)
@@ -178,7 +184,6 @@ class FermionicArrayFlat(
 
         new._oddpos = self._oddpos
         new._odd_parities = self._odd_parities
-
         return new
 
     def copy_with(
@@ -200,6 +205,8 @@ class FermionicArrayFlat(
         new._phases = self._phases if phases is None else phases
         new._oddpos = self._oddpos
         new._odd_parities = self._odd_parities
+        if DEBUG:
+            new.check()
         return new
 
     def modify(
@@ -233,10 +240,8 @@ class FermionicArrayFlat(
             self._oddpos = oddpos
         if odd_parities is not None:
             self._odd_parities = odd_parities
-
         if DEBUG:
             self.check()
-
         return self
 
     @classmethod

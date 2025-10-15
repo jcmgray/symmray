@@ -1,5 +1,7 @@
 """Functions to create full tensor networks backed by `symmray`."""
 
+import numbers
+
 
 def parse_edges_to_site_info(
     edges,
@@ -173,8 +175,10 @@ def TN_abelian_from_edges_rand(
         if isinstance(phys_dim, dict):
             # custom physical charge map
             phys_chargemap = phys_dim
-        else:
+        elif isinstance(phys_dim, numbers.Integral):
             phys_chargemap = _DEFAULT_PHYS_CHARGEMAPS[symmetry, phys_dim]
+        else:
+            phys_chargemap = phys_dim
     else:
         # no physical sites
 
@@ -224,14 +228,13 @@ def TN_abelian_from_edges_rand(
                 shape_parsed.append(index_store[ix].conj())
             else:
                 index_store[ix] = sr.utils.rand_index(
-                    symmetry, size, dual=dual, subsizes=subsizes, seed=rng
+                    symmetry,
+                    size,
+                    dual=dual,
+                    subsizes=subsizes,
+                    seed=rng,
                 )
                 shape_parsed.append(index_store[ix])
-
-        kwargs["label"] = site
-        if fermionic:
-            # if odd parity, we might need to provide a "label"
-            kwargs["oddpos"] = site
 
         tn |= qtn.Tensor(
             data=sr.utils.get_rand(
@@ -244,6 +247,8 @@ def TN_abelian_from_edges_rand(
                 subsizes=subsizes,
                 seed=rng,
                 dtype=dtype,
+                # possibly needed for odd parity fermionic tensors
+                label=site,
                 **kwargs,
             ),
             inds=info["inds"],

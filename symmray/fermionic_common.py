@@ -1,5 +1,7 @@
 """Common methods for any fermionic arrays."""
 
+import numbers
+
 from .abelian_common import parse_tensordot_axes
 from .fermionic_local_operators import FermionicOperator
 
@@ -148,7 +150,7 @@ class FermionicCommon:
         -------
         FermionicCommon
         """
-        if isinstance(axis, int):
+        if isinstance(axis, numbers.Integral):
             axis = (axis,)
 
         axes_squeeze = []

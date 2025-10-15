@@ -415,20 +415,11 @@ class FlatArrayCommon:
         blocks,
         indices,
         symmetry=None,
+        label=None,
     ):
+        self._init_flatcommon(sectors, blocks)
         self._symmetry = self.get_class_symmetry(symmetry)
-
-        self._blocks = (
-            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
-        )
-        # infer the backend to reuse for efficiency
-        self.backend = ar.infer_backend(self._blocks)
-
-        self._sectors = (
-            sectors
-            if hasattr(sectors, "shape")
-            else ar.do("array", sectors, like=self._blocks)
-        )
+        self._label = label
         self._indices = tuple(
             # allow sequence of duals to be supplied directly
             x
@@ -456,15 +447,11 @@ class FlatArrayCommon:
 
     def _copy_abelian(self, deep=False) -> "FlatArrayCommon":
         """Create a copy of the array."""
-        if deep:
-            sectors = ar.do("copy", self._sectors, like=self.backend)
-            blocks = ar.do("copy", self._blocks, like=self.backend)
-        else:
-            sectors = self._sectors
-            blocks = self._blocks
-        return self.__class__(
-            sectors, blocks, self._indices, symmetry=self._symmetry
-        )
+        new = self._copy_flatcommon(deep=deep)
+        new._indices = self._indices
+        new._symmetry = self._symmetry
+        new._label = self._label
+        return new
 
     def _copy_with_abelian(
         self,
@@ -476,12 +463,10 @@ class FlatArrayCommon:
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        new = self.__new__(self.__class__)
-        new._sectors = self._sectors if sectors is None else sectors
+        new = self._copy_with_flatcommon(sectors=sectors, blocks=blocks)
         new._indices = self._indices if indices is None else indices
-        new._blocks = self._blocks if blocks is None else blocks
         new._symmetry = self._symmetry
-        new.backend = self.backend
+        new._label = self._label
         return new
 
     def _modify_abelian(
@@ -494,19 +479,21 @@ class FlatArrayCommon:
         that checks are not performed on the new properties, this is intended
         for internal use.
         """
-        if sectors is not None:
-            self._sectors = sectors
-        if blocks is not None:
-            self._blocks = blocks
+        self._modify_flatcommon(sectors=sectors, blocks=blocks)
         if indices is not None:
             self._indices = indices
-
         return self
 
     @property
     def order(self) -> int:
         """Get the order of the symmetry group."""
         return self._symmetry.N
+
+    @property
+    def label(self):
+        """The label of the array, possibly used for ordering odd parity
+        fermionic modes."""
+        return self._label
 
     @property
     def charge(self):

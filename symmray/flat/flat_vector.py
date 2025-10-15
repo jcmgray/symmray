@@ -1,5 +1,7 @@
 """Flat backend block vector class."""
 
+import numbers
+
 import autoray as ar
 
 from ..common import SymmrayCommon
@@ -25,16 +27,7 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
     __slots__ = ("_blocks", "_sectors", "backend")
 
     def __init__(self, sectors, blocks):
-        self._blocks = (
-            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
-        )
-        self._sectors = (
-            sectors
-            if hasattr(sectors, "shape")
-            else ar.do("array", sectors, like=blocks)
-        )
-        self.backend = ar.infer_backend(self._blocks)
-
+        self._init_flatcommon(sectors, blocks)
         if DEBUG:
             self.check()
 
@@ -99,7 +92,7 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
                 raise ValueError(f"Invalid symmetry string: {sectors}")
             sectors = int(m[1])
 
-        if isinstance(sectors, int):
+        if isinstance(sectors, numbers.Integral):
             # integer specifying Z{N} symmetry
             n = sectors
             create_sectors = True
@@ -148,28 +141,16 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
         return (self.size,)
 
     def copy(self, deep=False) -> "FlatVector":
-        if deep:
-            blocks = ar.do("copy", self._blocks, like=self.backend)
-            sectors = ar.do("copy", self._sectors, like=self.backend)
-        else:
-            blocks = self._blocks
-            sectors = self._sectors
+        return self._copy_flatcommon(deep=deep)
 
-        return self.__class__(sectors, blocks)
-
-    def copy_with(self, sectors=None, blocks=None):
+    def copy_with(self, sectors=None, blocks=None) -> "FlatVector":
         """Create a copy of the vector with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        new = self.__new__(self.__class__)
-        new._sectors = self._sectors if sectors is None else sectors
-        new._blocks = self._blocks if blocks is None else blocks
-        new.backend = self.backend
-
+        new = self._copy_with_flatcommon(sectors=sectors, blocks=blocks)
         if DEBUG:
             new.check()
-
         return new
 
     def modify(self, sectors=None, blocks=None):
@@ -177,14 +158,9 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
         checks are not performed on the new properties, this is intended for
         internal use.
         """
-        if sectors is not None:
-            self._sectors = sectors
-        if blocks is not None:
-            self._blocks = blocks
-
+        self._modify_flatcommon(sectors=sectors, blocks=blocks)
         if DEBUG:
             self.check()
-
         return self
 
     def check(self):

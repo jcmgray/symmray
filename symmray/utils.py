@@ -1,5 +1,6 @@
 import functools
 import hashlib
+import numbers
 import os
 import pickle
 
@@ -174,8 +175,9 @@ def rand_zn_index(
 
     Parameters
     ----------
-    d : int or dict
-        The total size of the index. If a dict, an explicit chargemap.
+    d : int, dict[hashable, int] or sequence[(hashable, int), ...]
+        The total size of the index. If a dict, an explicit chargemap. If a
+        sequence, a linearmap.
     order : int
         The order (i.e. size, N) of the cyclic group ZN.
     dual : bool or "random", optional
@@ -205,10 +207,6 @@ def rand_zn_index(
 
     if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
-
-    if isinstance(d, dict):
-        # charges and sizes given explicitly
-        return sr.BlockIndex(chargemap=d, dual=dual)
 
     # convert from possible numpy.int etc.
     d = int(d)
@@ -342,10 +340,6 @@ def rand_u1_index(
     if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
 
-    if isinstance(d, dict):
-        # charges and sizes given explicitly
-        return sr.BlockIndex(chargemap=d, dual=dual)
-
     if (subsizes is None) or (subsizes == "random"):
         # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
@@ -413,10 +407,6 @@ def rand_u1u1_index(
     if (dual is None) or (dual == "random"):
         dual = rng.choice([False, True])
 
-    if isinstance(d, dict):
-        # charges and sizes given explicitly
-        return sr.BlockIndex(chargemap=d, dual=dual)
-
     if (subsizes is None) or (subsizes == "random"):
         # a random number and distribution of charges
         ncharge = rng.integers(1, d + 1)
@@ -462,8 +452,10 @@ def rand_index(
     ----------
     symmetry : str or Symmetry
         The symmetry of the index.
-    d : int or dict
-        The total size of the index. If a dict, an explicit chargemap.
+    d : int, dict, sequence, or BlockIndex
+        The total size of the index. If a dict, an explicit chargemap. If a
+        sequence an explicit linearmap. If a BlockIndex, it is returned
+        unchanged.
     dual : bool or "random", optional
         The dualness of the index. If "random", it is randomly chosen.
     subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
@@ -487,18 +479,39 @@ def rand_index(
     """
     import symmray as sr
 
+    if isinstance(d, sr.BlockIndex):
+        # already a BlockIndex, nothing more to generate
+        return d
+
     symmetry = sr.get_symmetry(symmetry)
 
+    rng = get_rng(seed)
+
+    if (dual is None) or (dual == "random"):
+        dual = rng.choice([False, True])
+
+    if isinstance(d, dict):
+        # charges and sizes given explicitly, nothing more to generate
+        return sr.BlockIndex(chargemap=d, dual=dual)
+
+    if not isinstance(d, numbers.Integral):
+        # charges and sizes given as a linearmap, nothing more to generate
+        return sr.BlockIndex(linearmap=d, dual=dual)
+
+    kwargs = {
+        "dual": dual,
+        "subsizes": subsizes,
+        "seed": rng,
+    }
+
     if isinstance(symmetry, sr.ZN):
-        return rand_zn_index(
-            d, order=symmetry.N, dual=dual, subsizes=subsizes, seed=seed
-        )
+        return rand_zn_index(d, order=symmetry.N, **kwargs)
     elif symmetry == "Z2Z2":
-        return rand_z2z2_index(d, dual=dual, subsizes=subsizes, seed=seed)
+        return rand_z2z2_index(d, **kwargs)
     elif symmetry == "U1":
-        return rand_u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
+        return rand_u1_index(d, **kwargs)
     elif symmetry == "U1U1":
-        return rand_u1u1_index(d, dual=dual, subsizes=subsizes, seed=seed)
+        return rand_u1u1_index(d, **kwargs)
     else:
         raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
 
@@ -582,11 +595,11 @@ def get_rand(
     ----------
     symmetry : str
         The symmetry of the array.
-    shape : tuple[int | dict | BlockIndex, ...]
+    shape : tuple[int | dict | sequence | BlockIndex, ...]
         The desired overall effective shape of the array. Each element can be
         an int, in which case the charge sizes will be generated automatically
-        according to `subsizes`, or an explicit dict of charge sizes, or a
-        `BlockIndex`.
+        according to `subsizes`, or an explicit dict of charge sizes, or an
+        explicit linearmap, or a `BlockIndex`.
     duals : "random", "equals", or Sequence[bool], optional
         The dualness of each index. If "random", the dualnesses are chosen
         randomly. If "equal", they are chosen so the first half of the
@@ -635,15 +648,7 @@ def get_rand(
     cls = get_array_cls(symmetry, fermionic=fermionic, flat=False)
 
     indices = [
-        (
-            d
-            if isinstance(d, sr.BlockIndex)
-            else sr.BlockIndex(d, dual=dual)
-            if isinstance(d, dict)
-            else rand_index(
-                symmetry, d, dual=dual, subsizes=subsizes, seed=rng
-            )
-        )
+        rand_index(symmetry, d, dual=dual, subsizes=subsizes, seed=rng)
         for d, dual in zip(shape, duals)
     ]
 

@@ -6,6 +6,7 @@ import contextlib
 import functools
 import itertools
 import math
+import numbers
 import operator
 import os
 import warnings
@@ -578,7 +579,8 @@ class SparseArrayCommon:
 
     @property
     def label(self):
-        """The label of the array."""
+        """The label of the array, possibly used for ordering odd parity
+        fermionic modes."""
         return self._label
 
     @property
@@ -1210,7 +1212,7 @@ class SparseArrayCommon:
                 if k[axis] == charge
             }
         else:
-            if isinstance(subselect, int):
+            if isinstance(subselect, numbers.Integral):
                 raise ValueError("subselect must be a slice or sequence.")
 
             # or filter blocks and slice them at the same time
@@ -1248,7 +1250,7 @@ class SparseArrayCommon:
         """
         x = self if inplace else self.copy()
 
-        if isinstance(axis, int):
+        if isinstance(axis, numbers.Integral):
             axis = (axis,)
 
         keep = []

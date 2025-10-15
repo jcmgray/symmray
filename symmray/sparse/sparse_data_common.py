@@ -41,6 +41,7 @@ class BlockCommon:
     def _modify_blockcommon(self, blocks=None):
         if blocks is not None:
             self._blocks = blocks
+        return self
 
     @lazyabstractmethod
     def modify(self, blocks=None):

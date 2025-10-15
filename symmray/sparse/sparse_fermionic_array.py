@@ -102,6 +102,11 @@ class FermionicArray(
             label=label,
         )
         self._phases = dict(phases)
+
+        if oddpos is None and self.label is not None:
+            # default to the array label
+            oddpos = self.label
+
         self._oddpos = oddpos_parse(oddpos, self.parity)
         if DEBUG:
             self.check()
