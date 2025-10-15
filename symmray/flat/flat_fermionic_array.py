@@ -586,6 +586,37 @@ class FermionicArrayFlat(
             phases=self.phases * phase,
         )
 
+    def _resolve_oddpos_squeeze(self, axes_squeeze):
+        """Assuming we are about to squeeze away `axes_squeeze`, compute the
+        phases associated with moving them to the beginning of the array, and
+        then turn them into dummy oddpos modes.
+        """
+        axes_leave = []
+        squeezed_oddpos = []
+        squeezed_odd_parities = []
+        for ax, ix in enumerate(self.indices):
+            if ax in axes_squeeze:
+                # all sectors should have same charge for squeezed axes
+                odd_parity = self._sectors[0, ax] % 2
+
+                label = self.label
+                if label is None:
+                    raise ValueError(
+                        "Cannot squeeze flat fermionic index with possible odd"
+                        " parity if array has no ordering `.label` attribute."
+                    )
+                op = FermionicOperator(("squeeze", label, ax), ix.dual)
+                squeezed_oddpos.append(op)
+                squeezed_odd_parities.append(odd_parity)
+            else:
+                axes_leave.append(ax)
+
+        self.phase_transpose((*axes_squeeze, *axes_leave), inplace=True)
+        self.modify(
+            oddpos=(*squeezed_oddpos, *self.oddpos),
+            odd_parities=(*squeezed_odd_parities, *self.odd_parities),
+        )
+
     def transpose(
         self,
         axes=None,

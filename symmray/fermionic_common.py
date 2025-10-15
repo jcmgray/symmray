@@ -1,5 +1,7 @@
 """Common methods for any fermionic arrays."""
 
+import numbers
+
 from .abelian_common import parse_tensordot_axes
 
 
@@ -313,6 +315,51 @@ class FermionicCommon:
         multiplied in.
         """
         return self.phase_sync()._to_dense_abelian()
+
+    def squeeze(self, axis=None, inplace=False) -> "FermionicCommon":
+        """Squeeze the fermionic array, removing axes of size 1. If those axes
+        correspond to odd parity charges, then they are converged into dummy
+        `oddpos` modes effectively to the left of the array. The sorting label
+        of the array is then required to have been set.
+
+        Parameters
+        ----------
+        axis : int or tuple[int], optional
+            The axis or axes to squeeze. If None, all axes of size 1 are
+            removed, by default None.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        FermionicCommon
+        """
+        if isinstance(axis, numbers.Integral):
+            axis = (axis,)
+
+        axes_squeeze = []
+        for ax, ix in enumerate(self.indices):
+            if axis is None:
+                remove = ix.size_total == 1
+            else:
+                remove = ax in axis
+                if remove and ix.size_total > 1:
+                    raise ValueError("Cannot squeeze d > 1 index")
+            if remove:
+                axes_squeeze.append(ax)
+
+        if not axes_squeeze:
+            # nothing to do
+            return self if inplace else self.copy()
+
+        new = self if inplace else self.copy()
+
+        # this takes care of phases from moving the squeezed axes to the
+        # beginning of the array, and also turns them into dummy oddpos modes
+        new._resolve_oddpos_squeeze(axes_squeeze)
+
+        # actually do the data squeeze
+        return new._squeeze_abelian(axes_squeeze, inplace=True)
 
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a
