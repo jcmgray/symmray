@@ -4,6 +4,7 @@ fermionic and bosonic.
 
 import functools
 import math
+import numbers
 import operator
 from itertools import repeat
 
@@ -1034,6 +1035,53 @@ class FlatArrayCommon:
             sectors=new_sectors,
             blocks=new_blocks,
             indices=new_indices,
+        )
+
+    def _squeeze_abelian(self, axis=None, inplace=False):
+        """Squeeze the flat array, removing axes of size 1.
+
+        Parameters
+        ----------
+        axis : int or sequence of int, optional
+            The axes to squeeze. If not given, all axes of size 1 will be
+            removed.
+        inplace : bool, optional
+            Whether to perform the operation inplace.
+
+        Returns
+        -------
+        FlatArrayCommon
+        """
+        if isinstance(axis, numbers.Integral):
+            axis = (axis,)
+
+        axs_keep = []
+        new_indices = []
+        block_selector = [slice(None)]
+
+        for ax, ix in enumerate(self._indices):
+            if axis is None:
+                remove = ix.size_total == 1
+            else:
+                remove = ax in axis
+                if remove and ix.size_total > 1:
+                    raise ValueError("Cannot squeeze d > 1 index")
+
+            if remove:
+                block_selector.append(0)
+            else:
+                axs_keep.append(ax)
+                new_indices.append(ix)
+                block_selector.append(slice(None))
+
+        new_sectors = self.sectors[:, tuple(axs_keep)]
+        new_blocks = self.blocks[tuple(block_selector)]
+
+        return self._modify_or_copy(
+            sectors=new_sectors,
+            indices=tuple(new_indices),
+            blocks=new_blocks,
+            inplace=inplace,
         )
 
     def align_axes(

@@ -349,22 +349,21 @@ class AbelianArrayFlat(
         return self._einsum_abelian(eq, preserve_array=preserve_array)
 
     def squeeze(self, axis, inplace=False):
-        """Assuming `axis` has total size 1, remove it from this array."""
-        axs_rem = tuple(i for i in range(self.ndim) if i != axis)
+        """Squeeze this flat abelian array, removing axes of size 1.
 
-        new_sectors = self.sectors[:, axs_rem]
-        new_indices = tuple(self._indices[i] for i in axs_rem)
-        block_selector = tuple(
-            slice(None) if i != axis + 1 else 0 for i in range(self.ndim + 1)
-        )
-        new_blocks = self.blocks[block_selector]
+        Parameters
+        ----------
+        axis : int or sequence of int, optional
+            The axes to squeeze. If not given, all axes of size 1 will be
+            removed.
+        inplace : bool, optional
+            Whether to perform the operation inplace.
 
-        return self._modify_or_copy(
-            sectors=new_sectors,
-            indices=new_indices,
-            blocks=new_blocks,
-            inplace=inplace,
-        )
+        Returns
+        -------
+        AbelianArrayFlat
+        """
+        return self._squeeze_abelian(axis, inplace=inplace)
 
     def isel(self, axis, idx, inplace=False):
         """Select a single (linear) index along the specified axis. The linear

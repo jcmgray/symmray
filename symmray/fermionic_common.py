@@ -1,9 +1,6 @@
 """Common methods for any fermionic arrays."""
 
-import numbers
-
 from .abelian_common import parse_tensordot_axes
-from .fermionic_local_operators import FermionicOperator
 
 
 class FermionicCommon:
@@ -134,63 +131,6 @@ class FermionicCommon:
             new.phase_transpose(tuple(virtual_perm), inplace=True)
 
         return new
-
-    def squeeze(self, axis=None, inplace=False):
-        """Squeeze the fermionic array, removing axes of size 1.
-
-        Parameters
-        ----------
-        axis : int or tuple[int], optional
-            The axis or axes to squeeze. If None, all axes of size 1 are
-            removed, by default None.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        FermionicCommon
-        """
-        if isinstance(axis, numbers.Integral):
-            axis = (axis,)
-
-        axes_squeeze = []
-        axes_leave = []
-        squeezed_oddpos = []
-        for ax, ix in enumerate(self.indices):
-            if axis is None:
-                remove = ix.size_total == 1
-            else:
-                remove = ax in axis
-                if remove and ix.size_total > 1:
-                    raise ValueError("Cannot squeeze d > 1 index")
-            if remove:
-                axes_squeeze.append(ax)
-
-                (c,) = ix._chargemap
-                if self.symmetry.parity(c):
-                    # if we are squeezing an odd parity charge, then we need
-                    # to 'move it' into an extra dummy mode
-                    default_label = self.label
-                    if default_label is None:
-                        raise ValueError(
-                            "Cannot squeeze fermionic index with odd parity "
-                            "if array has no ordering label."
-                        )
-                    op = FermionicOperator(
-                        ("squeeze", default_label, ax), ix.dual
-                    )
-                    squeezed_oddpos.append(op)
-            else:
-                axes_leave.append(ax)
-
-        new = self.phase_transpose(
-            (*axes_squeeze, *axes_leave), inplace=inplace
-        )
-
-        if squeezed_oddpos:
-            new.modify(oddpos=(*new.oddpos, *squeezed_oddpos))
-
-        return new._squeeze_abelian(axis=axes_squeeze, inplace=True)
 
     def einsum(self, eq, preserve_array=False):
         """Einsum for fermionic arrays, currently only single term.
