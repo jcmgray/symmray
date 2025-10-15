@@ -1290,7 +1290,19 @@ class SparseArrayCommon:
         )
 
     def isel(self, axis, idx, inplace=False):
-        """Select a single index along the specified axis."""
+        """Select a single (linear) index along the specified axis. The linear
+        index is first converted to the corresponding charge and offset within
+        that charge sector.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to select along.
+        idx : int
+            The linear index to select.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+        """
         if axis < 0:
             axis += self.ndim
         charge, offset = self.indices[axis].linear_to_charge_and_offset(idx)
@@ -1803,7 +1815,9 @@ class SparseArrayCommon:
         pass
 
     def to_flat(self):
-        """ """
+        """Convert this block sparse backend abelian or fermionic array to a
+        flat backend abelian or fermionic array.
+        """
         cls = get_array_cls(self.symmetry, self.fermionic, flat=True)
         return cls.from_blocksparse(self, symmetry=self.symmetry)
 

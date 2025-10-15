@@ -950,7 +950,7 @@ class FlatArrayCommon:
             indices=new_indices,
         )
 
-    def select_charge(self, axis, charge, inplace=False):
+    def select_charge(self, axis, charge, subselect=None, inplace=False):
         """Drop all but the specified charge along the specified axis. Note the
         axis is not removed, it is simply restricted to a single charge.
 
@@ -960,6 +960,9 @@ class FlatArrayCommon:
             The axis along which to select the charge.
         charge : int
             The charge to select along the specified axis.
+        subselect : slice or array_like, optional
+            If provided, a range of indices within the selected charge block
+            to keep. If not provided, the entire block is kept.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -975,7 +978,9 @@ class FlatArrayCommon:
         shape_sectors = ar.do("shape", new.sectors, like=self.backend)
         shape_blocks = ar.do("shape", new.blocks, like=self.backend)
 
-        dc = self.order
+        # first we reshape the sectors and blocks so that a
+        # new axis indexes the charge along the target axis
+        dc = self.indices[axis].num_charges
         dB = shape_sectors[0]
 
         new_sectors = ar.do(
@@ -994,24 +999,34 @@ class FlatArrayCommon:
         )
         new_blocks = select_slice(new_blocks, charge)
 
+        if subselect is not None:
+            # take a subselection along the selected axis
+            # XXX: make this torch vectorizable compatible a la select_slice?
+            selector = (
+                *repeat(slice(None), axis + 1),
+                subselect,
+                *repeat(slice(None), self.ndim - axis - 1),
+            )
+            new_blocks = new_blocks[selector]
+
         if self.ndim == 2:
             # axes are locked to each other -> select both
             if axis == 0:
                 other_charge = new_sectors[0, 1]
                 new_indices = (
-                    self.indices[0].select_charge(charge),
+                    self.indices[0].select_charge(charge, subselect),
                     self.indices[1].select_charge(other_charge),
                 )
             else:  # axis == 1
                 other_charge = new_sectors[0, 0]
                 new_indices = (
                     self.indices[0].select_charge(other_charge),
-                    self.indices[1].select_charge(charge),
+                    self.indices[1].select_charge(charge, subselect),
                 )
         else:
             new_indices = (
                 *self.indices[:axis],
-                self.indices[axis].select_charge(charge),
+                self.indices[axis].select_charge(charge, subselect),
                 *self.indices[axis + 1 :],
             )
 

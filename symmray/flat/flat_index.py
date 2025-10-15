@@ -21,11 +21,19 @@ class FlatIndex(Index):
 
     __slots__ = ("_num_charges", "_charge_size", "_dual", "_subinfo")
 
-    def __init__(self, num_charges, charge_size, dual=False, subinfo=None):
+    def __init__(
+        self,
+        num_charges,
+        charge_size,
+        dual=False,
+        subinfo=None,
+        linearmap=None,
+    ):
         self._num_charges = int(num_charges)
         self._charge_size = int(charge_size)
         self._dual = dual
         self._subinfo = subinfo
+        self._linearmap = linearmap
 
         if DEBUG:
             self.check()
@@ -33,21 +41,41 @@ class FlatIndex(Index):
     def copy_with(
         self, num_charges=None, charge_size=None, dual=None, **kwargs
     ):
+        """A copy of this index with some attributes replaced. Note that checks
+        are not performed on the new propoerties, this is intended for internal
+        use.
+        """
+        new = self.__new__(self.__class__)
+        keep_linearmap = True
+
+        if num_charges is None:
+            new._num_charges = self._num_charges
+        else:
+            new._num_charges = num_charges
+            keep_linearmap = False
+
+        if charge_size is None:
+            new._charge_size = self._charge_size
+        else:
+            new._charge_size = charge_size
+            keep_linearmap = False
+
+        if keep_linearmap:
+            new._linearmap = self._linearmap
+        else:
+            new._linearmap = None
+
+        new._dual = dual if dual is not None else self._dual
+
         # handle subinfo to distinguish between passing None and not passing it
         if "subinfo" in kwargs:
-            new_subinfo = kwargs.pop("subinfo")
+            new._subinfo = kwargs.pop("subinfo")
         else:
-            new_subinfo = self._subinfo
-
+            new._subinfo = self._subinfo
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments: {kwargs}")
 
-        return FlatIndex(
-            num_charges if num_charges is not None else self._num_charges,
-            charge_size if charge_size is not None else self._charge_size,
-            dual if dual is not None else self._dual,
-            new_subinfo,
-        )
+        return new
 
     @property
     def num_charges(self) -> int:
@@ -58,6 +86,18 @@ class FlatIndex(Index):
     def charge_size(self) -> int:
         """The size of the charges associated with this index."""
         return self._charge_size
+
+    # @property
+    # def linearmap(self):
+    #     """The linear map from charge and offset to linear index."""
+    #     # XXX: this should be an array compat operation
+    #     if self._linearmap is None:
+    #         linearmap = []
+    #         for c in range(self._num_charges):
+    #             for ci in range(self._charge_size):
+    #                 linearmap.append((c, ci))
+    #         self._linearmap = tuple(linearmap)
+    #     return self._linearmap
 
     @property
     def subshape(self):
@@ -80,17 +120,62 @@ class FlatIndex(Index):
             subinfo=None if self._subinfo is None else self._subinfo.conj(),
         )
 
-    def select_charge(self, charge):
-        """Drop all but the specified charge from this index."""
-        if self._subinfo is not None:
-            new_subinfo = self._subinfo.select_charge(charge)
-            return FlatIndex(
-                num_charges=1,
-                charge_size=self._charge_size,
-                dual=self._dual,
-                subinfo=new_subinfo,
-            )
-        return self
+    def select_charge(self, charge, subselect=None) -> "FlatIndex":
+        """Drop all but the specified charge from this index.
+
+        Parameters
+        ----------
+        charge : int
+            The charge to keep.
+        subselect : slice or array_like, optional
+            If provided, a range of indices within the selected charge block
+            to keep. If not provided, the entire block is kept.
+
+        Returns
+        -------
+        FlatIndex
+        """
+        updates = {"num_charges": 1}
+
+        if subselect is not None:
+            if isinstance(subselect, slice):
+                start, stop, step = subselect.indices(self.charge_size)
+                updates["charge_size"] = len(range(start, stop, step))
+            elif hasattr(subselect, "size"):  # numpy array or similar
+                updates["charge_size"] = subselect.size
+            else:
+                updates["charge_size"] = len(subselect)
+
+            # drop subinfo if we slice blocks
+            updates["subinfo"] = None
+
+        elif self._subinfo is not None:
+            updates["subinfo"] = self._subinfo.select_charge(charge)
+
+        return self.copy_with(**updates)
+
+    def linear_to_charge_and_offset(self, i):
+        """Given a linear index ``i`` into this index (as if it were a dense
+        array), return the corresponding charge and offset within that charge
+        block.
+
+        Parameters
+        ----------
+        i : int
+            The linear index into this index.
+
+        Returns
+        -------
+        charge : hashable
+            The charge corresponding to the linear index.
+        offset : int
+            The offset within the charge block corresponding to the linear
+            index.
+        """
+        if self._linearmap is None:
+            # default mapping is sorted charges
+            return divmod(i, self._charge_size)
+        return self._linearmap[i]
 
     def check(self):
         """Check that the index is valid."""

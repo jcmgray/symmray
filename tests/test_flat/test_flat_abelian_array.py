@@ -8,7 +8,7 @@ import symmray as sr
 def get_zn_blocksparse_flat_compat(
     symmetry,
     shape,
-    charge,
+    charge=0,
     seed=42,
     shape_relative_to_z2=True,
     **kwargs,
@@ -371,3 +371,35 @@ def test_block_multiply_diagonal(symmetry, charge, axis):
     lhs = "abcd"
     rhs = lhs[axis]
     np.testing.assert_allclose(yd, np.einsum(f"{lhs},{rhs}->{lhs}", xd, vd))
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("ndim", [1, 2, 3, 4])
+@pytest.mark.parametrize("seed", range(10))
+def test_abelian_array_slice(symmetry, ndim, seed):
+    import numpy as np
+
+    rng = sr.utils.get_rng(seed)
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry=symmetry,
+        shape=tuple(2 * rng.integers(1, 5, size=ndim)),
+        seed=rng,
+    )
+    dx = sx.to_dense()
+    x = sx.to_flat()
+
+    for ax in range(ndim):
+        for d in range(x.shape[ax]):
+            # get [:, :, ..., 2, ..., :] etc.
+            selector = (
+                (slice(None),) * ax + (d,) + (slice(None),) * (ndim - ax - 1)
+            )
+            x_slc = x[selector]
+            x_slc.to_blocksparse().test_allclose(sx[selector])
+            dx_slc = dx[selector]
+
+            if ndim == 2:
+                # dropped zero blocks will be fully missing
+                dx_slc = dx_slc[dx_slc != 0]
+
+            np.testing.assert_allclose(x_slc.to_dense(), dx_slc)

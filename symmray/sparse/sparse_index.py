@@ -182,7 +182,7 @@ class BlockIndex(Index):
             ),
         )
 
-    def select_charge(self, charge, subselect=None):
+    def select_charge(self, charge, subselect=None) -> "BlockIndex":
         """Drop all but the specified charge from this index.
 
         Parameters

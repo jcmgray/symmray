@@ -367,10 +367,25 @@ class AbelianArrayFlat(
         )
 
     def isel(self, axis, idx, inplace=False):
-        """Select a single index along the specified axis."""
+        """Select a single (linear) index along the specified axis. The linear
+        index is first converted to the corresponding charge and offset within
+        that charge sector.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to select along.
+        idx : int
+            The linear index to select.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+        """
         if axis < 0:
             axis += self.ndim
-        new = self.select_charge(axis, idx, inplace=inplace)
+        charge, offset = self.indices[axis].linear_to_charge_and_offset(idx)
+        new = self.select_charge(
+            axis, charge, subselect=(offset,), inplace=inplace
+        )
         return new.squeeze(axis, inplace=True)
 
     def __getitem__(self, item):
