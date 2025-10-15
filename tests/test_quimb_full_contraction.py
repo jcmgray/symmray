@@ -93,7 +93,7 @@ def test_tn_contract_exact_rand_reg(
         site_charge=site_charge,
     )
 
-    assert tuple(tn.sites) == (0, 3, 6, 7, 1, 5, 9, 2, 8, 4)
+    assert tuple(tn.sites) == (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     assert tuple(x.signature for x in tn.arrays) == (
         "+++",
         "--+",
