@@ -228,6 +228,7 @@ def TN_abelian_from_edges_rand(
                 )
                 shape_parsed.append(index_store[ix])
 
+        kwargs["label"] = site
         if fermionic:
             # if odd parity, we might need to provide a "label"
             kwargs["oddpos"] = site

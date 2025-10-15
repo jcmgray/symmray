@@ -30,7 +30,13 @@ class AbelianArray(
         The symmetry of the array, if not using a specific symmetry class.
     """
 
-    __slots__ = ("_indices", "_blocks", "_charge", "_symmetry")
+    __slots__ = (
+        "_indices",
+        "_blocks",
+        "_charge",
+        "_symmetry",
+        "_label",
+    )
     fermionic = False
     static_symmetry = None
 
@@ -40,12 +46,14 @@ class AbelianArray(
         charge=None,
         blocks=(),
         symmetry=None,
+        label=None,
     ):
         self._init_abelian(
             indices=indices,
             charge=charge,
             blocks=blocks,
             symmetry=symmetry,
+            label=label,
         )
 
         if DEBUG:
@@ -146,6 +154,23 @@ class AbelianArray(
         AbelianArray
         """
         return self._unfuse_abelian(axis, inplace=inplace)
+
+    def squeeze(self, axis=None, inplace=False):
+        """Squeeze the block array, removing axes of size 1.
+
+        Parameters
+        ----------
+        axis : int or tuple[int], optional
+            The axis or axes to squeeze. If None, all axes of size 1 will be
+            removed.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        AbelianArray
+        """
+        return self._squeeze_abelian(axis=axis, inplace=inplace)
 
     def einsum(self, eq, preserve_array=False):
         """Einsum for abelian arrays, currently only single term.

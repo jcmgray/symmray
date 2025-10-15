@@ -92,12 +92,14 @@ class FermionicArray(
         phases=(),
         oddpos=None,
         symmetry=None,
+        label=None,
     ):
         self._init_abelian(
             indices=indices,
             charge=charge,
             blocks=blocks,
             symmetry=symmetry,
+            label=label,
         )
         self._phases = dict(phases)
         self._oddpos = oddpos_parse(oddpos, self.parity)

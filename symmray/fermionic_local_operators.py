@@ -7,6 +7,32 @@ import itertools
 import autoray as ar
 
 
+def labels_lt(labela, labelb):
+    try:
+        return labela < labelb
+    except TypeError:
+        # allow certain mixed types to be compared, the logic here is:
+        # 1. group all integer labels first
+        # 2. then plain strings
+        # 3. then tuples by length
+        # XXX: some different length tuples can be compared, might revisit
+        if isinstance(labela, int):
+            la = -2
+        elif isinstance(labela, str):
+            la = -1
+        else:
+            la = len(labela)
+
+        if isinstance(labelb, int):
+            lb = -2
+        elif isinstance(labelb, str):
+            lb = -1
+        else:
+            lb = len(labelb)
+
+        return la < lb
+
+
 class FermionicOperator:
     """Simple class to represent a fermionic operator with a label and a
     dual flag.
@@ -36,14 +62,10 @@ class FermionicOperator:
         return (self._dual, self._label) == (other._dual, other._label)
 
     def __lt__(self, other):
-        # # XXX: another potential ordering? :
-        # return (
-        #     (self._label, not self._dual) < (other._label, not other._dual)
-        # )
         if self.dual:
             if other.dual:
                 # dual operator are reflected
-                return self.label > other.label
+                return labels_lt(other.label, self.label)
             else:
                 # creation left of annihilation
                 return True
@@ -51,7 +73,7 @@ class FermionicOperator:
             if other.dual:
                 return False
             else:
-                return self.label < other.label
+                return labels_lt(self.label, other.label)
 
     def __repr__(self):
         return f"{self._label}{'+' if self._dual else '-'}"

@@ -506,11 +506,13 @@ class SparseArrayCommon:
         charge=None,
         blocks=(),
         symmetry=None,
+        label=None,
     ):
         self._init_blockcommon(blocks)
 
         self._indices = tuple(indices)
         self._symmetry = self.get_class_symmetry(symmetry)
+        self._label = label
 
         if charge is None:
             if self.num_blocks > 0:
@@ -533,6 +535,7 @@ class SparseArrayCommon:
         new._indices = self._indices
         new._charge = self._charge
         new._symmetry = self._symmetry
+        new._label = self._label
         return new
 
     @lazyabstractmethod
@@ -548,6 +551,7 @@ class SparseArrayCommon:
         new._indices = self._indices if indices is None else indices
         new._charge = self._charge if charge is None else charge
         new._symmetry = self._symmetry
+        new._label = self._label
         return new
 
     @lazyabstractmethod
@@ -571,6 +575,11 @@ class SparseArrayCommon:
     @lazyabstractmethod
     def modify(self, indices=None, charge=None, blocks=None):
         pass
+
+    @property
+    def label(self):
+        """The label of the array."""
+        return self._label
 
     @property
     def sizes(self):
@@ -1222,7 +1231,7 @@ class SparseArrayCommon:
             inplace=inplace,
         )
 
-    def squeeze(self, axis=None, inplace=False):
+    def _squeeze_abelian(self, axis=None, inplace=False):
         """Squeeze the block array, removing axes of size 1.
 
         Parameters
