@@ -353,7 +353,7 @@ class FermionicArrayFlat(
         """
         return cls.from_blocks(
             blocks=x.blocks,
-            indices=x.duals,
+            indices=[ix.to_flat() for ix in x.indices],
             phases=x.phases,
             oddpos=x.oddpos,
             symmetry=symmetry or x.symmetry,

@@ -1,6 +1,7 @@
 """Index objects for abelian arrays with block sparse backend."""
 
 import numbers
+import warnings
 
 from ..index_common import Index, SubInfo
 from ..utils import hasher
@@ -105,6 +106,31 @@ class BlockIndex(Index):
             raise TypeError(f"Unexpected keyword arguments: {kwargs}")
 
         return new
+
+    def to_flat(self):
+        """Convert this index to a flat index."""
+        from ..flat.flat_index import FlatIndex
+
+        charges = sorted(self.charges)
+        num_charges = len(charges)
+        charge_size = max(self.sizes)
+
+        if (num_charges != 1) and (charges != list(range(num_charges))):
+            raise ValueError(
+                "FlatIndex requires a single charge or 0...N-1 as charges."
+            )
+
+        if self.subinfo is not None:
+            warnings.warn(
+                "Converting subinfo to flat not supported yet, dropping it."
+            )
+
+        return FlatIndex(
+            num_charges=num_charges,
+            charge_size=charge_size,
+            dual=self.dual,
+            linearmap=self._linearmap,
+        )
 
     @property
     def chargemap(self):

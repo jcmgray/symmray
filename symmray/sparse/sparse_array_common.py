@@ -954,8 +954,10 @@ class SparseArrayCommon:
         ----------
         blocks : dict[tuple[hashable], array_like]
             A mapping of each 'sector' (tuple of charges) to the data array.
-        duals : tuple[bool]
-            The dual-ness of each index.
+        duals : tuple[bool] or tuple[BlockIndex]
+            The dual-ness of each index, or an explicitly given sequence of
+            already constructed block sparse indices. Note in the latter case
+            no checks for consistency are performed.
         charge : hashable
             The total charge of the array. If not given, it will be
             taken computed from the first sector, or set to the
@@ -972,8 +974,12 @@ class SparseArrayCommon:
         symmetry = cls.get_class_symmetry(symmetry)
 
         ndim = len(next(iter(blocks.keys())))
-        charge_size_maps = [{} for _ in range(ndim)]
 
+        duals = tuple(duals)
+        if len(duals) != ndim:
+            raise ValueError(f"Expected {ndim} duals, got {len(duals)}.")
+
+        charge_size_maps = [{} for _ in range(ndim)]
         for sector, array in blocks.items():
             for i, (c, d) in enumerate(zip(sector, ar.shape(array))):
                 d = int(d)
@@ -997,12 +1003,9 @@ class SparseArrayCommon:
             # no blocks given, default to identity charge
             charge = symmetry.combine()
 
-        duals = tuple(duals)
-        if len(duals) != ndim:
-            raise ValueError(f"Expected {ndim} duals, got {len(duals)}.")
-
         indices = tuple(
-            BlockIndex(x, dual) for x, dual in zip(charge_size_maps, duals)
+            dual if isinstance(dual, BlockIndex) else BlockIndex(x, dual)
+            for x, dual in zip(charge_size_maps, duals)
         )
 
         return cls(

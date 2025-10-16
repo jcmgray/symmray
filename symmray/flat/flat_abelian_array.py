@@ -185,9 +185,12 @@ class AbelianArrayFlat(
         symmetry : str or Symmetry, optional
             The symmetry to use. If not supplied, the symmetry of `x` is used.
         """
+        # ensure we only have index charges present on blocks
+        x = x.sync_charges()
+
         return cls.from_blocks(
             blocks=x.blocks,
-            indices=x.duals,
+            indices=[ix.to_flat() for ix in x.indices],
             symmetry=symmetry or x.symmetry,
             label=x.label,
         )

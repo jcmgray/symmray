@@ -539,6 +539,8 @@ class FlatArrayCommon:
             block = self._blocks[i]
             blocks[sector] = block
 
+        # XXX: convert indices directly to include e.g. linearmap information
+
         return cls.from_blocks(
             blocks,
             duals=self.duals,
