@@ -485,6 +485,25 @@ class FlatArrayCommon:
             self._indices = indices
         return self
 
+    def _set_params_abelian(self, params):
+        """Set the underlying array blocks."""
+        self._set_params_flatcommon(params)
+
+        try:
+            _array = ar.get_lib_fn(self.backend, "array")
+        except ImportError:
+            # backend set by params is possibly a placeholder of some kind
+            return
+
+        new_indices = []
+        for ix in self._indices:
+            if ix._linearmap is None:
+                new_ix = ix
+            else:
+                new_ix = ix.copy_with(linearmap=_array(ix._linearmap))
+            new_indices.append(new_ix)
+        self._indices = tuple(new_indices)
+
     @property
     def order(self) -> int:
         """Get the order of the symmetry group."""

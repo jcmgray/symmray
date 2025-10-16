@@ -39,7 +39,12 @@ class FlatIndex(Index):
             self.check()
 
     def copy_with(
-        self, num_charges=None, charge_size=None, dual=None, **kwargs
+        self,
+        num_charges=None,
+        charge_size=None,
+        dual=None,
+        linearmap=None,
+        **kwargs,
     ):
         """A copy of this index with some attributes replaced. Note that checks
         are not performed on the new propoerties, this is intended for internal
@@ -60,7 +65,9 @@ class FlatIndex(Index):
             new._charge_size = charge_size
             keep_linearmap = False
 
-        if keep_linearmap:
+        if linearmap is not None:
+            new._linearmap = linearmap
+        elif keep_linearmap:
             new._linearmap = self._linearmap
         else:
             new._linearmap = None
@@ -274,7 +281,7 @@ class FlatSubIndexInfo(SubInfo):
         )
 
     def select_charge(self, charge):
-        new_subkeys = self.subkeys[[charge]]
+        new_subkeys = self.subkeys[(charge,), ...]
         return FlatSubIndexInfo(
             indices=self.indices,
             subkeys=new_subkeys,

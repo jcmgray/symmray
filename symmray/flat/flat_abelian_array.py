@@ -130,7 +130,7 @@ class AbelianArrayFlat(
 
     def set_params(self, params):
         """Set the underlying array blocks."""
-        self._set_params_flatcommon(params)
+        self._set_params_abelian(params)
         if DEBUG:
             self.check()
 
