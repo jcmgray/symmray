@@ -92,9 +92,9 @@ class AbelianArray(
             other, fn, missing=missing, inplace=inplace
         )
 
-    def _map_blocks(self, fn_block=None, fn_sector=None):
+    def _map_blocks(self, fn_block=None, fn_sector=None, fn_filter=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
-        self._map_blocks_blockcommon(fn_block, fn_sector)
+        self._map_blocks_blockcommon(fn_block, fn_sector, fn_filter)
 
     def transpose(self, axes=None, inplace=False):
         """Transpose this block sparse abelian array.

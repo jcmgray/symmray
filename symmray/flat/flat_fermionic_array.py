@@ -84,6 +84,34 @@ class FermionicArrayFlat(
     AbelianCommon,
     SymmrayCommon,
 ):
+    """Fermionic abelian symmetric array with flat backend.
+
+    Parameters
+    ----------
+    sectors : array_like
+        The stack of sector keys, with shape (num_blocks, ndim). Each row
+        represents a sector of a corresponding block, and each column
+        represents a charge in a given axis.
+    blocks : array_like
+        The stack of array blocks, with shape (num_blocks, *shape_block), i.e.
+        `ndim + 1` dimensions, where the first dimension is the block index,
+        which should match the first dimension of `sectors`, and the rest are
+        the dimensions of individual blocks.
+    indices : sequence[FlatIndex]
+        Indices describing the dualness and any subindex information for each
+        dimension of the array. If bools are supplied, they will be converted
+        to a FlatIndex with the corresponding dualness, and no subindex
+        information.
+    phases : array_like, optional
+        An array of +/- 1 phases, with shape (num_blocks,), giving the phase
+        of each block. If not supplied, all phases are assumed to be +1.
+    label : hashable, optional
+        An optional label for the array, potentially needed for ordering dummy
+        odd fermionic modes.
+    symmetry : str or Symmetry, optional
+        The symmetry of the array, if not using a specific symmetry class.
+    """
+
     __slots__ = (
         "_blocks",
         "_indices",
@@ -103,10 +131,10 @@ class FermionicArrayFlat(
         blocks,
         indices,
         phases=None,
+        label=None,
+        symmetry=None,
         oddpos=None,
         odd_parities=None,
-        symmetry=None,
-        label=None,
     ):
         self._init_abelian(
             sectors=sectors,
@@ -244,6 +272,13 @@ class FermionicArrayFlat(
             self.check()
         return self
 
+    def _map_blocks(self, fn_sector=None, fn_block=None):
+        self._map_blocks_abelian(fn_sector=fn_sector, fn_block=fn_block)
+        if fn_sector is not None:
+            if self._phases is not None:
+                # NOTE: leave missing phases, assumed to stay all ones
+                self._phases = fn_sector(self.phases)
+
     @classmethod
     def from_blocks(
         cls,
@@ -252,6 +287,7 @@ class FermionicArrayFlat(
         phases=None,
         oddpos=None,
         symmetry=None,
+        label=None,
     ) -> "FermionicArrayFlat":
         """Create a fermionic flat array from an explicit dictionary of blocks,
         and sequence of indices or duals.
@@ -269,6 +305,12 @@ class FermionicArrayFlat(
         phases : dict[tuple[int, ...], int], optional
             A dictionary mapping sector keys to +/- 1 phases. If not supplied,
             all phases are assumed to be +1.
+        symmetry : str or Symmetry, optional
+            The symmetry of the array, if not using a specific symmetry class.
+        label : hashable, optional
+            An optional label for the array, potentially needed for ordering
+            dummy odd fermionic modes.
+
         """
         sectors = list(map(list, blocks.keys()))
 
@@ -291,6 +333,7 @@ class FermionicArrayFlat(
             phases=phases,
             oddpos=oddpos,
             symmetry=symmetry,
+            label=label,
         )
 
     @classmethod
@@ -305,7 +348,7 @@ class FermionicArrayFlat(
         ----------
         x : FermionicArray
             The fermionic blocksparse array to convert.
-        symmetry : FermionicSymmetry, optional
+        symmetry : str or Symmetry, optional
             The symmetry to use. If not supplied, the symmetry of `x` is used.
         """
         return cls.from_blocks(
@@ -314,6 +357,7 @@ class FermionicArrayFlat(
             phases=x.phases,
             oddpos=x.oddpos,
             symmetry=symmetry or x.symmetry,
+            label=x.label,
         )
 
     def to_blocksparse(self) -> "FermionicArray":
@@ -613,8 +657,8 @@ class FermionicArrayFlat(
 
         self.phase_transpose((*axes_squeeze, *axes_leave), inplace=True)
         self.modify(
-            oddpos=(*squeezed_oddpos, *self.oddpos),
-            odd_parities=(*squeezed_odd_parities, *self.odd_parities),
+            oddpos=(*self.oddpos, *squeezed_oddpos),
+            odd_parities=(*self.odd_parities, *squeezed_odd_parities),
         )
 
     def transpose(

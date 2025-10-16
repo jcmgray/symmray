@@ -549,6 +549,12 @@ class FlatArrayCommon:
     def _to_dense_abelian(self):
         return self._to_blocksparse_abelian()._to_dense_abelian()
 
+    def _map_blocks_abelian(self, fn_sector=None, fn_block=None):
+        if fn_sector is not None:
+            self._sectors = fn_sector(self._sectors)
+        if fn_block is not None:
+            self._blocks = fn_block(self._blocks)
+
     def get_sorting_indices(
         self,
         axes=None,
@@ -976,29 +982,19 @@ class FlatArrayCommon:
 
         new = self.sort_stack(axis, inplace=inplace)
 
-        shape_sectors = ar.do("shape", new.sectors, like=self.backend)
-        shape_blocks = ar.do("shape", new.blocks, like=self.backend)
-
         # first we reshape the sectors and blocks so that a
         # new axis indexes the charge along the target axis
-        dc = self.indices[axis].num_charges
-        dB = shape_sectors[0]
+        dc = new.indices[axis].num_charges
 
-        new_sectors = ar.do(
-            "reshape",
-            new.sectors,
-            (dc, dB // dc, *shape_sectors[1:]),
-            like=self.backend,
-        )
-        new_sectors = select_slice(new_sectors, charge)
+        def _take_charge_slice(x):
+            # split batch index into axis charges and slice
+            xr = ar.do("reshape", x, (dc, -1, *x.shape[1:]), like=new.backend)
+            return select_slice(xr, charge)
 
-        new_blocks = ar.do(
-            "reshape",
-            new.blocks,
-            (dc, dB // dc, *shape_blocks[1:]),
-            like=self.backend,
+        new._map_blocks(
+            fn_sector=_take_charge_slice,
+            fn_block=_take_charge_slice,
         )
-        new_blocks = select_slice(new_blocks, charge)
 
         if subselect is not None:
             # take a subselection along the selected axis
@@ -1006,36 +1002,32 @@ class FlatArrayCommon:
             selector = (
                 *repeat(slice(None), axis + 1),
                 subselect,
-                *repeat(slice(None), self.ndim - axis - 1),
+                *repeat(slice(None), new.ndim - axis - 1),
             )
-            new_blocks = new_blocks[selector]
+            new._map_blocks(fn_block=lambda x: x[selector])
 
-        if self.ndim == 2:
+        if new.ndim == 2:
             # axes are locked to each other -> select both
             if axis == 0:
-                other_charge = new_sectors[0, 1]
+                other_charge = new.sectors[0, 1]
                 new_indices = (
-                    self.indices[0].select_charge(charge, subselect),
-                    self.indices[1].select_charge(other_charge),
+                    new.indices[0].select_charge(charge, subselect),
+                    new.indices[1].select_charge(other_charge),
                 )
             else:  # axis == 1
-                other_charge = new_sectors[0, 0]
+                other_charge = new.sectors[0, 0]
                 new_indices = (
-                    self.indices[0].select_charge(other_charge),
-                    self.indices[1].select_charge(charge, subselect),
+                    new.indices[0].select_charge(other_charge),
+                    new.indices[1].select_charge(charge, subselect),
                 )
         else:
             new_indices = (
-                *self.indices[:axis],
-                self.indices[axis].select_charge(charge, subselect),
-                *self.indices[axis + 1 :],
+                *new.indices[:axis],
+                new.indices[axis].select_charge(charge, subselect),
+                *new.indices[axis + 1 :],
             )
 
-        return new.modify(
-            sectors=new_sectors,
-            blocks=new_blocks,
-            indices=new_indices,
-        )
+        return new.modify(indices=new_indices)
 
     def _squeeze_abelian(self, axis=None, inplace=False):
         """Squeeze the flat array, removing axes of size 1.
@@ -1083,6 +1075,29 @@ class FlatArrayCommon:
             blocks=new_blocks,
             inplace=inplace,
         )
+
+    def isel(self, axis, idx, inplace=False):
+        """Select a single (linear) index along the specified axis. The linear
+        index is first converted to the corresponding charge and offset within
+        that charge sector.
+
+        Parameters
+        ----------
+        axis : int
+            The axis to select along.
+        idx : int
+            The linear index to select.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+        """
+        if axis < 0:
+            axis += self.ndim
+        charge, offset = self.indices[axis].linear_to_charge_and_offset(idx)
+        new = self.select_charge(
+            axis, charge, subselect=(offset,), inplace=inplace
+        )
+        # fermionic signs handled in squeeze
+        return new.squeeze(axis, inplace=True)
 
     def align_axes(
         self: "FlatArrayCommon",

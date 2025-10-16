@@ -334,11 +334,13 @@ class FermionicCommon:
         -------
         FermionicCommon
         """
+        new = self if inplace else self.copy()
+
         if isinstance(axis, numbers.Integral):
             axis = (axis,)
 
         axes_squeeze = []
-        for ax, ix in enumerate(self.indices):
+        for ax, ix in enumerate(new.indices):
             if axis is None:
                 remove = ix.size_total == 1
             else:
@@ -350,9 +352,7 @@ class FermionicCommon:
 
         if not axes_squeeze:
             # nothing to do
-            return self if inplace else self.copy()
-
-        new = self if inplace else self.copy()
+            return new
 
         # this takes care of phases from moving the squeezed axes to the
         # beginning of the array, and also turns them into dummy oddpos modes

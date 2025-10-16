@@ -583,6 +583,7 @@ def get_rand(
     seed=None,
     dist="normal",
     fermionic=False,
+    label=None,
     flat=False,
     subsizes="random",
     **kwargs,
@@ -615,6 +616,9 @@ def get_rand(
         The distribution of the random numbers. Can be "normal" or "uniform".
     fermionic : bool, optional
         Whether to generate a fermionic array.
+    label : hashable, optional
+        An optional label for the array, potentially needed for ordering dummy
+        odd fermionic modes.
     flat : bool, optional
         Whether to generate a 'flat' backend array (True) or the default
         block-sparse backend array (False).
@@ -661,6 +665,7 @@ def get_rand(
         seed=rng,
         dist=dist,
         symmetry=symmetry,
+        label=label,
         **kwargs,
     )
 

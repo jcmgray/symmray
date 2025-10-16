@@ -1194,44 +1194,42 @@ class SparseArrayCommon:
         -------
         SparseArrayCommon
         """
+        new = self if inplace else self.copy()
+
         if axis < 0:
-            axis += self.ndim
+            axis += new.ndim
 
         # update indices
         new_indices = (
-            *self.indices[:axis],
-            self.indices[axis].select_charge(charge, subselect),
-            *self.indices[axis + 1 :],
+            *new.indices[:axis],
+            new.indices[axis].select_charge(charge, subselect),
+            *new.indices[axis + 1 :],
         )
 
+        # filter sectors
+
+        def fn_filter(sector):
+            return sector[axis] == charge
+
         if subselect is None:
-            # and filter blocks
-            new_blocks = {
-                k: v
-                for k, v in self.get_sector_block_pairs()
-                if k[axis] == charge
-            }
+            fn_block = None
         else:
+            # ... and possibly slice blocks
             if isinstance(subselect, numbers.Integral):
                 raise ValueError("subselect must be a slice or sequence.")
 
-            # or filter blocks and slice them at the same time
             selector = (
                 *itertools.repeat(slice(None), axis),
                 subselect,
-                *itertools.repeat(slice(None), self.ndim - axis - 1),
+                *itertools.repeat(slice(None), new.ndim - axis - 1),
             )
-            new_blocks = {
-                k: v[selector]
-                for k, v in self.get_sector_block_pairs()
-                if k[axis] == charge
-            }
 
-        return self._modify_or_copy(
-            blocks=new_blocks,
-            indices=new_indices,
-            inplace=inplace,
-        )
+            def fn_block(block):
+                return block[selector]
+
+        new._map_blocks(fn_block=fn_block, fn_filter=fn_filter)
+        new.modify(indices=new_indices)
+        return new
 
     def _squeeze_abelian(self, axis=None, inplace=False):
         """Squeeze the block array, removing axes of size 1.
@@ -1313,30 +1311,6 @@ class SparseArrayCommon:
             inplace=inplace,
         )
         return new.squeeze(axis, inplace=True)
-
-    def __getitem__(self, item):
-        axis = None
-        idx = None
-
-        if not isinstance(item, tuple):
-            raise TypeError(
-                f"Expected a tuple for indexing, got {type(item)}: {item}"
-            )
-
-        for i, s in enumerate(item):
-            if isinstance(s, slice):
-                if not s.start is s.stop is s.step is None:
-                    raise NotImplementedError("Can only slice whole axes.")
-            else:
-                if axis is not None:
-                    raise ValueError(
-                        "Can only index one axis at a time, "
-                        f"got {item} with multiple indices."
-                    )
-                axis = i
-                idx = s
-
-        return self.isel(axis, idx)
 
     def expand_dims(self, axis, c=None, dual=None, inplace=False):
         """Expand the shape of an abelian array.

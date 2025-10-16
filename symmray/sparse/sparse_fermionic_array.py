@@ -65,21 +65,21 @@ class FermionicArray(
         The blocks of the array, by default empty.
     phases : dict, optional
         The lazy phases of each block, by default empty.
-    oddpos : object or FermionicOperator, optional
-        If the array has odd parity, the 'position' of it, or the ordering of
-        subsumed positions. This can be an arbitrary hashable, sortable type,
-        in which case it will be wrapped in a FermionicOperator.
+    label : hashable, optional
+        An optional label for the array, potentially needed for ordering dummy
+        odd fermionic modes.
     symmetry : str or Symmetry, optional
         The symmetry of the array, if not using a specific symmetry class.
     """
 
     __slots__ = (
-        "_indices",
         "_blocks",
         "_charge",
-        "_symmetry",
-        "_phases",
+        "_indices",
+        "_label",
         "_oddpos",
+        "_phases",
+        "_symmetry",
     )
     fermionic = True
     static_symmetry = None
@@ -90,9 +90,9 @@ class FermionicArray(
         charge=None,
         blocks=(),
         phases=(),
-        oddpos=None,
-        symmetry=None,
         label=None,
+        symmetry=None,
+        oddpos=None,
     ):
         self._init_abelian(
             indices=indices,
@@ -371,12 +371,16 @@ class FermionicArray(
                 new._phases[sector] = phase
         return new
 
-    def _map_blocks(self, fn_block=None, fn_sector=None):
+    def _map_blocks(self, fn_block=None, fn_sector=None, fn_filter=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
-        self._map_blocks_blockcommon(fn_block, fn_sector)
+        self._map_blocks_blockcommon(fn_block, fn_sector, fn_filter)
         if fn_sector is not None:
             # need to update phase keys as well
-            self._phases = {fn_sector(s): p for s, p in self._phases.items()}
+            self._phases = {
+                fn_sector(s): p
+                for s, p in self._phases.items()
+                if fn_filter is None or fn_filter(s)
+            }
 
     def _resolve_oddpos_conj(self, phase_permutation=True):
         """Assuming we have effectively taken the conjugate of a fermionic

@@ -518,6 +518,30 @@ class AbelianCommon:
     def get_any_array(self):
         pass
 
+    def __getitem__(self, item):
+        axis = None
+        idx = None
+
+        if not isinstance(item, tuple):
+            raise TypeError(
+                f"Expected a tuple for indexing, got {type(item)}: {item}"
+            )
+
+        for i, s in enumerate(item):
+            if isinstance(s, slice):
+                if not s.start is s.stop is s.step is None:
+                    raise NotImplementedError("Can only slice whole axes.")
+            else:
+                if axis is not None:
+                    raise ValueError(
+                        "Can only index one axis at a time, "
+                        f"got {item} with multiple indices."
+                    )
+                axis = i
+                idx = s
+
+        return self.isel(axis, idx)
+
     def __repr__(self):
         if self.static_symmetry is not None:
             c = f"{self.__class__.__name__}("

@@ -46,6 +46,8 @@ class AbelianArrayFlat(
         dimension of the array. If bools are supplied, they will be converted
         to a FlatIndex with the corresponding dualness, and no subindex
         information.
+    symmetry : str or Symmetry, optional
+        The symmetry of the array, if not using a specific symmetry class.
     """
 
     __slots__ = (
@@ -127,7 +129,9 @@ class AbelianArrayFlat(
         return self
 
     @classmethod
-    def from_blocks(cls, blocks, indices, symmetry=None) -> "AbelianArrayFlat":
+    def from_blocks(
+        cls, blocks, indices, symmetry=None, label=None
+    ) -> "AbelianArrayFlat":
         """Create a flat array from an explicit dictionary of blocks, and
         sequence of indices or duals.
 
@@ -141,6 +145,12 @@ class AbelianArrayFlat(
             information for each dimension of the array. If bools are supplied,
             they will be converted to a FlatIndex with the corresponding
             dualness, and no subindex information.
+        symmetry : str or Symmetry, optional
+            The symmetry of the array, if not using a specific symmetry class.
+        label : hashable, optional
+            An optional label for the array, potentially needed for ordering
+            dummy odd fermionic modes.
+
 
         Returns
         -------
@@ -152,7 +162,13 @@ class AbelianArrayFlat(
             blocks = ar.do("stack", tuple(blocks.values()))
         else:
             blocks = []
-        return cls(sectors, blocks, indices, symmetry=symmetry)
+        return cls(
+            sectors,
+            blocks,
+            indices,
+            symmetry=symmetry,
+            label=label,
+        )
 
     @classmethod
     def from_blocksparse(
@@ -166,11 +182,14 @@ class AbelianArrayFlat(
         ----------
         x : AbelianArray
             The blocksparse abelian array to convert.
+        symmetry : str or Symmetry, optional
+            The symmetry to use. If not supplied, the symmetry of `x` is used.
         """
         return cls.from_blocks(
             blocks=x.blocks,
             indices=x.duals,
             symmetry=symmetry or x.symmetry,
+            label=x.label,
         )
 
     def to_blocksparse(self) -> AbelianArray:
@@ -187,6 +206,9 @@ class AbelianArrayFlat(
             A dense array with the same shape as this abelian array.
         """
         return self._to_dense_abelian()
+
+    def _map_blocks(self, fn_sector=None, fn_block=None):
+        self._map_blocks_abelian(fn_sector=fn_sector, fn_block=fn_block)
 
     def sort_stack(
         self,
@@ -364,52 +386,6 @@ class AbelianArrayFlat(
         AbelianArrayFlat
         """
         return self._squeeze_abelian(axis, inplace=inplace)
-
-    def isel(self, axis, idx, inplace=False):
-        """Select a single (linear) index along the specified axis. The linear
-        index is first converted to the corresponding charge and offset within
-        that charge sector.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to select along.
-        idx : int
-            The linear index to select.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-        """
-        if axis < 0:
-            axis += self.ndim
-        charge, offset = self.indices[axis].linear_to_charge_and_offset(idx)
-        new = self.select_charge(
-            axis, charge, subselect=(offset,), inplace=inplace
-        )
-        return new.squeeze(axis, inplace=True)
-
-    def __getitem__(self, item):
-        axis = None
-        idx = None
-
-        if not isinstance(item, tuple):
-            raise TypeError(
-                f"Expected a tuple for indexing, got {type(item)}: {item}"
-            )
-
-        for i, s in enumerate(item):
-            if isinstance(s, slice):
-                if not s.start is s.stop is s.step is None:
-                    raise NotImplementedError("Can only slice whole axes.")
-            else:
-                if axis is not None:
-                    raise ValueError(
-                        "Can only index one axis at a time, "
-                        f"got {item} with multiple indices."
-                    )
-                axis = i
-                idx = s
-
-        return self.isel(axis, idx)
 
     def allclose(self, other: "AbelianArrayFlat", **allclose_opts) -> bool:
         """Check if two flat abelian arrays are equal to within some tolerance,

@@ -72,7 +72,12 @@ class BlockCommon:
         """Get an iterator over all blocks of the array."""
         return self._blocks.values()
 
-    def _map_blocks_blockcommon(self, fn_block=None, fn_sector=None):
+    def _map_blocks_blockcommon(
+        self,
+        fn_block=None,
+        fn_sector=None,
+        fn_filter=None,
+    ):
         """Map the blocks and their keys (sectors) of the array inplace."""
         if fn_block is None:
             fn_block = _identity
@@ -80,13 +85,19 @@ class BlockCommon:
         if fn_sector is None:
             fn_sector = _identity
 
+        if fn_filter is None:
+
+            def fn_filter(sector):
+                return True
+
         self._blocks = {
             fn_sector(sector): fn_block(block)
             for sector, block in self.get_sector_block_pairs()
+            if fn_filter(sector)
         }
 
     @lazyabstractmethod
-    def _map_blocks(self, fn_block=None, fn_sector=None):
+    def _map_blocks(self, fn_block=None, fn_sector=None, fn_filter=None):
         pass
 
     def get_any_sector(self):
