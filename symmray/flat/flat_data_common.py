@@ -104,7 +104,7 @@ class FlatCommon:
         """Interface for getting underlying arrays."""
         return self._blocks
 
-    def set_params(self, params):
+    def _set_params_flatcommon(self, params):
         """Interface for setting underlying arrays."""
         self._blocks = params
         self.backend = ar.infer_backend(self._blocks)

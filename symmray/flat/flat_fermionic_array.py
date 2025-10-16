@@ -272,6 +272,20 @@ class FermionicArrayFlat(
             self.check()
         return self
 
+    def set_params(self, params):
+        """Set the underlying array blocks."""
+        self._set_params_flatcommon(params)
+
+        if self._phases is not None:
+            try:
+                self._phases = ar.do("array", self._phases, like=self.backend)
+            except ImportError:
+                # params is possibly a placeholder of some kind
+                pass
+
+        if DEBUG:
+            self.check()
+
     def _map_blocks(self, fn_sector=None, fn_block=None):
         self._map_blocks_abelian(fn_sector=fn_sector, fn_block=fn_block)
         if fn_sector is not None:
@@ -582,8 +596,7 @@ class FermionicArrayFlat(
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
             #                     <--
             # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            opar = ar.do("sum", self.odd_parities, like=self.backend) % 2
-            sign = (-1) ** (self.parity * opar)
+            sign = (-1) ** (self.parity * sum(self.odd_parities) % 2)
             self.modify(phases=self.phases * sign)
 
     def _resolve_oddpos_combine(self, a, b):
@@ -607,9 +620,7 @@ class FermionicArrayFlat(
         # 1. initially we have:
         # left dummy modes | left real modes | right dummy modes | right real modes
         # so we must calc phase from moving right dummy modes past left real modes
-        phase = (-1) ** (
-            a.parity * ar.do("sum", r_odd_parities, like=b.backend) % 2
-        )
+        phase = (-1) ** (a.parity * sum(r_odd_parities) % 2)
 
         # then we want to sort the joint set of left and right dummy modes,
         perm = sorted(range(len(oddpos)), key=lambda i: oddpos[i])

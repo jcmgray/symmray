@@ -128,6 +128,12 @@ class AbelianArrayFlat(
             self.check()
         return self
 
+    def set_params(self, params):
+        """Set the underlying array blocks."""
+        self._set_params_flatcommon(params)
+        if DEBUG:
+            self.check()
+
     @classmethod
     def from_blocks(
         cls, blocks, indices, symmetry=None, label=None
