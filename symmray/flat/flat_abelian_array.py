@@ -523,7 +523,7 @@ class AbelianArrayFlat(
         uh : AbelianArrayFlat
             The abelian array of right eigenvectors.
         """
-        self._eigh_truncated_abelian(
+        return self._eigh_truncated_abelian(
             cutoff=cutoff,
             cutoff_mode=cutoff_mode,
             max_bond=max_bond,
