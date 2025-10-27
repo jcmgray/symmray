@@ -5,8 +5,6 @@ import autoray as ar
 from ..linalg import (
     eigh,
     eigh_truncated,
-    qr,
-    qr_stabilized,
     svd,
     svd_truncated,
 )
@@ -16,69 +14,6 @@ from .flat_array_common import FlatArrayCommon
 from .flat_fermionic_array import FermionicArrayFlat
 from .flat_index import FlatIndex
 from .flat_vector import FlatVector
-
-
-@qr.register(AbelianArrayFlat)
-def qr_abelian(
-    x: AbelianArrayFlat,
-    stabilized=False,
-):
-    if x.ndim != 2:
-        raise ValueError("QR is only defined for 2D AbelianArrayFlat objects.")
-
-    qb, rb = ar.do("linalg.qr", x._blocks, like=x.backend)
-
-    if stabilized:
-        # make each r-factor have positive diagonal
-        rbd = ar.do("diagonal", rb, axis1=1, axis2=2, like=x.backend)
-        r0 = rbd == 0
-        s = (rbd + r0) / (ar.do("abs", rbd, like=x.backend) + r0)
-
-        qb = qb * s[:, None, :]
-        rb = rb * s[:, :, None]
-
-    ixl, ixr = x.indices
-
-    # drop fusing info from bond
-    bond_ind = FlatIndex(
-        num_charges=ixr.num_charges,
-        charge_size=min(ixl.charge_size, ixr.charge_size),
-        dual=ixr.dual,
-    )
-
-    q = x.copy_with(
-        blocks=qb,
-        indices=(ixl, bond_ind),
-    )
-
-    # R is always charge 0 and thus block diagonal
-    # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
-    r = x.__class__(
-        sectors=x.sectors[:, (1, 1)],
-        blocks=rb,
-        indices=(bond_ind.conj(), ixr),
-        symmetry=x.symmetry,
-    )
-
-    return q, r
-
-
-@qr.register(FermionicArrayFlat)
-def qr_fermionic(x: FermionicArrayFlat, stabilized=False):
-    # XXX: combine into fermionic common
-    q, r = qr_abelian(x.phase_sync(), stabilized=stabilized)
-    if r.indices[0].dual:
-        # inner index is like |x><x| so introduce a phase flip
-        r.phase_flip(0, inplace=True)
-    return q, r
-
-
-@qr_stabilized.register(FlatArrayCommon)
-def qr_stabilized_flat(
-    x: FlatArrayCommon,
-):
-    q, r = qr(x, stabilized=True)
-    return q, None, r
 
 
 @svd.register(AbelianArrayFlat)

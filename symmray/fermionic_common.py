@@ -415,3 +415,34 @@ class FermionicCommon:
         return self.phase_sync()._test_allclose_abelian(
             other.phase_sync(), **allclose_opts
         )
+
+    # --------------------------- linalg methods ---------------------------- #
+
+    def qr(
+        self, stabilized=False
+    ) -> tuple["FermionicCommon", "FermionicCommon"]:
+        """QR decomposition of a fermionic array.
+
+        Parameters
+        ----------
+        x : FermionicCommon
+            The fermionic array to decompose.
+        stabilized : bool, optional
+            Whether to use a stabilized QR decomposition, that is, with
+            positive diagonal elements in the R factor. Default is False.
+
+        Returns
+        -------
+        q : FermionicCommon
+            The orthogonal matrix.
+        r : FermionicCommon
+            The upper triangular matrix.
+        """
+        x = self.phase_sync()
+        q, r = x._qr_abelian(stabilized=stabilized)
+
+        if r.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            r.phase_flip(0, inplace=True)
+
+        return q, r

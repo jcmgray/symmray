@@ -1475,6 +1475,53 @@ class FlatArrayCommon:
 
         return True
 
+    # --------------------------- linalg methods ---------------------------- #
+
+    def _qr_abelian(
+        self,
+        stabilized=False,
+    ) -> tuple["FlatArrayCommon", "FlatArrayCommon"]:
+        if self.ndim != 2:
+            raise ValueError(
+                "QR is only defined for 2D AbelianArrayFlat objects."
+            )
+
+        qb, rb = ar.do("linalg.qr", self._blocks, like=self.backend)
+
+        if stabilized:
+            # make each r-factor have positive diagonal
+            rbd = ar.do("diagonal", rb, axis1=1, axis2=2, like=self.backend)
+            r0 = rbd == 0
+            s = (rbd + r0) / (ar.do("abs", rbd, like=self.backend) + r0)
+
+            qb = qb * s[:, None, :]
+            rb = rb * s[:, :, None]
+
+        ixl, ixr = self.indices
+
+        # drop fusing info from bond
+        bond_ind = FlatIndex(
+            num_charges=ixr.num_charges,
+            charge_size=min(ixl.charge_size, ixr.charge_size),
+            dual=ixr.dual,
+        )
+
+        q = self.copy_with(
+            blocks=qb,
+            indices=(ixl, bond_ind),
+        )
+
+        # R is always charge 0 and thus block diagonal
+        # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
+        r = self.__class__(
+            sectors=self.sectors[:, (1, 1)],
+            blocks=rb,
+            indices=(bond_ind.conj(), ixr),
+            symmetry=self.symmetry,
+        )
+
+        return q, r
+
 
 def tensordot_flat_fused(
     a: FlatArrayCommon,

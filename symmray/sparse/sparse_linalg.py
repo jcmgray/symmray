@@ -7,9 +7,6 @@ import autoray as ar
 from ..linalg import (
     eigh,
     eigh_truncated,
-    norm,
-    qr,
-    qr_stabilized,
     solve,
     svd,
     svd_truncated,
@@ -19,128 +16,6 @@ from .sparse_abelian_array import AbelianArray
 from .sparse_array_common import BlockIndex, SparseArrayCommon
 from .sparse_fermionic_array import FermionicArray
 from .sparse_vector import BlockVector
-
-
-@norm.register(AbelianArray)
-def norm_abelian(x: AbelianArray):
-    """Compute the frobenius norm of an AbelianArray."""
-    return x.norm()
-
-
-@functools.cache
-def _get_qr_fn(backend, stabilized=False):
-    """The lower level qr_stabilized is not necessarily already defined."""
-    _qr = ar.get_lib_fn(backend, "linalg.qr")
-
-    if not stabilized:
-        return _qr
-
-    try:
-        _qr_stab = ar.get_lib_fn(backend, "qr_stabilized")
-
-        def _qr(x):
-            q, _, r = _qr_stab(x)
-            return q, r
-
-    except ImportError:
-        _qr_ubstab = _qr
-        _diag = ar.get_lib_fn(backend, "diag")
-        _reshape = ar.get_lib_fn(backend, "reshape")
-        _abs = ar.get_lib_fn(backend, "abs")
-
-        def _sgn(x):
-            x0 = x == 0.0
-            return (x + x0) / (_abs(x) + x0)
-
-        def _qr(x):
-            q, r = _qr_ubstab(x)
-            s = _sgn(_diag(r))
-            q = q * _reshape(s, (1, -1))
-            r = r * _reshape(s, (-1, 1))
-            return q, r
-
-    return _qr
-
-
-@qr.register(AbelianArray)
-def qr_abelian(x: AbelianArray, stabilized=False):
-    """QR decomposition of an AbelianArray.
-
-    Parameters
-    ----------
-    x : AbelianArray
-        The block symmetric array to decompose.
-    stabilized : bool, optional
-        Whether to use a stabilized QR decomposition, that is, with positive
-        diagonal elements in the R factor. Default is False.
-
-    Returns
-    -------
-    q : AbelianArray
-        The orthogonal matrix.
-    r : AbelianArray
-        The upper triangular matrix.
-    """
-    if x.ndim != 2:
-        raise NotImplementedError(
-            "qr only implemented for 2D AbelianArrays,"
-            f" got {x.ndim}D. Consider fusing first."
-        )
-
-    # get the 'lower' qr function that acts on the blocks
-    _qr = _get_qr_fn(x.backend, stabilized=stabilized)
-
-    q_blocks = {}
-    r_blocks = {}
-    new_chargemap = {}
-
-    for sector, array in x.get_sector_block_pairs():
-        q, r = _qr(array)
-        q_blocks[sector] = q
-        new_chargemap[sector[1]] = ar.shape(q)[1]
-        # on r charge is 0, and dualnesses always opposite
-        r_sector = (sector[1], sector[1])
-        r_blocks[r_sector] = r
-
-    bond_index = BlockIndex(new_chargemap, dual=x.indices[1].dual)
-
-    q = x.copy_with(
-        indices=(x.indices[0], bond_index),
-        blocks=q_blocks,
-    )
-    # XXX: use copy_with here? -> only if we drop phases/oddpos...
-    r = x.__class__(
-        indices=(bond_index.conj(), x.indices[1]),
-        charge=x.symmetry.combine(),
-        blocks=r_blocks,
-        symmetry=x.symmetry,
-    )
-
-    if DEBUG:
-        q.check()
-        r.check()
-        q.check_with(r, (1,), (0,))
-
-    return q, r
-
-
-@qr.register(FermionicArray)
-def qr_fermionic(x: FermionicArray, stabilized=False):
-    q, r = qr_abelian(
-        x.phase_sync(),
-        stabilized=stabilized,
-    )
-    if r.indices[0].dual:
-        # inner index is like |x><x| so introduce a phase flip
-        r.phase_flip(0, inplace=True)
-
-    return q, r
-
-
-@qr_stabilized.register(SparseArrayCommon)
-def qr_stabilized_abelian(x: SparseArrayCommon):
-    q, r = qr(x, stabilized=True)
-    return q, None, r
 
 
 def get_numpy_svd_with_fallback():

@@ -17,21 +17,17 @@ def eigh_truncated(x, *args, **kwargs):
     )
 
 
-@functools.singledispatch
 def norm(x, *args, **kwargs):
     return x.norm(*args, **kwargs)
 
 
-@functools.singledispatch
 def qr(x, *args, **kwargs):
-    raise NotImplementedError("qr is not implemented for this type.")
+    return x.qr(*args, **kwargs)
 
 
-@functools.singledispatch
 def qr_stabilized(x, *args, **kwargs):
-    raise NotImplementedError(
-        "qr_stabilized is not implemented for this type."
-    )
+    q, r = x.qr(*args, stabilized=True, **kwargs)
+    return q, None, r
 
 
 @functools.singledispatch
