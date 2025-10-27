@@ -66,7 +66,7 @@ def qr_abelian(
 @qr.register(FermionicArrayFlat)
 def qr_fermionic(x: FermionicArrayFlat, stabilized=False):
     # XXX: combine into fermionic common
-    q, r = qr_abelian(x, stabilized=stabilized)
+    q, r = qr_abelian(x.phase_sync(), stabilized=stabilized)
     if r.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
         r.phase_flip(0, inplace=True)
@@ -136,7 +136,7 @@ def svd_fermionic(
     x: FermionicArrayFlat,
 ) -> tuple[FermionicArrayFlat, FlatVector, FermionicArrayFlat]:
     # XXX: combine into fermionic common?
-    u, s, vh = svd_abelian(x)
+    u, s, vh = svd_abelian(x.phase_sync())
 
     if vh.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
@@ -281,7 +281,7 @@ def eigh_abelian(
 
 @eigh.register(FermionicArrayFlat)
 def eigh_fermionic(a: FermionicArrayFlat):
-    eigenvalues, eigenvectors = eigh_abelian(a)
+    eigenvalues, eigenvectors = eigh_abelian(a.phase_sync())
 
     if not a.indices[1].dual:
         # inner index is like |x><x| so introduce a phase flip,

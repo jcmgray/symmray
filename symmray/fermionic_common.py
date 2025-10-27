@@ -361,6 +361,26 @@ class FermionicCommon:
         # actually do the data squeeze
         return new._squeeze_abelian(axes_squeeze, inplace=True)
 
+    def dagger_project_left(self) -> "FermionicCommon":
+        """Take the dagger (conjugate transpose) of this fermionic array,
+        assuming we are going to use to projector from the left on another
+        operator.
+        """
+        new = self._dagger_abelian()
+        if new.indices[-1].dual:
+            new.phase_flip(-1, inplace=True)
+        return new
+
+    def dagger_project_right(self) -> "FermionicCommon":
+        """Take the dagger (conjugate transpose) of this fermionic array,
+        assuming we are going to use to projector from the right on another
+        operator.
+        """
+        new = self._dagger_abelian()
+        if not new.indices[0].dual:
+            new.phase_flip(0, inplace=True)
+        return new
+
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a
         tolerance, accounting for phases.

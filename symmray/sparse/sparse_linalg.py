@@ -126,7 +126,10 @@ def qr_abelian(x: AbelianArray, stabilized=False):
 
 @qr.register(FermionicArray)
 def qr_fermionic(x: FermionicArray, stabilized=False):
-    q, r = qr_abelian(x, stabilized=stabilized)
+    q, r = qr_abelian(
+        x.phase_sync(),
+        stabilized=stabilized,
+    )
     if r.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
         r.phase_flip(0, inplace=True)
@@ -210,7 +213,7 @@ def svd_abelian(x: AbelianArray):
 
 @svd.register(FermionicArray)
 def svd_fermionic(x: FermionicArray):
-    u, s, vh = svd_abelian(x)
+    u, s, vh = svd_abelian(x.phase_sync())
 
     if vh.indices[0].dual:
         # inner index is like |x><x| so introduce a phase flip
@@ -512,26 +515,9 @@ def eigh_abelian(a: AbelianArray):
     return eigenvalues, eigenvectors
 
 
-@eigh.register(FermionicArray)
-def eigh_fermionic(a: FermionicArray):
-    eigenvalues, eigenvectors = eigh_abelian(a)
-
-    if not a.indices[1].dual:
-        symm = a.symmetry
-        # inner index is like |x><x| so introduce a phase flip,
-        # we don't explicitly have Wdag so put phase in eigenvalues
-        # XXX: is this the most compatible thing to do?
-        # it means ev @ diag(el) @ ev.H == a always
-        for c in eigenvalues.sectors:
-            if symm.parity(c):
-                eigenvalues.set_block(c, -eigenvalues.get_block(c))
-
-    return eigenvalues, eigenvectors
-
-
-@eigh_truncated.register(SparseArrayCommon)
+@eigh_truncated.register(AbelianArray)
 def eigh_truncated_abelian(
-    a: SparseArrayCommon,
+    a: AbelianArray,
     cutoff=-1.0,
     cutoff_mode=4,
     max_bond=-1,
@@ -549,7 +535,7 @@ def eigh_truncated_abelian(
             UserWarning,
         )
 
-    s, U = eigh(a)
+    s, U = eigh_abelian(a)
 
     # inplace sort by descending magnitude
     for sector, charge in zip(U.sectors, s.sectors):
@@ -576,6 +562,86 @@ def eigh_truncated_abelian(
         U,
         s,
         U.H,
+        cutoff,
+        cutoff_mode,
+        max_bond,
+        absorb,
+        renorm,
+        backend=a.backend,
+        use_abs=True,
+    )
+
+
+@eigh.register(FermionicArray)
+def eigh_fermionic(a: FermionicArray, phase_eigenvalues=True):
+    eigenvalues, eigenvectors = eigh_abelian(a.phase_sync())
+
+    if phase_eigenvalues and (not a.indices[1].dual):
+        symm = a.symmetry
+        # inner index is like |x><x| so introduce a phase flip,
+        # we don't explicitly have Wdag so put phase in eigenvalues
+        # XXX: is this the most compatible thing to do?
+        # it means ev @ diag(el) @ ev.H == a always
+        for c in eigenvalues.sectors:
+            if symm.parity(c):
+                eigenvalues.set_block(c, -eigenvalues.get_block(c))
+
+    return eigenvalues, eigenvectors
+
+
+@eigh_truncated.register(FermionicArray)
+def eigh_truncated_fermionic(
+    a: FermionicArray,
+    cutoff=-1.0,
+    cutoff_mode=4,
+    max_bond=-1,
+    absorb=0,
+    renorm=0,
+    positive=0,
+    **kwargs,
+):
+    if kwargs:
+        import warnings
+
+        warnings.warn(
+            f"Got unexpected kwargs {kwargs} in eigh_truncated "
+            "for AbelianArrayFlat. Ignoring them.",
+            UserWarning,
+        )
+
+    # since we are handling UH, we can add phase there
+    s, U = eigh_fermionic(a, phase_eigenvalues=False)
+
+    # inplace sort by descending magnitude
+    for sector, charge in zip(U.sectors, s.sectors):
+        evals = s.get_block(charge)
+        evecs = U.get_block(sector)
+
+        if not positive:
+            idx = ar.do(
+                "argsort", -ar.do("abs", evals, like=a.backend), like=a.backend
+            )
+            s.set_block(charge, evals[idx])
+            U.set_block(sector, evecs[:, idx])
+        else:
+            # assume positive, just need to flip
+            s.set_block(charge, evals[::-1])
+            U.set_block(sector, evecs[:, ::-1])
+
+    if DEBUG:
+        U.check()
+        s.check()
+        U.check_with(s, 1)
+
+    VH = U._dagger_abelian()
+    if VH.indices[0].dual:
+        # inner index is like |x><x| so introduce a phase flip
+        VH.phase_flip(0, inplace=True)
+
+    return _truncate_svd_result(
+        U,
+        s,
+        VH,
         cutoff,
         cutoff_mode,
         max_bond,

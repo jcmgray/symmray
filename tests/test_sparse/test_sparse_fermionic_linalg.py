@@ -255,10 +255,102 @@ def test_eigh_fermionic(symm, seed, dtype):
         seed=seed,
     )
     # needs to be hermitian for eigh
-    x = x + x.H
+    for sector, block in x.get_sector_block_pairs():
+        x.set_block(sector, block + block.conj().T)
     el, ev = sr.linalg.eigh(x)
     # reconstruct the matrix
     y = sr.multiply_diagonal(ev, el, 1) @ ev.H
+    y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("dtype", ("float64", "complex128"))
+def test_eigh_truncated_fermionic(symm, seed, dtype):
+    d = 10
+    i = sr.utils.rand_index(
+        symm,
+        d,
+        subsizes=None,
+        seed=seed,
+    )
+    x = sr.utils.get_rand(
+        symm,
+        shape=(i, i.conj()),
+        fermionic=True,
+        dtype=dtype,
+        seed=seed,
+    )
+    # needs to be hermitian for eigh
+    for sector, block in x.get_sector_block_pairs():
+        x.set_block(sector, block + block.conj().T)
+    u, s, vh = sr.linalg.eigh_truncated(x, max_bond=-1, absorb=None)
+    # reconstruct the matrix
+    y = sr.multiply_diagonal(u, s, 1) @ vh
+    y.test_allclose(x)
+
+    z = u @ u.dagger_project_left() @ x @ vh.dagger_project_right() @ vh
+    z.test_allclose(x)
+
+
+@pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("dtype", ("float64", "complex128"))
+def test_eigh_truncated_fermionic_fsued(symm, seed, dtype):
+    import cotengra as ctg
+
+    di = 4
+    dj = 3
+    i = sr.utils.rand_index(
+        symm,
+        di,
+        subsizes=None,
+        seed=seed,
+    )
+    j = sr.utils.rand_index(
+        symm,
+        dj,
+        subsizes=None,
+        seed=seed,
+    )
+
+    x = sr.utils.get_rand(
+        symm,
+        (i, j, i.conj(), j.conj()),
+        fermionic=True,
+        dtype=dtype,
+    )
+    x.randomize_phases(inplace=True)
+
+    xf = x.fuse((0, 1), (2, 3))
+
+    for sector, block in xf.get_sector_block_pairs():
+        xf.set_block(sector, block + block.conj().T)
+
+    # get unfused hermitian version
+    x = xf.unfuse_all()
+
+    # decompose
+    u, s, vh = ar.do("eigh_truncated", xf, absorb=None)
+
+    # reconstruct
+    y = u.multiply_diagonal(s, axis=1) @ vh
+    y.unfuse_all().test_allclose(x)
+
+    # recostruct via identity resolved projectors
+    udag = u.dagger_project_left().unfuse_all()
+    vhdag = vh.dagger_project_right().unfuse_all()
+    y = ctg.array_contract(
+        arrays=[u.unfuse_all(), udag, x, vhdag, vh.unfuse_all()],
+        inputs=[
+            tuple("abc"),
+            tuple("cde"),
+            tuple("defg"),
+            tuple("fgh"),
+            tuple("hij"),
+        ],
+        output=tuple("abij"),
+    )
     y.test_allclose(x)
 
 
@@ -303,3 +395,35 @@ def test_solve_fermionic_2d(symm, seed, b_charge):
     )
     x = sr.linalg.solve(A, b)
     (A @ x).test_allclose(b)
+
+
+@pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(20))
+def test_svd_projector_identity(symm, seed):
+    import cotengra as ctg
+
+    x = sr.utils.get_rand(
+        symm,
+        (4, 4, 5, 3),
+        fermionic=True,
+        seed=seed,
+    )
+    x.randomize_phases(inplace=True)
+    xf = x.fuse((0, 1), (2, 3))
+
+    u, s, vh = ar.do("linalg.svd", xf)
+    udag = u.dagger_project_left()
+    vhdag = vh.dagger_project_right()
+
+    udag = udag.unfuse_all()
+    vhdag = vhdag.unfuse_all()
+
+    z = ctg.einsum(
+        "abc,cde,defg,fgh,hij->abij",
+        u.unfuse_all(),
+        udag,
+        x,
+        vhdag,
+        vh.unfuse_all(),
+    )
+    z.test_allclose(x)
