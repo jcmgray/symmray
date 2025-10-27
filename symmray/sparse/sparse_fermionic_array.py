@@ -11,8 +11,10 @@ from ..utils import DEBUG, get_rng
 from .sparse_array_common import (
     SparseArrayCommon,
     permuted,
+    truncate_svd_result_blocksparse,
 )
 from .sparse_data_common import BlockCommon
+from .sparse_vector import BlockVector
 
 
 def argsort(seq):
@@ -681,6 +683,151 @@ class FermionicArray(
         new._resolve_oddpos_conj(phase_permutation=True)
 
         return new
+
+    # --------------------------- linalg methods ---------------------------- #
+    # note: most are in fermionic_common.py
+
+    def eigh(
+        self,
+        phase_eigenvalues=True,
+        **kwargs,
+    ) -> tuple["BlockVector", "FermionicArray"]:
+        """Eigenvalue decomposition of this assumed Hermitian block sparse
+        fermionic array.
+
+        Parameters
+        ----------
+        phase_eigenvalues : bool, optional
+            If True, any local phase will be absorbed into the eigenvalues,
+            such that `U @ diag(w) @ U.H == a` always holds. By default
+            True. If `False` then one of `U` or `U.H` should be phased
+            individually to account for local phasesin the above expression.
+
+        Returns
+        -------
+        w : BlockVector
+            The eigenvalues as a vector. If `phase_eigenvalues` is True, then
+            eigenvalues corresponding to odd parity sectors will be negated
+            depending of the inner index dualness.
+        U : FermionicArray
+            The array of eigenvectors.
+        """
+        x = self.phase_sync()
+        w, U = x._eigh_abelian(**kwargs)
+
+        if phase_eigenvalues and (not x.indices[1].dual):
+            symm = x.symmetry
+            # inner index is like |x><x| so introduce a phase flip,
+            # we don't explicitly have Wdag so put phase in eigenvalues
+            # XXX: is this the most compatible thing to do?
+            # it means U @ diag(w) @ U.H == a always
+            for c in w.sectors:
+                if symm.parity(c):
+                    w.set_block(c, -w.get_block(c))
+
+        return w, U
+
+    def eigh_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        positive=0,
+        **kwargs,
+    ) -> tuple["FermionicArray", BlockVector, "FermionicArray"]:
+        """Truncated hermitian eigen-decomposition of this assumed hermitian
+        block sparse fermionic array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Absolute eigenvalue cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the eigenvalues.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return eigenvalues as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
+
+        Returns
+        -------
+        u : FermionicArray
+            The fermionic array of left eigenvectors.
+        w : BlockVector or None
+            The vector of eigenvalues, or None if absorbed.
+        uh : FermionicArray
+            The fermionic array of right eigenvectors.
+        """
+        if kwargs:
+            import warnings
+
+            warnings.warn(
+                f"Got unexpected kwargs {kwargs} in eigh_truncated "
+                f"for {self.__class__}. Ignoring them.",
+                UserWarning,
+            )
+
+        # since we are handling UH, we can add phase there
+        w, U = self.eigh(phase_eigenvalues=False)
+
+        # inplace sort by descending magnitude
+        for sector, charge in zip(U.sectors, w.sectors):
+            evals = w.get_block(charge)
+            evecs = U.get_block(sector)
+
+            if not positive:
+                idx = ar.do(
+                    "argsort",
+                    -ar.do("abs", evals, like=self.backend),
+                    like=self.backend,
+                )
+                w.set_block(charge, evals[idx])
+                U.set_block(sector, evecs[:, idx])
+            else:
+                # assume positive, just need to flip
+                w.set_block(charge, evals[::-1])
+                U.set_block(sector, evecs[:, ::-1])
+
+        if DEBUG:
+            U.check()
+            w.check()
+            U.check_with(w, 1)
+
+        VH = U._dagger_abelian()
+        if VH.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            VH.phase_flip(0, inplace=True)
+
+        return truncate_svd_result_blocksparse(
+            U,
+            w,
+            VH,
+            cutoff,
+            cutoff_mode,
+            max_bond,
+            absorb,
+            renorm,
+            backend=self.backend,
+            use_abs=not positive,
+        )
 
 
 # --------------- specific fermionic symmetric array classes ---------------- #

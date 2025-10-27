@@ -670,3 +670,63 @@ def test_norm(symmetry, ndim, seed):
     fx = x.to_flat()
     n2 = fx.norm()
     assert n1 == pytest.approx(n2)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+@pytest.mark.parametrize("seed", range(2))
+@pytest.mark.parametrize("dtype", ["complex128", "float64"])
+@pytest.mark.parametrize("duals", [(False, True), (True, False)])
+def test_eigh_fermionic_flat(symmetry, seed, dtype, duals):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        (4, 4),
+        fermionic=True,
+        seed=seed,
+        duals=duals,
+        dtype=dtype,
+    )
+    sx.randomize_phases(seed + 1, inplace=True)
+    # needs to be hermitian for eigh
+    for sector, block in sx.get_sector_block_pairs():
+        sx.set_block(sector, block + block.conj().T)
+
+    sw, sU = sr.linalg.eigh(sx)
+    sy = sr.multiply_diagonal(sU, sw, 1) @ sU.H
+    sy.test_allclose(sx)
+
+    fx = sx.to_flat()
+    w, U = sr.linalg.eigh(fx)
+    w.check()
+    U.check()
+
+    assert U.to_blocksparse().test_allclose(sU)
+
+    y = sr.multiply_diagonal(U, w, 1) @ U.H
+    y.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+@pytest.mark.parametrize("seed", range(2))
+@pytest.mark.parametrize("dtype", ["complex128", "float64"])
+@pytest.mark.parametrize("duals", [(False, True), (True, False)])
+def test_eigh_truncated_fermionic_flat(symmetry, seed, dtype, duals):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        (4, 4),
+        fermionic=True,
+        seed=seed,
+        duals=duals,
+        dtype=dtype,
+    )
+    sx.randomize_phases(seed + 1, inplace=True)
+    # needs to be hermitian for eigh
+    for sector, block in sx.get_sector_block_pairs():
+        sx.set_block(sector, block + block.conj().T)
+
+    fx = sx.to_flat()
+    u, w, uh = sr.linalg.eigh_truncated(fx, max_bond=-1, absorb=None)
+    y = sr.multiply_diagonal(u, w, 1) @ uh
+    y.test_allclose(fx)
+
+    z = u @ u.dagger_project_left() @ fx @ uh.dagger_project_right() @ uh
+    z.test_allclose(fx)

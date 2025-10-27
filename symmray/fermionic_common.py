@@ -425,8 +425,6 @@ class FermionicCommon:
 
         Parameters
         ----------
-        x : FermionicCommon
-            The fermionic array to decompose.
         stabilized : bool, optional
             Whether to use a stabilized QR decomposition, that is, with
             positive diagonal elements in the R factor. Default is False.
@@ -446,3 +444,46 @@ class FermionicCommon:
             r.phase_flip(0, inplace=True)
 
         return q, r
+
+    def svd(self):
+        """Singular Value Decomposition of a fermionic array.
+
+        Returns
+        -------
+        u : FermionicCommon
+            Array of left singular vectors.
+        s : VectorCommon
+            Singular values.
+        vh : FermionicCommon
+            Array of right singular vectors.
+        """
+        x = self.phase_sync()
+        u, s, vh = x._svd_abelian()
+
+        if vh.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            vh.phase_flip(0, inplace=True)
+
+        return u, s, vh
+
+    def solve(self, b: "FermionicCommon", **kwargs) -> "FermionicCommon":
+        """Solve linear system Ax = b for x, where A is this fermionic array.
+
+        Parameters
+        ----------
+        b : FermionicCommon
+            The right hand side array.
+
+        Returns
+        -------
+        x : FermionicCommon
+            The solution array.
+        """
+        A = self.phase_sync()
+        x = A._solve_abelian(b.phase_sync(), **kwargs)
+
+        if x.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            x.phase_flip(0, inplace=True)
+
+        return x

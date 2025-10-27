@@ -9,8 +9,9 @@ from ..fermionic_local_operators import FermionicOperator
 from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
-from .flat_array_common import FlatArrayCommon
+from .flat_array_common import FlatArrayCommon, truncate_svd_result_flat
 from .flat_data_common import FlatCommon
+from .flat_vector import FlatVector
 
 
 def perm_to_swaps(perm):
@@ -773,6 +774,135 @@ class FermionicArrayFlat(
         new._resolve_oddpos_conj(phase_permutation=True)
 
         return new
+
+    # ------------------------------- linalg -------------------------------- #
+
+    def eigh(
+        self,
+        phase_eigenvalues=True,
+    ) -> tuple[FlatVector, "FermionicArrayFlat"]:
+        """Hermitian eigen-decomposition of this flat fermionic array.
+
+        Parameters
+        ----------
+        phase_eigenvalues : bool, optional
+            If True, any local phase will be absorbed into the eigenvalues,
+            such that `U @ diag(w) @ U.H == a` always holds. By default
+            True. If `False` then one of `U` or `U.H` should be phased
+            individually to account for local phasesin the above expression.
+
+        Returns
+        -------
+        eigenvalues : FlatVector
+            The eigenvalues.
+        eigenvectors : FermionicArrayFlat
+            The abelian array of right eigenvectors.
+        """
+        x = self.phase_sync()
+
+        w, U = x._eigh_abelian()
+
+        if phase_eigenvalues and not x.indices[1].dual:
+            # inner index is like |x><x| so introduce a phase flip,
+            # we don't explicitly have Wdag so put phase in eigenvalues
+            # XXX: is this the most compatible thing to do?
+            # it means U @ diag(w) @ U.H == x always
+            parities = w._sectors % 2
+            w.modify(blocks=w._blocks * ((-1) ** parities)[:, None])
+
+        return w, U
+
+    def eigh_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        positive=0,
+        **kwargs,
+    ) -> tuple["FermionicArrayFlat", FlatVector, "FermionicArrayFlat"]:
+        """Truncated hermitian eigen-decomposition of this assumed hermitian
+        flat fermionic array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Absolute eigenvalue cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the eigenvalues.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return eigenvalues as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
+
+        Returns
+        -------
+        u : FermionicArrayFlat
+            The fermionic array of left eigenvectors.
+        w : FlatVector or None
+            The vector of eigenvalues, or None if absorbed.
+        uh : FermionicArrayFlat
+            The fermionic array of right eigenvectors.
+        """
+        if kwargs:
+            import warnings
+
+            warnings.warn(
+                f"Got unexpected kwargs {kwargs} in eigh_truncated "
+                f"for {self.__class__}. Ignoring them.",
+                UserWarning,
+            )
+
+        # since we are handling UH, we can add phase there
+        w, U = self.eigh(phase_eigenvalues=False)
+
+        # make sure to sort by descending absolute value
+        if not positive:
+            idx = ar.do(
+                "argsort", -ar.do("abs", w._blocks, like=self.backend), axis=1
+            )
+            w.modify(
+                blocks=ar.do("take_along_axis", w._blocks, idx, axis=1),
+            )
+            U.modify(
+                blocks=ar.do(
+                    "take_along_axis", U._blocks, idx[:, None, :], axis=2
+                )
+            )
+        else:
+            # assume all positive, just need to flip
+            w.modify(blocks=w._blocks[:, ::-1])
+            U.modify(blocks=U._blocks[:, :, ::-1])
+
+        if DEBUG:
+            w.check()
+            U.check()
+
+        VH = U._dagger_abelian()
+        if VH.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            VH.phase_flip(0, inplace=True)
+
+        return truncate_svd_result_flat(
+            U, w, VH, cutoff, cutoff_mode, max_bond, absorb, renorm
+        )
 
 
 class Z2FermionicArrayFlat(FermionicArrayFlat):

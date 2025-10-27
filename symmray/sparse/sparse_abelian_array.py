@@ -6,6 +6,7 @@ from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .sparse_array_common import SparseArrayCommon
 from .sparse_data_common import BlockCommon
+from .sparse_vector import BlockVector
 
 
 class AbelianArray(
@@ -266,7 +267,9 @@ class AbelianArray(
 
     # --------------------------- linalg methods ---------------------------- #
 
-    def qr(self, stabilized=False) -> tuple["AbelianArray", "AbelianArray"]:
+    def qr(
+        self, stabilized=False, **kwargs
+    ) -> tuple["AbelianArray", "AbelianArray"]:
         """QR decomposition of an AbelianArray.
 
         Parameters
@@ -284,7 +287,119 @@ class AbelianArray(
         r : AbelianArray
             The upper triangular matrix.
         """
-        return self._qr_abelian(stabilized=stabilized)
+        return self._qr_abelian(stabilized=stabilized, **kwargs)
+
+    def svd(
+        self, **kwargs
+    ) -> tuple["AbelianArray", "BlockVector", "AbelianArray"]:
+        """SVD decomposition of an AbelianArray.
+
+        Parameters
+        ----------
+        x : AbelianArray
+            The block symmetric array to decompose.
+
+        Returns
+        -------
+        u : AbelianArray
+            The left singular vectors.
+        s : BlockVector
+            The singular values as a vector.
+        vh : AbelianArray
+            The right singular vectors (hermitian conjugated).
+        """
+        return self._svd_abelian(**kwargs)
+
+    def eigh(self, **kwargs) -> tuple["BlockVector", "AbelianArray"]:
+        """Eigenvalue decomposition of this assumed Hermitian AbelianArray.
+
+        Parameters
+        ----------
+        x : AbelianArray
+            The block symmetric array to decompose.
+
+        Returns
+        -------
+        w : BlockVector
+            The eigenvalues as a vector.
+        u : AbelianArray
+            The array of eigenvectors.
+        """
+        return self._eigh_abelian(**kwargs)
+
+    def eigh_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        positive=0,
+        **kwargs,
+    ) -> tuple["AbelianArray", "BlockVector", "AbelianArray"]:
+        """Truncated hermitian eigen-decomposition of this assumed hermitian
+        block sparse abelian array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Absolute eigenvalue cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the eigenvalues.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return eigenvalues as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
+
+        Returns
+        -------
+        u : AbelianArray
+            The abelian array of left eigenvectors.
+        w : VectorCommon or None
+            The vector of eigenvalues, or None if absorbed.
+        uh : AbelianArray
+            The abelian array of right eigenvectors.
+        """
+        return self._eigh_truncated_abelian(
+            cutoff=cutoff,
+            cutoff_mode=cutoff_mode,
+            max_bond=max_bond,
+            absorb=absorb,
+            renorm=renorm,
+            positive=positive,
+            **kwargs,
+        )
+
+    def solve(self, b: "AbelianArray", **kwargs) -> "AbelianArray":
+        """Solve the linear system `A @ x == b` for x, where A is this array.
+
+        Parameters
+        ----------
+        b : AbelianArray
+            The right-hand side array.
+
+        Returns
+        -------
+        x : AbelianArray
+            The solution array.
+        """
+        return self._solve_abelian(b, **kwargs)
 
 
 # --------------------------------------------------------------------------- #

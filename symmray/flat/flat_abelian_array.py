@@ -20,6 +20,7 @@ from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .flat_array_common import FlatArrayCommon
 from .flat_data_common import FlatCommon
+from .flat_vector import FlatVector
 
 
 class AbelianArrayFlat(
@@ -428,7 +429,7 @@ class AbelianArrayFlat(
         self,
         stabilized=False,
     ) -> tuple["AbelianArrayFlat", "AbelianArrayFlat"]:
-        """QR decomposition of an AbelianArrayFlat.
+        """QR decomposition of this flat abelian array.
 
         Parameters
         ----------
@@ -446,6 +447,91 @@ class AbelianArrayFlat(
             The upper triangular matrix.
         """
         return self._qr_abelian(stabilized=stabilized)
+
+    def svd(self) -> tuple["AbelianArrayFlat", FlatVector, "AbelianArrayFlat"]:
+        """Singular value decomposition of this flat abelian array.
+
+        Returns
+        -------
+        u : AbelianArrayFlat
+            The left singular vectors.
+        s : FlatVector
+            The singular values.
+        vh : AbelianArrayFlat
+            The right singular vectors (hermitian transposed).
+        """
+        return self._svd_abelian()
+
+    def eigh(self) -> tuple[FlatVector, "AbelianArrayFlat"]:
+        """Hermitian eigen-decomposition of this flat abelian array.
+
+        Returns
+        -------
+        eigenvalues : FlatVector
+            The eigenvalues.
+        eigenvectors : AbelianArrayFlat
+            The abelian array of right eigenvectors.
+        """
+        return self._eigh_abelian()
+
+    def eigh_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        positive=0,
+        **kwargs,
+    ) -> tuple["AbelianArrayFlat", FlatVector, "AbelianArrayFlat"]:
+        """Truncated hermitian eigen-decomposition of this assumed hermitian
+        flat abelian array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Absolute eigenvalue cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the eigenvalues.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return eigenvalues as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
+
+        Returns
+        -------
+        u : AbelianArrayFlat
+            The abelian array of left eigenvectors.
+        w : VectorCommon or None
+            The vector of eigenvalues, or None if absorbed.
+        uh : AbelianArrayFlat
+            The abelian array of right eigenvectors.
+        """
+        self._eigh_truncated_abelian(
+            cutoff=cutoff,
+            cutoff_mode=cutoff_mode,
+            max_bond=max_bond,
+            absorb=absorb,
+            renorm=renorm,
+            positive=positive,
+            **kwargs,
+        )
 
 
 class Z2ArrayFlat(AbelianArrayFlat):

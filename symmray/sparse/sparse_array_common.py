@@ -1844,6 +1844,262 @@ class SparseArrayCommon:
 
         return q, r
 
+    def _svd_abelian(self):
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "svd only implemented for 2D AbelianArrays,"
+                f" got {self.ndim}D. Consider fusing first."
+            )
+
+        if self.backend == "numpy":
+            _svd = get_numpy_svd_with_fallback()
+        else:
+            _svd = ar.get_lib_fn(self.backend, "linalg.svd")
+
+        u_blocks = {}
+        s_store = {}
+        v_blocks = {}
+        new_chargemap = {}
+
+        for sector, array in self.get_sector_block_pairs():
+            u, s, v = _svd(array)
+            u_blocks[sector] = u
+            # v charge is 0, and dualnesses always opposite
+            s_charge = sector[1]
+            v_sector = (s_charge, s_charge)
+            s_store[s_charge] = s
+            v_blocks[v_sector] = v
+            new_chargemap[sector[1]] = ar.shape(u)[1]
+
+        bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
+
+        u = self.copy_with(
+            indices=(self.indices[0], bond_index),
+            blocks=u_blocks,
+        )
+        s = BlockVector(s_store)
+        v = self.__class__(
+            indices=(bond_index.conj(), self.indices[1]),
+            charge=self.symmetry.combine(),
+            blocks=v_blocks,
+            symmetry=self.symmetry,
+        )
+
+        if DEBUG:
+            u.check()
+            s.check()
+            v.check()
+            u.check_with(s, 1)
+            u.check_with(v, (1,), (0,))
+            v.check_with(s, 0)
+
+        return u, s, v
+
+    def svd_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        **kwargs,
+    ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
+        """Truncated singular value decomposition of this sparse abelian
+        symmetric array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Singular value cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the singular values (depends on
+            `cutoff_mode`).
+        """
+        if kwargs:
+            import warnings
+
+            warnings.warn(
+                f"Got unexpected kwargs {kwargs} in svd_truncated "
+                f"for {self.__class__}. Ignoring them.",
+                UserWarning,
+            )
+
+        # raw abelian or fermionic svd
+        U, s, VH = self.svd()
+
+        # then truncate according to the options
+        return truncate_svd_result_blocksparse(
+            U,
+            s,
+            VH,
+            cutoff,
+            _CUTOFF_MODE_MAP[cutoff_mode],
+            max_bond,
+            _ABSORB_MAP[absorb],
+            renorm,
+            backend=self.backend,
+        )
+
+    def _eigh_abelian(self) -> tuple["BlockVector", "SparseArrayCommon"]:
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "eigh only implemented for 2D AbelianArrays,"
+                f" got {self.ndim}D. Consider fusing first."
+            )
+        if self.charge != self.symmetry.combine():
+            raise ValueError(
+                "Total charge much be the identity (zero) element."
+            )
+
+        _eigh = ar.get_lib_fn(self.backend, "linalg.eigh")
+
+        eval_blocks = {}
+        evec_blocks = {}
+
+        for sector, array in self.get_sector_block_pairs():
+            evals, evecs = _eigh(array)
+            charge = sector[1]
+            eval_blocks[charge] = evals
+            evec_blocks[sector] = evecs
+
+        eigenvalues = BlockVector(eval_blocks)
+        eigenvectors = self.copy_with(blocks=evec_blocks)
+
+        if DEBUG:
+            eigenvectors.check_with(eigenvalues, 1)
+            eigenvalues.check()
+
+        return eigenvalues, eigenvectors
+
+    def _eigh_truncated_abelian(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        positive=0,
+        **kwargs,
+    ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
+        if kwargs:
+            import warnings
+
+            warnings.warn(
+                f"Got unexpected kwargs {kwargs} in svd_truncated "
+                f"for {self.__class__}. Ignoring them.",
+                UserWarning,
+            )
+
+        s, U = self._eigh_abelian()
+
+        # inplace sort by descending magnitude
+        for sector, charge in zip(U.sectors, s.sectors):
+            evals = s.get_block(charge)
+            evecs = U.get_block(sector)
+
+            if not positive:
+                idx = ar.do(
+                    "argsort",
+                    -ar.do("abs", evals, like=self.backend),
+                    like=self.backend,
+                )
+                s.set_block(charge, evals[idx])
+                U.set_block(sector, evecs[:, idx])
+            else:
+                # assume positive, just need to flip
+                s.set_block(charge, evals[::-1])
+                U.set_block(sector, evecs[:, ::-1])
+
+        if DEBUG:
+            U.check()
+            s.check()
+            U.check_with(s, 1)
+
+        return truncate_svd_result_blocksparse(
+            U,
+            s,
+            U.H,
+            cutoff,
+            cutoff_mode,
+            max_bond,
+            absorb,
+            renorm,
+            backend=self.backend,
+            use_abs=True,
+        )
+
+    def _solve_abelian(self, b: "SparseArrayCommon") -> "SparseArrayCommon":
+        _solve = ar.get_lib_fn(self.backend, "linalg.solve")
+
+        x_blocks = {}
+        if (self.ndim, b.ndim) == (2, 1):
+            # solve for single vector
+            for sector, array in self.get_sector_block_pairs():
+                b_sector = (sector[0],)
+                if b.has_sector(b_sector):
+                    x_sector = (sector[1],)
+                    x_blocks[x_sector] = _solve(array, b.get_block(b_sector))
+            x_indices = (self.indices[1].conj(),)
+
+        elif (self.ndim, b.ndim) == (2, 2):
+            # solve for stack of vectors
+            map_b_sector = {}
+            for sector in b.gen_valid_sectors():
+                # charge of b array is fixed,
+                # so each sector has unique sector[0]
+                map_b_sector[sector[0]] = sector
+            x_blocks = {}
+            for sector, array in self.get_sector_block_pairs():
+                if sector[0] in map_b_sector:
+                    b_sector = map_b_sector[sector[0]]
+                    b_array = b.get_block(b_sector)
+                    x_sector = (sector[1], b_sector[1])
+                    x_blocks[x_sector] = _solve(array, b_array)
+            x_indices = (self.indices[1].conj(), b.indices[1])
+
+        else:
+            raise NotImplementedError(
+                "solve only implemented for 2D and 1D or 2D and 2D "
+                f"AbelianArrays, got {self.ndim}D and {b.ndim}D. "
+                "Consider fusing first."
+            )
+
+        # c_x = c_b - c_A
+        sym = self.symmetry
+        x_charge = sym.combine(b.charge, sym.sign(self.charge))
+
+        x = b.copy_with(
+            blocks=x_blocks,
+            indices=x_indices,
+            charge=x_charge,
+        )
+
+        if DEBUG:
+            x.check()
+            self.check_with(x, (1,), (0,))
+
+        return x
+
 
 @functools.cache
 def _get_qr_fn(backend, stabilized=False):
@@ -1878,6 +2134,227 @@ def _get_qr_fn(backend, stabilized=False):
             return q, r
 
     return _qr
+
+
+@functools.cache
+def get_numpy_svd_with_fallback():
+    import numpy as np
+
+    def svd_with_fallback(x):
+        try:
+            return np.linalg.svd(x, full_matrices=False)
+        except np.linalg.LinAlgError:
+            import scipy.linalg as sla
+
+            return sla.svd(x, full_matrices=False, lapack_driver="gesvd")
+
+    return svd_with_fallback
+
+
+def argsort(seq):
+    return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+@functools.lru_cache(maxsize=2**14)
+def calc_sub_max_bonds(sizes, max_bond):
+    if max_bond < 0:
+        # no limit
+        return sizes
+
+    # overall fraction of the total bond dimension to use
+    frac = max_bond / sum(sizes)
+    if frac >= 1.0:
+        # keep all singular values
+        return sizes
+
+    # number of singular values to keep in each sector
+    sub_max_bonds = [int(frac * sz) for sz in sizes]
+
+    # distribute any remaining singular values to the smallest sectors
+    rem = max_bond - sum(sub_max_bonds)
+
+    for i in argsort(sub_max_bonds)[:rem]:
+        sub_max_bonds[i] += 1
+
+    return tuple(sub_max_bonds)
+
+
+_CUTOFF_MODE_MAP = {
+    1: 1,
+    "abs": 1,
+    2: 2,
+    "rel": 2,
+    3: 3,
+    "sum2": 3,
+    4: 4,
+    "rsum2": 4,
+    5: 5,
+    "sum1": 5,
+    6: 6,
+    "rsum1": 6,
+}
+
+_ABSORB_MAP = {
+    -1: -1,
+    "left": -1,
+    0: 0,
+    "both": 0,
+    1: 1,
+    "right": 1,
+    None: None,
+}
+
+
+def truncate_svd_result_blocksparse(
+    U: SparseArrayCommon,
+    s: BlockVector,
+    VH: SparseArrayCommon,
+    cutoff: float,
+    cutoff_mode: int,
+    max_bond: int,
+    absorb: int | str | None,
+    renorm: int,
+    backend: str = None,
+    use_abs: bool = False,
+) -> tuple[SparseArrayCommon, BlockVector, SparseArrayCommon]:
+    if renorm:
+        raise NotImplementedError("renorm not implemented yet.")
+
+    if cutoff > 0.0:
+        # first combine all singular values into a single, sorted array
+        sall = s.to_dense()
+        if use_abs:
+            sall = ar.do("abs", sall, like=backend)
+        sall = ar.do("sort", sall, like=backend)
+
+        cutoff_mode = _CUTOFF_MODE_MAP[cutoff_mode]
+
+        if cutoff_mode == 1:
+            # absolute cutoff
+            abs_cutoff = cutoff
+        elif cutoff_mode == 2:
+            # relative cutoff
+            abs_cutoff = sall[-1] * cutoff
+        else:
+            # possibly square singular values
+            power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
+            if power == 1:
+                # sum1 or rsum1
+                cum_spow = ar.do("cumsum", sall, 0, like=backend)
+            else:
+                # sum2 or rsum2
+                cum_spow = ar.do("cumsum", sall**power, 0, like=backend)
+
+            if cutoff_mode in (4, 6):
+                # rsum1 or rsum2: relative cumulative cutoff
+                cond = cum_spow >= cutoff * cum_spow[-1]
+            else:
+                # sum1 or sum2: absolute cumulative cutoff
+                cond = cum_spow >= cutoff
+
+            # translate to total number of singular values to keep
+            n_chi_all = ar.do("count_nonzero", cond, like=backend)
+            # and then to an absolute cutoff value
+            abs_cutoff = sall[-n_chi_all]
+
+        if 0 < max_bond < ar.size(sall):
+            # also take into account a total maximum bond
+            max_bond_cutoff = sall[-max_bond]
+            if max_bond_cutoff > abs_cutoff:
+                abs_cutoff = max_bond_cutoff
+
+        # now find number of values to keep per sector
+        sub_max_bonds = [
+            int(ar.do("count_nonzero", ss >= abs_cutoff, like=backend))
+            for ss in s.get_all_blocks()
+        ]
+    else:
+        # size of each sector
+        sector_sizes = tuple(map(ar.size, s.get_all_blocks()))
+        # distribute max_bond proportionally to sector sizes
+        sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
+
+    new_inner_chargemap = {}
+    for (c0, c1), n_chi in zip(U.sectors, sub_max_bonds):
+        # check how many singular values from this sector are valid
+        if n_chi == 0:
+            # remove this sector entirely
+            U.del_block((c0, c1))
+            s.del_block(c1)
+            VH.del_block((c1, c1))
+            continue
+
+        # slice the values and left and right vectors
+        U.set_block((c0, c1), U.get_block((c0, c1))[:, :n_chi])
+        s.set_block(c1, s.get_block(c1)[:n_chi])
+        VH.set_block((c1, c1), VH.get_block((c1, c1))[:n_chi, :])
+
+        # make sure the index chargemaps are updated too
+        new_inner_chargemap[c1] = n_chi
+
+    new_inner_chargemap = dict(sorted(new_inner_chargemap.items()))
+
+    # make sure to drop the inner fusing info which is not longer valid
+    U.modify(
+        indices=(
+            U.indices[0],
+            U.indices[1].copy_with(
+                chargemap=new_inner_chargemap,
+                subinfo=None,
+            ),
+        )
+    )
+    VH.modify(
+        indices=(
+            VH.indices[0].copy_with(
+                chargemap=new_inner_chargemap,
+                subinfo=None,
+            ),
+            VH.indices[1],
+        )
+    )
+
+    if absorb is None:
+        if DEBUG:
+            U.check_with(s, 1)
+            s.check()
+            VH.check_with(s, 0)
+            U.check_with(VH, (1,), (0,))
+
+        return U, s, VH
+
+    # absorb the singular values block by block
+    for c0, c1 in U.sectors:
+        if absorb in (-1, "left"):
+            U.set_block(
+                (c0, c1),
+                U.get_block((c0, c1)) * s.get_block(c1).reshape((1, -1)),
+            )
+        elif absorb in (1, "right"):
+            VH.set_block(
+                (c1, c1),
+                VH.get_block((c1, c1)) * s.get_block(c1).reshape((-1, 1)),
+            )
+        elif absorb in (0, "both"):
+            s_sqrt = ar.do("sqrt", s.get_block(c1), like=backend)
+            U.set_block(
+                (c0, c1), U.get_block((c0, c1)) * s_sqrt.reshape((1, -1))
+            )
+            VH.set_block(
+                (c1, c1), VH.get_block((c1, c1)) * s_sqrt.reshape((-1, 1))
+            )
+        else:
+            raise ValueError(f"Unknown absorb value: {absorb}")
+
+    if DEBUG:
+        U.check()
+        U.check_with(s, 1)
+        s.check()
+        VH.check()
+        VH.check_with(s, 0)
+        U.check_with(VH, (1,), (0,))
+
+    return U, None, VH
 
 
 # --------------------------------------------------------------------------- #

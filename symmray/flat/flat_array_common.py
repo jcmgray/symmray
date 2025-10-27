@@ -1522,6 +1522,278 @@ class FlatArrayCommon:
 
         return q, r
 
+    def _svd_abelian(
+        self,
+    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
+        if self.ndim != 2:
+            raise ValueError(
+                "SVD is only defined for 2D FlatArrayCommon objects."
+            )
+
+        bu, bs, bvh = ar.do(
+            "linalg.svd",
+            self._blocks,
+            like=self.backend,
+        )
+
+        ixl, ixr = self.indices
+
+        # drop fusing info from bond
+        bond_ind = FlatIndex(
+            num_charges=ixr.num_charges,
+            charge_size=min(ixl.charge_size, ixr.charge_size),
+            dual=ixr.dual,
+        )
+
+        u = self.copy_with(
+            blocks=bu,
+            indices=(ixl, bond_ind),
+        )
+
+        s = FlatVector(
+            sectors=self.sectors[:, -1],
+            blocks=bs,
+        )
+
+        # VH is always charge 0 and thus block diagonal
+        # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
+        vh = self.__class__(
+            sectors=self.sectors[:, (1, 1)],
+            blocks=bvh,
+            indices=(bond_ind.conj(), ixr),
+            symmetry=self.symmetry,
+        )
+
+        if DEBUG:
+            # u and vh checked in copy_with
+            s.check()
+
+        return u, s, vh
+
+    def svd_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        **kwargs,
+    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
+        """Truncated singular value decomposition of this flat abelian
+        symmetric array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Singular value cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the singular values (depends on
+            `cutoff_mode`).
+        """
+        if kwargs:
+            import warnings
+
+            warnings.warn(
+                f"Got unexpected kwargs {kwargs} in svd_truncated "
+                f"for {self.__class__}. Ignoring them.",
+                UserWarning,
+            )
+
+        # raw abelian or fermionic svd
+        u, s, vh = self.svd()
+        return truncate_svd_result_flat(
+            u, s, vh, cutoff, cutoff_mode, max_bond, absorb, renorm
+        )
+
+    def _eigh_abelian(self) -> tuple["FlatArrayCommon", FlatVector]:
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "Eigendecomposition is only defined "
+                "for 2D FlatArrayCommon objects."
+            )
+
+        eval_blocks, evec_blocks = ar.do(
+            "linalg.eigh",
+            self._blocks,
+            like=self.backend,
+        )
+
+        eigenvectors = self.copy_with(blocks=evec_blocks)
+        eigenvalues = FlatVector(
+            sectors=self.sectors[:, -1], blocks=eval_blocks
+        )
+
+        if DEBUG:
+            eigenvectors.check()
+            eigenvalues.check()
+
+        return eigenvalues, eigenvectors
+
+    def _eigh_truncated_abelian(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        positive=0,
+        **kwargs,
+    ):
+        if kwargs:
+            import warnings
+
+            warnings.warn(
+                f"Got unexpected kwargs {kwargs} in eigh_truncated "
+                f"for {self.__class__}. Ignoring them.",
+                UserWarning,
+            )
+
+        s, U = self._eigh_abelian()
+
+        # make sure to sort by descending absolute value
+        if not positive:
+            idx = ar.do(
+                "argsort", -ar.do("abs", s._blocks, like=self.backend), axis=1
+            )
+            s.modify(
+                blocks=ar.do("take_along_axis", s._blocks, idx, axis=1),
+            )
+            U.modify(
+                blocks=ar.do(
+                    "take_along_axis", U._blocks, idx[:, None, :], axis=2
+                )
+            )
+        else:
+            # assume all positive, just need to flip
+            s.modify(blocks=s._blocks[:, ::-1])
+            U.modify(blocks=U._blocks[:, :, ::-1])
+
+        if DEBUG:
+            s.check()
+            U.check()
+
+        # then we can truncate as if svd
+        return truncate_svd_result_flat(
+            U, s, U.H, cutoff, cutoff_mode, max_bond, absorb, renorm
+        )
+
+
+_ABSORB_MAP = {
+    -1: -1,
+    "left": -1,
+    0: 0,
+    "both": 0,
+    1: 1,
+    "right": 1,
+    None: None,
+}
+
+
+def truncate_svd_result_flat(
+    U: FlatArrayCommon,
+    s: FlatVector,
+    VH: FlatArrayCommon,
+    cutoff: float,
+    cutoff_mode: int,
+    max_bond: int,
+    absorb: int,
+    renorm: int,
+):
+    absorb = _ABSORB_MAP[absorb]
+
+    if cutoff > 0.0:
+        raise NotImplementedError(
+            "Cutoff is not implemented for flat SVD yet."
+        )
+
+    if renorm:
+        raise NotImplementedError(
+            "Renormalization is not implemented for flat SVD yet."
+        )
+
+    if max_bond > 0:
+        # we must evenly distribute the bond dimension across charges
+        bond = U.indices[1]
+        # can't make bond larger
+        charge_size = min(
+            bond.charge_size,
+            max_bond // bond.num_charges,
+        )
+
+        # we make sure to drop fusing subinfo from truncated bond
+        U.modify(
+            blocks=U._blocks[:, :, :charge_size],
+            indices=(
+                U.indices[0],
+                U.indices[1].copy_with(
+                    charge_size=charge_size,
+                    subinfo=None,
+                ),
+            ),
+        )
+        s.modify(blocks=s._blocks[:, :charge_size])
+        VH.modify(
+            blocks=VH._blocks[:, :charge_size, :],
+            indices=(
+                VH.indices[0].copy_with(
+                    charge_size=charge_size,
+                    subinfo=None,
+                ),
+                VH.indices[1],
+            ),
+        )
+
+    if absorb is None:
+        if DEBUG:
+            s.check()
+    elif absorb == 0:
+        # absorb sqrt(s) into both U and VH
+        s_sqrt = s.sqrt()
+        U.multiply_diagonal(s_sqrt, axis=1, inplace=True)
+        VH.multiply_diagonal(s_sqrt, axis=0, inplace=True)
+        s = None
+    elif absorb == -1:
+        # absorb s left into U
+        U.multiply_diagonal(s, axis=1, inplace=True)
+        s = None
+    elif absorb == 1:
+        # absorb s right into VH
+        VH.multiply_diagonal(s, axis=0, inplace=True)
+        s = None
+    else:
+        raise ValueError(
+            f"absorb must be 0, -1, 1, or None. Got {absorb} instead."
+        )
+
+    if DEBUG:
+        U.check()
+        VH.check()
+
+    return U, s, VH
+
+
+# ------------------------ tensordot implementations ------------------------ #
+
 
 def tensordot_flat_fused(
     a: FlatArrayCommon,

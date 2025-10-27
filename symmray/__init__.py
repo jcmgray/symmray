@@ -11,7 +11,6 @@ from .fermionic_local_operators import (
     fermi_number_up_local_array,
     fermi_spin_operator_local_array,
 )
-from .flat import flat_linalg
 from .flat.flat_abelian_array import (
     AbelianArrayFlat,
     Z2ArrayFlat,
@@ -67,7 +66,6 @@ from .networks import (
     TN_fermionic_from_edges_rand,
     parse_edges_to_site_info,
 )
-from .sparse import sparse_linalg
 from .sparse.sparse_abelian_array import (
     AbelianArray,
     U1Array,
@@ -128,7 +126,6 @@ __all__ = (
     "FermionicArray",
     "FermionicArrayFlat",
     "FermionicOperator",
-    "flat_linalg",
     "FlatVector",
     "fuse",
     "get_default_tensordot_mode",
@@ -160,7 +157,6 @@ __all__ = (
     "reshape",
     "scipy",
     "set_default_tensordot_mode",
-    "sparse_linalg",
     "sqrt",
     "squeeze",
     "sum",
