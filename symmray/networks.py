@@ -35,7 +35,7 @@ def parse_edges_to_site_info(
     -------
     Dict[hashable, Dict[str, Any]]
     """
-    sites = {}
+    site_info = {}
 
     starmap_ind = site_ind_id.count("{}") > 1
     starmap_tag = site_tag_id.count("{}") > 1
@@ -46,8 +46,8 @@ def parse_edges_to_site_info(
             sitea, siteb = siteb, sitea
 
         ind = bond_ind_id.format(sitea, siteb)
-        infoa = sites.setdefault(sitea, {})
-        infob = sites.setdefault(siteb, {})
+        infoa = site_info.setdefault(sitea, {})
+        infob = site_info.setdefault(siteb, {})
 
         infoa.setdefault("inds", []).append(ind)
         infob.setdefault("inds", []).append(ind)
@@ -59,15 +59,15 @@ def parse_edges_to_site_info(
         infob.setdefault("shape", []).append(bond_dim)
 
     # create physical inds
-    for site in sites:
-        sites[site]["coordination"] = len(sites[site]["inds"])
+    for site in site_info:
+        site_info[site]["coordination"] = len(site_info[site]["inds"])
 
         if starmap_tag:
             site_tag = site_tag_id.format(*site)
         else:
             site_tag = site_tag_id.format(site)
 
-        sites[site]["tags"] = (site_tag,)
+        site_info[site]["tags"] = (site_tag,)
 
         if phys_dim is not None:
             if starmap_ind:
@@ -75,11 +75,14 @@ def parse_edges_to_site_info(
             else:
                 site_ind = site_ind_id.format(site)
 
-            sites[site]["inds"].append(site_ind)
-            sites[site]["duals"].append(0)
-            sites[site]["shape"].append(phys_dim)
+            site_info[site]["inds"].append(site_ind)
+            site_info[site]["duals"].append(0)
+            site_info[site]["shape"].append(phys_dim)
 
-    return sites
+    # put in canonical sorted by site order
+    site_info = {k: site_info[k] for k in sorted(site_info)}
+
+    return site_info
 
 
 _DEFAULT_PHYS_CHARGEMAPS = {
@@ -163,11 +166,12 @@ def TN_abelian_from_edges_rand(
         site_ind_id=site_ind_id,
         site_tag_id=site_tag_id,
     )
+    sites = tuple(site_info.keys())
 
     if phys_dim is not None:
         # have physical sites
         tn = qtn.tensor_arbgeom.TensorNetworkGenVector.new(
-            sites=tuple(sorted(site_info)),
+            sites=sites,
             site_ind_id=site_ind_id,
             site_tag_id=site_tag_id,
         )
@@ -183,7 +187,7 @@ def TN_abelian_from_edges_rand(
         # no physical sites
 
         tn = qtn.tensor_arbgeom.TensorNetworkGen.new(
-            sites=tuple(sorted(site_info)),
+            sites=sites,
             site_tag_id=site_tag_id,
         )
 
@@ -193,7 +197,6 @@ def TN_abelian_from_edges_rand(
         from symmray.symmetries import ZN, get_symmetry
 
         if symmetry == "U1":
-            sites = sorted(site_info.keys())
             even_sites = set(sites[::2])
 
             def site_charge(site):
