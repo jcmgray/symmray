@@ -749,6 +749,7 @@ class FermionicArray(
         absorb=0,
         renorm=0,
         positive=0,
+        drop_oddpos=True,
         **kwargs,
     ) -> tuple["FermionicArray", BlockVector, "FermionicArray"]:
         """Truncated hermitian eigen-decomposition of this assumed hermitian
@@ -780,6 +781,12 @@ class FermionicArray(
 
         renorm : {0, 1}
             Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
+        positive: bool, optional
+            If True, assume all eigenvalues are positive for a faster sort.
+            By default False.
+        drop_oddpos : bool, optional
+            Whether to drop any dummy oddpos modes after the decomposition.
+            By default True.
 
         Returns
         -------
@@ -824,6 +831,11 @@ class FermionicArray(
             U.check()
             w.check()
             U.check_with(w, 1)
+
+        if drop_oddpos:
+            # don't propagate dummy oddpos modes
+            U._oddpos = ()
+            U._label = ()
 
         VH = U._dagger_abelian()
         if VH.indices[0].dual:

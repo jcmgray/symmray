@@ -1,5 +1,7 @@
 """Fermionic symmetric arrays with flat backend."""
 
+import functools
+
 import autoray as ar
 
 from ..abelian_common import AbelianCommon
@@ -14,6 +16,7 @@ from .flat_data_common import FlatCommon
 from .flat_vector import FlatVector
 
 
+@functools.lru_cache(maxsize=2**14)
 def perm_to_swaps(perm):
     """Convert a permutation to a list of swaps.
 
@@ -536,7 +539,7 @@ class FermionicArrayFlat(
             return new
         else:
             # convert permutation to sequence of pairwise neighboring swaps
-            swaps = perm_to_swaps(axes)
+            swaps = perm_to_swaps(tuple(axes))
 
             # count how many swaps of odd charges there are
             parities = [new.sectors[:, i] % 2 for i in range(N)]
@@ -635,7 +638,7 @@ class FermionicArrayFlat(
         phase = (-1) ** (a.parity * sum(r_odd_parities) % 2)
 
         # then we want to sort the joint set of left and right dummy modes,
-        perm = sorted(range(len(oddpos)), key=lambda i: oddpos[i])
+        perm = tuple(sorted(range(len(oddpos)), key=lambda i: oddpos[i]))
         swaps = perm_to_swaps(perm)
         for i, j in swaps:
             a, b = oddpos[i], oddpos[j]
@@ -831,6 +834,7 @@ class FermionicArrayFlat(
         absorb=0,
         renorm=0,
         positive=0,
+        drop_oddpos=True,
         **kwargs,
     ) -> tuple["FermionicArrayFlat", FlatVector, "FermionicArrayFlat"]:
         """Truncated hermitian eigen-decomposition of this assumed hermitian
@@ -862,6 +866,12 @@ class FermionicArrayFlat(
 
         renorm : {0, 1}
             Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
+        positive: bool, optional
+            If True, assume all eigenvalues are positive for a faster sort.
+            By default False.
+        drop_oddpos : bool, optional
+            Whether to drop any dummy oddpos modes after the decomposition.
+            By default True.
 
         Returns
         -------
@@ -906,7 +916,13 @@ class FermionicArrayFlat(
             w.check()
             U.check()
 
+        if drop_oddpos:
+            U._oddpos = ()
+            U._odd_parities = ()
+            U._label = None
+
         VH = U._dagger_abelian()
+
         if VH.indices[0].dual:
             # inner index is like |x><x| so introduce a phase flip
             VH.phase_flip(0, inplace=True)
