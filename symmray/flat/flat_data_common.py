@@ -21,6 +21,13 @@ class FlatCommon:
             else ar.do("array", sectors, like=self._blocks)
         )
 
+    def _new_with_flatcommon(self, sectors, blocks):
+        new = self.__new__(self.__class__)
+        new._sectors = sectors
+        new._blocks = blocks
+        new.backend = self.backend
+        return new
+
     def _copy_flatcommon(self, deep=False):
         new = self.__new__(self.__class__)
         if deep:

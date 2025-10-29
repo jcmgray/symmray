@@ -87,6 +87,17 @@ class AbelianArrayFlat(
         """Check the internal consistency of the array."""
         self._check_abelian()
 
+    def new_with(self, sectors, blocks, indices) -> "AbelianArrayFlat":
+        """Create a new flat abelian array of the same class as this one.
+        Unlike `copy`, this does not copy over any existing data and drops
+        for example `label`.
+        """
+        return self._new_with_abelian(
+            sectors=sectors,
+            blocks=blocks,
+            indices=indices,
+        )
+
     def copy(self, deep=False) -> "AbelianArrayFlat":
         """Create a copy of the array."""
         return self._copy_abelian(deep=deep)

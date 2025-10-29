@@ -199,6 +199,17 @@ class FermionicArrayFlat(
             assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
         assert len(self._oddpos) == len(self._odd_parities)
 
+    def new_with(self, sectors, blocks, indices) -> "FermionicArrayFlat":
+        """Create a new flat fermionic array of the same class as this one.
+        Unlike `copy`, this does not copy over any existing data and drops
+        for example `label`, `phases`, and `oddpos`.
+        """
+        new = self._new_with_abelian(sectors, blocks, indices)
+        new._phases = None
+        new._oddpos = ()
+        new._odd_parities = ()
+        return new
+
     def copy(self, deep=False) -> "FermionicArrayFlat":
         """Create a copy of the array."""
         new = self._copy_abelian(deep=deep)

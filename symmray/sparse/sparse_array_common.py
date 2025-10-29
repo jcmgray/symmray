@@ -530,6 +530,14 @@ class SparseArrayCommon:
         else:
             self._charge = charge
 
+    def _new_with_abelian(self, indices, charge, blocks):
+        new = self._new_with_blockcommon(blocks)
+        new._indices = indices
+        new._charge = charge
+        new._symmetry = self._symmetry
+        new._label = None
+        return new
+
     def _copy_abelian(self):
         """Copy this abelian block sparse array."""
         new = self._copy_blockcommon()
@@ -1830,11 +1838,10 @@ class SparseArrayCommon:
             indices=(self.indices[0], bond_index),
             blocks=q_blocks,
         )
-        r = self.__class__(
+        r = self.new_with(
             indices=(bond_index.conj(), self.indices[1]),
             charge=self.symmetry.combine(),
             blocks=r_blocks,
-            symmetry=self.symmetry,
         )
 
         if DEBUG:
@@ -1878,11 +1885,10 @@ class SparseArrayCommon:
             blocks=u_blocks,
         )
         s = BlockVector(s_store)
-        v = self.__class__(
+        v = self.new_with(
             indices=(bond_index.conj(), self.indices[1]),
             charge=self.symmetry.combine(),
             blocks=v_blocks,
-            symmetry=self.symmetry,
         )
 
         if DEBUG:
@@ -2431,7 +2437,7 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
         if cs:
             new_indices[i] = new_indices[i].drop_charges(cs)
 
-    return a.copy_with(
+    return a.new_with(
         indices=tuple(new_indices),
         charge=a.symmetry.combine(a.charge, b.charge),
         blocks=new_blocks,
@@ -2534,7 +2540,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
 
     if a.num_blocks == 0 or b.num_blocks == 0:
         # no aligned sectors, return empty array
-        return a.copy_with(
+        return a.new_with(
             indices=without(a.indices, axes_a) + without(b.indices, axes_b),
             charge=a.symmetry.combine(a.charge, b.charge),
             blocks={},

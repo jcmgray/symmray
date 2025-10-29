@@ -446,6 +446,15 @@ class FlatArrayCommon:
             ix.check()
             assert ds == ix.charge_size
 
+        assert ar.do("all", ar.do("isfinite", self._blocks))
+
+    def _new_with_abelian(self, sectors, blocks, indices):
+        new = self._new_with_flatcommon(sectors, blocks)
+        new._indices = indices
+        new._symmetry = self._symmetry
+        new._label = None
+        return new
+
     def _copy_abelian(self, deep=False) -> "FlatArrayCommon":
         """Create a copy of the array."""
         new = self._copy_flatcommon(deep=deep)
@@ -1248,7 +1257,7 @@ class FlatArrayCommon:
 
         new_indices = self.indices + other.indices
 
-        return self.copy_with(
+        return self.new_with(
             sectors=new_sectors,
             indices=new_indices,
             blocks=new_blocks,
@@ -1324,7 +1333,7 @@ class FlatArrayCommon:
 
         if new_indices or preserve_array:
             # array output, wrap in a new class
-            return a.copy_with(
+            return a.new_with(
                 blocks=new_blocks,
                 sectors=new_sectors,
                 indices=new_indices,
@@ -1512,12 +1521,11 @@ class FlatArrayCommon:
         )
 
         # R is always charge 0 and thus block diagonal
-        # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
-        r = self.__class__(
+        # NOTE: we don't `copy_with` as we need to drop phases/oddpos ...
+        r = self.new_with(
             sectors=self.sectors[:, (1, 1)],
             blocks=rb,
             indices=(bond_ind.conj(), ixr),
-            symmetry=self.symmetry,
         )
 
         return q, r
@@ -1557,11 +1565,10 @@ class FlatArrayCommon:
 
         # VH is always charge 0 and thus block diagonal
         # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
-        vh = self.__class__(
+        vh = self.new_with(
             sectors=self.sectors[:, (1, 1)],
             blocks=bvh,
             indices=(bond_ind.conj(), ixr),
-            symmetry=self.symmetry,
         )
 
         if DEBUG:
@@ -1944,7 +1951,7 @@ def tensordot_flat_direct(
 
     if new_indices or preserve_array:
         # array output, wrap in a new class
-        return a.copy_with(
+        return a.new_with(
             sectors=new_sectors,
             blocks=new_blocks,
             indices=new_indices,

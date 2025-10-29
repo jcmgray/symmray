@@ -153,6 +153,20 @@ class FermionicArray(
         new._oddpos = self.oddpos
         return new
 
+    def new_with(self, indices, charge, blocks):
+        """Create a new block sparse fermionic array of the same class as this
+        one. Unlike `copy`, this does not copy over any existing data and drops
+        for example `label`, `phases`, and `oddpos`.
+        """
+        new = self._new_with_abelian(
+            indices=indices,
+            charge=charge,
+            blocks=blocks,
+        )
+        new._phases = {}
+        new._oddpos = ()
+        return new
+
     def copy_with(self, indices=None, blocks=None, charge=None, phases=None):
         """Create a copy of this fermionic array with some attributes replaced.
 

@@ -60,6 +60,17 @@ class AbelianArray(
         if DEBUG:
             self.check()
 
+    def new_with(self, indices, charge, blocks):
+        """Create a new block sparse abelian array of the same class as this
+        one. Unlike `copy`, this does not copy over any existing data and drops
+        for example `label`.
+        """
+        return self._new_with_abelian(
+            indices=indices,
+            charge=charge,
+            blocks=blocks,
+        )
+
     def copy(self):
         """Copy this abelian block sparse array."""
         return self._copy_abelian()

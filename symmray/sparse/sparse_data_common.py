@@ -20,6 +20,11 @@ class BlockCommon:
     def _init_blockcommon(self, blocks):
         self._blocks = dict(blocks)
 
+    def _new_with_blockcommon(self, blocks):
+        new = self.__new__(self.__class__)
+        new._blocks = blocks
+        return new
+
     def _copy_blockcommon(self):
         new = self.__new__(self.__class__)
         new._blocks = self._blocks.copy()

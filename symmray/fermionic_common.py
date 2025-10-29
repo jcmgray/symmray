@@ -259,6 +259,7 @@ class FermionicCommon:
                     f"Expected {self.__class__}, got {other.__class__}."
                 )
 
+        # make modes contiguous and sync phase etc.
         a, b, new_axes_a, new_axes_b = self._prepare_for_tensordot_fermionic(
             other, axes
         )
