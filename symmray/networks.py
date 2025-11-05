@@ -330,6 +330,92 @@ def TN_fermionic_from_edges_rand(
     )
 
 
+def MPS_abelian_rand(
+    symmetry,
+    L,
+    bond_dim,
+    phys_dim=2,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{}",
+    site_ind_id="k{}",
+    fermionic=False,
+    flat=False,
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random MPS with abelian symmetry.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the MPS.
+    L : int
+        The number of sites.
+    bond_dim : int or dict
+        The total (sum of charge sizes) bond dimension of the MPS. You can
+        also provide an explicit map of bond charges to sizes.
+    phys_dim : int or dict, optional
+        The physical dimension of each site. If None, no physical sites are
+        included. If an integer, a default charge distribution is chosen. If a
+        dictionary, a custom map of physical charges to sizes.
+    cyclic : bool, optional
+        Whether the MPS is cyclic.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use.
+    dtype : str, optional
+        The data type of the tensors.
+    site_tag_id : str, optional
+        The tag format for each site tensor.
+    site_ind_id : str, optional
+        The index format for each site tensor, if physical sites are included.
+    fermionic : bool, optional
+        Whether to generate fermionic tensors.
+    flat : bool, optional
+        Whether to generate 'flat' backend arrays (True) or the default
+        block-sparse backend arrays (False).
+    site_charge : callable, optional
+        A function that takes a site index and returns the charge of that site.
+        By default it will create all even parity tensors if Z2=0 or it will
+        alernate between 0 and 1 for U1.
+    subsizes : {"maximal", "equal"}, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders). If
+        "maximal", as many charges as possible will be chosen.
+    kwargs
+        Additional arguments to pass to :func:`symmray.utils.get_rand`.
+
+    Returns
+    -------
+    quimb.tensor.MatrixProductState
+    """
+    import quimb.tensor as qtn
+
+    edges = qtn.edges_1d_chain(L, cyclic=cyclic)
+
+    mps = sr.TN_abelian_from_edges_rand(
+        symmetry,
+        edges,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        seed=seed,
+        dtype=dtype,
+        site_ind_id=site_ind_id,
+        site_tag_id=site_tag_id,
+        fermionic=fermionic,
+        flat=flat,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
+    )
+    
+    return mps.view_as_(
+        qtn.MatrixProductState, L=L, cyclic=cyclic,
+    )
+
+
 def PEPS_abelian_rand(
     symmetry,
     Lx,
@@ -528,6 +614,78 @@ def PEPS3D_abelian_rand(
         x_tag_id=x_tag_id,
         y_tag_id=y_tag_id,
         z_tag_id=z_tag_id,
+    )
+    
+    
+def MPS_fermionic_rand(
+    symmetry,
+    L,
+    bond_dim,
+    phys_dim=2,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{}",
+    site_ind_id="k{}",
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random fermionic MPS. This is a wrapper around
+    :func:`MPS_abelian_rand` with `fermionic=True`.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the MPS.
+    L : int
+        The number of sites.
+    bond_dim : int or dict
+        The total (sum of charge sizes) bond dimension of the MPS. You can
+        also provide an explicit map of bond charges to sizes.
+    phys_dim : int or dict, optional
+        The physical dimension of each site. If None, no physical sites are
+        included. If an integer, a default charge distribution is chosen. If a
+        dictionary, a custom map of physical charges to sizes.
+    cyclic : bool, optional
+        Whether the MPS is cyclic.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use.
+    dtype : str, optional
+        The data type of the tensors.
+    site_tag_id : str, optional
+        The tag format for each site tensor.
+    site_ind_id : str, optional
+        The index format for each site tensor, if physical sites are included.
+    site_charge : callable, optional
+        A function that takes a site index and returns the charge of that site.
+        By default it will create all even parity tensors if Z2=0 or it will
+        alernate between 0 and 1 for U1.
+    subsizes : {"maximal", "equal"}, optional
+        The sizes of the charge sectors. If None, the sizes are randomly
+        determined. If "equal", the sizes are equal (up to remainders). If
+        "maximal", as many charges as possible will be chosen.
+    kwargs
+        Additional arguments to pass to :func:`symmray.utils.get_rand`.
+
+    Returns
+    -------
+    quimb.tensor.MatrixProductState
+    """
+    return MPS_abelian_rand(
+        symmetry=symmetry,
+        L=L,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        cyclic=cyclic,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        fermionic=True,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
     )
 
 
