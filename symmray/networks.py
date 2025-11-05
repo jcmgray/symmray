@@ -395,7 +395,7 @@ def MPS_abelian_rand(
 
     edges = qtn.edges_1d_chain(L, cyclic=cyclic)
 
-    mps = sr.TN_abelian_from_edges_rand(
+    mps = TN_abelian_from_edges_rand(
         symmetry,
         edges,
         bond_dim=bond_dim,
