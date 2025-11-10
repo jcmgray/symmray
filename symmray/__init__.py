@@ -58,12 +58,12 @@ from .interface import (
     transpose,
 )
 from .networks import (
+    MPS_abelian_rand,
+    MPS_fermionic_rand,
     PEPS3D_abelian_rand,
     PEPS3D_fermionic_rand,
     PEPS_abelian_rand,
     PEPS_fermionic_rand,
-    MPS_abelian_rand,
-    MPS_fermionic_rand,
     TN_abelian_from_edges_rand,
     TN_fermionic_from_edges_rand,
     parse_edges_to_site_info,

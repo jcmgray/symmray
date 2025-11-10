@@ -410,9 +410,11 @@ def MPS_abelian_rand(
         subsizes=subsizes,
         **kwargs,
     )
-    
+
     return mps.view_as_(
-        qtn.MatrixProductState, L=L, cyclic=cyclic,
+        qtn.MatrixProductState,
+        L=L,
+        cyclic=cyclic,
     )
 
 
@@ -615,8 +617,8 @@ def PEPS3D_abelian_rand(
         y_tag_id=y_tag_id,
         z_tag_id=z_tag_id,
     )
-    
-    
+
+
 def MPS_fermionic_rand(
     symmetry,
     L,

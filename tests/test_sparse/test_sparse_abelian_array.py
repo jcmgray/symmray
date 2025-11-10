@@ -200,6 +200,17 @@ def test_tensordot(symmetry, shape1, shape2, axes, subsizes, mode):
         assert_allclose(c, d)
 
 
+@pytest.mark.parametrize("symm", all_symmetries)
+def test_tensordot_fused_with_already_fused_arrays(symm):
+    a, b, c, d = (sr.utils.rand_index(symm, d) for d in [4, 3, 2, 5])
+    x = sr.utils.get_rand(symm, (a, b, c))
+    y = sr.utils.get_rand(symm, (c.conj(), d))
+    z = sr.tensordot(x, y, axes=[(2,), (0,)]).fuse((0, 1))
+    xf = x.fuse((0, 1))
+    zf = sr.tensordot(xf, y, axes=[(1,), (0,)])
+    zf.test_allclose(z)
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 def test_AbelianArray_reductions(symmetry):
     x = sr.utils.get_rand(symmetry, (3, 4, 5, 6), dist="uniform", seed=42)

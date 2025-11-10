@@ -1475,8 +1475,10 @@ class SparseArrayCommon:
         pass
 
     def _unfuse_abelian(self, axis, inplace=False):
+        if axis < 0:
+            axis += self.ndim
+
         backend = self.backend
-        # _split = ar.get_lib_fn(backend, "split")
         _reshape = ar.get_lib_fn(backend, "reshape")
 
         # get required information from the fused index
@@ -2536,7 +2538,7 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     right_axes : tuple[int]
         The axes of ``b`` that will not be contracted.
     """
-    a, b = drop_misaligned_sectors(a, b, axes_a, axes_b)
+    a, b = drop_misaligned_sectors(a, b, axes_a, axes_b, inplace=False)
 
     if a.num_blocks == 0 or b.num_blocks == 0:
         # no aligned sectors, return empty array
@@ -2547,8 +2549,23 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
         )
 
     # fuse into matrices or maybe vectors
-    af = a._fuse_core_abelian(left_axes, axes_a)
-    bf = b._fuse_core_abelian(axes_b, right_axes)
+    if len(left_axes) > 1 or len(axes_a) > 1:
+        af = a._fuse_core_abelian(left_axes, axes_a, inplace=True)
+    elif left_axes + axes_a == (1, 0):
+        # this is only other case where not already aligned
+        af = a._transpose_abelian(left_axes + axes_a, inplace=True)
+    else:
+        af = a
+    unfuse_left = len(left_axes) > 1
+
+    if len(axes_b) > 1 or len(right_axes) > 1:
+        bf = b._fuse_core_abelian(axes_b, right_axes, inplace=True)
+    elif axes_b + right_axes == (1, 0):
+        # this is only other case where not already aligned
+        bf = b._transpose_abelian(axes_b + right_axes, inplace=True)
+    else:
+        bf = b
+    unfuse_right = len(right_axes) > 1
 
     # handle potential vector and scalar cases
     left_axes, axes_a = {
@@ -2569,9 +2586,10 @@ def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
     cf = _tensordot_blockwise(af, bf, left_axes, axes_a, axes_b, right_axes)
 
     # unfuse result into (*left_axes, *right_axes)
-    for ax in reversed(range(cf.ndim)):
-        if cf.is_fused(ax):
-            cf._unfuse_abelian(ax, inplace=True)
+    if unfuse_right:
+        cf._unfuse_abelian(-1, inplace=True)
+    if unfuse_left:
+        cf._unfuse_abelian(0, inplace=True)
 
     return cf
 
