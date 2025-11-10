@@ -346,6 +346,19 @@ def test_tensordot(symmetry, seed):
     fc.to_blocksparse().test_allclose(c)
 
 
+@pytest.mark.parametrize("symm", ["Z2", "Z4"])
+def test_tensordot_fused_with_already_fused_arrays(symm):
+    a, b, c, d = (
+        sr.utils.rand_index(symm, d, subsizes="equal") for d in [4, 4, 4, 8]
+    )
+    x = sr.utils.get_rand(symm, (a, b, c), flat=True)
+    y = sr.utils.get_rand(symm, (c.conj(), d), flat=True)
+    z = sr.tensordot(x, y, axes=[(2,), (0,)]).fuse((0, 1))
+    xf = x.fuse((0, 1))
+    zf = sr.tensordot(xf, y, axes=[(1,), (0,)])
+    zf.test_allclose(z)
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("axis", [0, 1, 2, 3])
