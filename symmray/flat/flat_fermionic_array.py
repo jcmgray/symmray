@@ -293,7 +293,7 @@ class FermionicArrayFlat(
 
         if self._phases is not None:
             try:
-                self._phases = ar.do("array", self._phases, like=self.backend)
+                self._phases = ar.do("array", self._phases, like=params)
             except ImportError:
                 # params is possibly a placeholder of some kind
                 pass
@@ -909,8 +909,8 @@ class FermionicArrayFlat(
             )
         else:
             # assume all positive, just need to flip
-            w.modify(blocks=w._blocks[:, ::-1])
-            U.modify(blocks=U._blocks[:, :, ::-1])
+            w.modify(blocks=ar.do("flip", w._blocks, 1))
+            U.modify(blocks=ar.do("flip", U._blocks, 2))
 
         if DEBUG:
             w.check()

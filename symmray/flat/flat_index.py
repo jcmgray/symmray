@@ -181,7 +181,7 @@ class FlatIndex(Index):
         """
         if self._linearmap is None:
             # default mapping is sorted charges
-            return divmod(i, self._charge_size)
+            return (i // self._charge_size, i % self._charge_size)
         return self._linearmap[i]
 
     def check(self):

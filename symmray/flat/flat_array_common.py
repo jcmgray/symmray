@@ -498,18 +498,20 @@ class FlatArrayCommon:
         """Set the underlying array blocks."""
         self._set_params_flatcommon(params)
 
-        try:
-            _array = ar.get_lib_fn(self.backend, "array")
-        except ImportError:
-            # backend set by params is possibly a placeholder of some kind
-            return
-
         new_indices = []
         for ix in self._indices:
             if ix._linearmap is None:
                 new_ix = ix
             else:
-                new_ix = ix.copy_with(linearmap=_array(ix._linearmap))
+                try:
+                    new_ix = ix.copy_with(
+                        inearmap=ar.do("array", ix._linearmap, like=params)
+                    )
+                except ImportError:
+                    # params is possibly a placeholder of some kind
+                    # -> no backend.array function available
+                    pass
+
             new_indices.append(new_ix)
         self._indices = tuple(new_indices)
 
@@ -1028,13 +1030,29 @@ class FlatArrayCommon:
 
         if subselect is not None:
             # take a subselection along the selected axis
-            # XXX: make this torch vectorizable compatible a la select_slice?
-            selector = (
-                *repeat(slice(None), axis + 1),
-                subselect,
-                *repeat(slice(None), new.ndim - axis - 1),
-            )
-            new._map_blocks(fn_block=lambda x: x[selector])
+            if self.backend == "torch":
+                # special handling for vmapping limitations
+                import torch
+
+                if len(subselect) != 1:
+                    raise NotImplementedError(
+                        "Torch backend only supports single index selection."
+                    )
+
+                def fn_block(x):
+                    return torch.index_select(x, axis + 1, subselect[0])
+
+            else:
+                selector = (
+                    *repeat(slice(None), axis + 1),
+                    subselect,
+                    *repeat(slice(None), new.ndim - axis - 1),
+                )
+
+                def fn_block(x):
+                    return x[selector]
+
+            new._map_blocks(fn_block=fn_block)
 
         if new.ndim == 2:
             # axes are locked to each other -> select both
