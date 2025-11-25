@@ -505,7 +505,7 @@ class FlatArrayCommon:
             else:
                 try:
                     new_ix = ix.copy_with(
-                        inearmap=ar.do("array", ix._linearmap, like=params)
+                        linearmap=ar.do("asarray", ix._linearmap, like=params)
                     )
                 except ImportError:
                     # params is possibly a placeholder of some kind
