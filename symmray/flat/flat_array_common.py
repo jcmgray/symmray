@@ -446,7 +446,8 @@ class FlatArrayCommon:
             ix.check()
             assert ds == ix.charge_size
 
-        assert ar.do("all", ar.do("isfinite", self._blocks))
+        if self._blocks.__class__.__name__ != "Placeholder":
+            assert ar.do("all", ar.do("isfinite", self._blocks))
 
     def _new_with_abelian(self, sectors, blocks, indices):
         new = self._new_with_flatcommon(sectors, blocks)

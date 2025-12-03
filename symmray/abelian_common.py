@@ -542,6 +542,11 @@ class AbelianCommon:
 
         return self.isel(axis, idx)
 
+    def take(self, indices, axis, inplace=False):
+        if isinstance(indices, numbers.Integral):
+            return self.isel(axis, indices, inplace=inplace)
+        raise NotImplementedError("Only single index selection is supported.")
+
     def __repr__(self):
         if self.static_symmetry is not None:
             c = f"{self.__class__.__name__}("
