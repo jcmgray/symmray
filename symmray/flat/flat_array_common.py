@@ -156,7 +156,7 @@ def zn_combine(order, sectors, duals=None, like=None):
 
     if (duals is not None) and any(duals):
         # turn duals into phases
-        signs = [(-1) ** dual for dual in duals]
+        signs = [dual * -2 + 1 for dual in duals]
         # broadcasted multiply
         signs = ar.do("array", signs, like=like)
         signs = ar.do("reshape", signs, (1, -1))
@@ -219,14 +219,17 @@ def _calc_fused_sectors_subkeys_slice(
     old_sectors = ar.do("reshape", old_sectors, (*keys_reshaper, ndim))
 
     # drop sub charge axes from new_sectors
-    new_sectors = new_sectors[
-        (
-            *repeat(slice(None), num_groups),  # fused charges
-            slice(None),  # unfused axes
-            *repeat(0, nsubaxes),  # sub charges, take first (arbitrary)
-            slice(None),  # row of charges
-        )
-    ]
+    if nsubaxes == 1:
+        new_sectors = ar.do("take", new_sectors, 0, axis=num_groups + 1)
+    elif nsubaxes > 1:
+        new_sectors = new_sectors[
+            (
+                *repeat(slice(None), num_groups),  # fused charges
+                slice(None),  # unfused axes
+                *repeat(0, nsubaxes),  # sub charges, take first (arbitrary)
+                slice(None),  # row of charges
+            )
+        ]
 
     # then we take slices across these to strore subcharge information
     # for unfusing
@@ -391,22 +394,6 @@ def _calc_fuse_rearrange_pattern(
 
     pattern = "".join(pattern)
     return pattern, unmerged_batch_sizes
-
-
-@ar.compose
-def select_slice(x, i):
-    """Select the i'th slice of the input array."""
-    return x[i]
-
-
-@select_slice.register("torch")
-def select_slice_torch(x, i):
-    """`torch` doesn't support vmapping the above operation."""
-    import torch
-
-    i = torch.unsqueeze(i, 0)
-    xi = torch.index_select(x, 0, i)
-    return torch.squeeze(xi, 0)
 
 
 class FlatArrayCommon:
@@ -754,12 +741,12 @@ class FlatArrayCommon:
         )
 
         # expand the actual blocks (accounting for extra flat ax at start)
-        selector = (
-            (slice(None),) * (axis + 1)
-            + (None,)
-            + (slice(None),) * (self.ndim - axis - 1)
+        new_blocks = ar.do(
+            "expand_dims",
+            self._blocks,
+            axis=axis + 1,
+            like=self.backend,
         )
-        new_blocks = self._blocks[selector]
 
         # expand the index information
         new_indices = (
@@ -1022,7 +1009,7 @@ class FlatArrayCommon:
         def _take_charge_slice(x):
             # split batch index into axis charges and slice
             xr = ar.do("reshape", x, (dc, -1, *x.shape[1:]), like=new.backend)
-            return select_slice(xr, charge)
+            return ar.do("take", xr, charge, axis=0, like=new.backend)
 
         new._map_blocks(
             fn_sector=_take_charge_slice,
@@ -1030,29 +1017,13 @@ class FlatArrayCommon:
         )
 
         if subselect is not None:
-            # take a subselection along the selected axis
-            if self.backend == "torch":
-                # special handling for vmapping limitations
-                import torch
 
-                if len(subselect) != 1:
-                    raise NotImplementedError(
-                        "Torch backend only supports single index selection."
-                    )
-
-                def fn_block(x):
-                    return torch.index_select(x, axis + 1, subselect[0])
-
-            else:
-                selector = (
-                    *repeat(slice(None), axis + 1),
-                    subselect,
-                    *repeat(slice(None), new.ndim - axis - 1),
+            def fn_block(x):
+                return ar.do(
+                    "take", x, subselect, axis=axis + 1, like=new.backend
                 )
 
-                def fn_block(x):
-                    return x[selector]
-
+            # take a subselection along the selected axis
             new._map_blocks(fn_block=fn_block)
 
         if new.ndim == 2:

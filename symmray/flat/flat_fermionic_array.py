@@ -176,7 +176,7 @@ class FermionicArrayFlat(
     def phases(self):
         """The phases for each block."""
         if self._phases is None:
-            self._phases = ar.do("ones", self.num_blocks, like=self._blocks)
+            self._phases = ar.do("ones", (self.num_blocks,), like=self._blocks)
         return self._phases
 
     @property
@@ -293,7 +293,7 @@ class FermionicArrayFlat(
 
         if self._phases is not None:
             try:
-                self._phases = ar.do("array", self._phases, like=params)
+                self._phases = ar.do("asarray", self._phases, like=params)
             except ImportError:
                 # params is possibly a placeholder of some kind
                 pass
@@ -502,7 +502,7 @@ class FermionicArrayFlat(
         if not axs:
             # nothing to do
             return new
-        flip_phases = (-1) ** ar.do("sum", new._sectors[:, axs], axis=1)
+        flip_phases = (ar.do("sum", new._sectors[:, axs], axis=1) % 2) * -2 + 1
         new.modify(phases=new.phases * flip_phases)
         return new
 
@@ -555,7 +555,7 @@ class FermionicArrayFlat(
             raise ValueError("No phase changes required.")
 
         # absorb into current phases
-        phase_change = (-1) ** nswap
+        phase_change = (nswap % 2) * -2 + 1
         new.modify(
             phases=(
                 phase_change
@@ -611,7 +611,7 @@ class FermionicArrayFlat(
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
             #                     <--
             # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            sign = (-1) ** (self.parity * sum(self.odd_parities) % 2)
+            sign = (self.parity * sum(self.odd_parities) % 2) * -2 + 1
             self.modify(phases=self.phases * sign)
 
     def _resolve_oddpos_combine(self, a, b):
@@ -635,7 +635,7 @@ class FermionicArrayFlat(
         # 1. initially we have:
         # left dummy modes | left real modes | right dummy modes | right real modes
         # so we must calc phase from moving right dummy modes past left real modes
-        phase = (-1) ** (a.parity * sum(r_odd_parities) % 2)
+        phase = (a.parity * sum(r_odd_parities) % 2) * -2 + 1
 
         # then we want to sort the joint set of left and right dummy modes,
         perm = tuple(sorted(range(len(oddpos)), key=lambda i: oddpos[i]))
@@ -644,7 +644,7 @@ class FermionicArrayFlat(
             a, b = oddpos[i], oddpos[j]
             pa, pb = odd_parities[i], odd_parities[j]
             # compute sign from swap
-            phase = phase * (-1) ** (pa * pb)
+            phase = phase * ((pa * pb) * -2 + 1)
             # perform swap
             oddpos[i], oddpos[j] = b, a
             odd_parities[i], odd_parities[j] = pb, pa
@@ -822,7 +822,7 @@ class FermionicArrayFlat(
             # XXX: is this the most compatible thing to do?
             # it means U @ diag(w) @ U.H == x always
             parities = w._sectors % 2
-            w.modify(blocks=w._blocks * ((-1) ** parities)[:, None])
+            w.modify(blocks=w._blocks * (parities * -2 + 1)[:, None])
 
         return w, U
 
