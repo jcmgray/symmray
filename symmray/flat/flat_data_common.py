@@ -10,7 +10,7 @@ class FlatCommon:
 
     def _init_flatcommon(self, sectors, blocks):
         self._blocks = (
-            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
+            blocks if hasattr(blocks, "shape") else ar.do("asarray", blocks)
         )
         # infer the backend to reuse for efficiency
         self.backend = ar.infer_backend(self._blocks)
@@ -18,7 +18,7 @@ class FlatCommon:
         self._sectors = (
             sectors
             if hasattr(sectors, "shape")
-            else ar.do("array", sectors, like=self._blocks)
+            else ar.do("asarray", sectors, like=self._blocks)
         )
 
     def _new_with_flatcommon(self, sectors, blocks):
@@ -52,6 +52,12 @@ class FlatCommon:
         if blocks is not None:
             self._blocks = blocks
         return self
+
+    def _to_pytree_flatcommon(self):
+        return {
+            "sectors": self._sectors,
+            "blocks": self._blocks,
+        }
 
     @property
     def sectors(self):

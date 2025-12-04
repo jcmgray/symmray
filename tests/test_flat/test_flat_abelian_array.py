@@ -416,3 +416,20 @@ def test_abelian_array_slice(symmetry, ndim, seed):
                 dx_slc = dx_slc[dx_slc != 0]
 
             np.testing.assert_allclose(x_slc.to_dense(), dx_slc)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+@pytest.mark.parametrize("shape", [(4, 8, 12), (8,)])
+@pytest.mark.parametrize("charge", [0, 1])
+def test_to_pytree_and_back(symmetry, shape, charge):
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        subsizes="equal",
+        charge=charge,
+        label="x",
+        flat=True,
+    )
+    tree = x.to_pytree()
+    y = type(x).from_pytree(tree)
+    x.test_allclose(y)

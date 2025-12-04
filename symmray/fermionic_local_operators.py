@@ -47,6 +47,16 @@ class FermionicOperator:
         self._label = label
         self._dual = dual
 
+    def to_pytree(self):
+        return {
+            "label": self._label,
+            "dual": self._dual,
+        }
+
+    @classmethod
+    def from_pytree(cls, data):
+        return cls(**data)
+
     @property
     def label(self):
         return self._label

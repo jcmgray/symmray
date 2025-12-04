@@ -20,6 +20,7 @@ from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .flat_array_common import FlatArrayCommon
 from .flat_data_common import FlatCommon
+from .flat_index import FlatIndex
 from .flat_vector import FlatVector
 
 
@@ -145,6 +146,26 @@ class AbelianArrayFlat(
         self._set_params_abelian(params)
         if DEBUG:
             self.check()
+
+    def to_pytree(self):
+        """Convert this flat abelian array to a pytree purely of non-symmray
+        containers and objects.
+        """
+        return self._to_pytree_abelian()
+
+    @classmethod
+    def from_pytree(cls, pytree) -> "AbelianArrayFlat":
+        """Build a flat abelian array from a pytree."""
+        indices = tuple(
+            FlatIndex.from_pytree(ix_pytree) for ix_pytree in pytree["indices"]
+        )
+        return cls(
+            sectors=pytree["sectors"],
+            blocks=pytree["blocks"],
+            indices=indices,
+            symmetry=pytree["symmetry"],
+            label=pytree["label"],
+        )
 
     @classmethod
     def from_blocks(

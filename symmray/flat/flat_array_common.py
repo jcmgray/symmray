@@ -503,6 +503,13 @@ class FlatArrayCommon:
             new_indices.append(new_ix)
         self._indices = tuple(new_indices)
 
+    def _to_pytree_abelian(self):
+        data = self._to_pytree_flatcommon()
+        data["indices"] = tuple(ix.to_pytree() for ix in self._indices)
+        data["symmetry"] = str(self._symmetry)
+        data["label"] = self._label
+        return data
+
     @property
     def order(self) -> int:
         """Get the order of the symmetry group."""

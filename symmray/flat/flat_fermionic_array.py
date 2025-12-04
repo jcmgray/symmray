@@ -13,6 +13,7 @@ from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .flat_array_common import FlatArrayCommon, truncate_svd_result_flat
 from .flat_data_common import FlatCommon
+from .flat_index import FlatIndex
 from .flat_vector import FlatVector
 
 
@@ -153,7 +154,7 @@ class FermionicArrayFlat(
         elif hasattr(phases, "shape"):
             self._phases = phases
         else:
-            self._phases = ar.do("array", phases, like=self._blocks)
+            self._phases = ar.do("asarray", phases, like=self._blocks)
 
         if oddpos is None and self.label is not None:
             # default to the array label
@@ -300,6 +301,37 @@ class FermionicArrayFlat(
 
         if DEBUG:
             self.check()
+
+    def to_pytree(self):
+        """Convert this flat fermionic array to a pytree purely of non-symmray
+        containers and objects.
+        """
+        data = self._to_pytree_abelian()
+        data["phases"] = self._phases
+        data["oddpos"] = tuple(o.to_pytree() for o in self._oddpos)
+        data["odd_parities"] = self._odd_parities
+        return data
+
+    @classmethod
+    def from_pytree(cls, data):
+        """Create a flat fermionic array from a pytree purely of non-symmray
+        containers and objects.
+        """
+        indices = tuple(FlatIndex.from_pytree(d) for d in data["indices"])
+        oddpos = tuple(
+            FermionicOperator.from_pytree(d) for d in data["oddpos"]
+        )
+
+        return cls(
+            sectors=data["sectors"],
+            blocks=data["blocks"],
+            indices=indices,
+            phases=data["phases"],
+            label=data["label"],
+            symmetry=data["symmetry"],
+            oddpos=oddpos,
+            odd_parities=data["odd_parities"],
+        )
 
     def _map_blocks(self, fn_sector=None, fn_block=None):
         self._map_blocks_abelian(fn_sector=fn_sector, fn_block=fn_block)
