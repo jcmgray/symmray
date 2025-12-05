@@ -33,7 +33,7 @@ keywords = [
 requires-python = ">=3.10"
 
 dependencies = [
-    "autoray"
+    "autoray>=0.8.4"
 ]
 
 [project.optional-dependencies]
@@ -47,14 +47,14 @@ testing = [
     "quimb",
 ]
 docs = [
-    "astroid<3",
+    "astroid",
     "furo",
-    "ipython!=8.7.0",
+    "ipython",
     "myst-nb",
     "setuptools_scm",
     "sphinx-autoapi",
     "sphinx-copybutton",
-    "sphinx>=2.0",
+    "sphinx",
 ]
 
 [project.urls]
@@ -90,7 +90,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 
 [tool.pixi.dependencies]
-autoray = ">=0.8.0,<0.9"
+autoray = ">=0.8.4"
 
 [tool.pixi.pypi-dependencies]
 symmray = { path = ".", editable = true }
