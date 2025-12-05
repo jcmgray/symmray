@@ -711,6 +711,7 @@ def from_dense(
     duals=None,
     fermionic=False,
     charge=None,
+    **kwargs,
 ):
     cls = get_array_cls(symmetry, fermionic=fermionic, flat=False)
     return cls.from_dense(
@@ -719,4 +720,5 @@ def from_dense(
         duals=duals,
         charge=charge,
         symmetry=symmetry,
+        **kwargs,
     )
