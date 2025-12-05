@@ -730,3 +730,22 @@ def test_eigh_truncated_fermionic_flat(symmetry, seed, dtype, duals):
 
     z = u @ u.dagger_project_left() @ fx @ uh.dagger_project_right() @ uh
     z.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+@pytest.mark.parametrize("shape", [(4, 8, 12), (8,)])
+@pytest.mark.parametrize("charge", [0, 1])
+def test_to_pytree_and_back(symmetry, shape, charge):
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        subsizes="equal",
+        charge=charge,
+        label="x",
+        fermionic=True,
+    )
+    x.randomize_phases(42, inplace=True)
+    x = x.to_flat()
+    tree = x.to_pytree()
+    y = type(x).from_pytree(tree)
+    x.test_allclose(y)

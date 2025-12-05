@@ -94,6 +94,33 @@ class FlatIndex(Index):
         """The size of the charges associated with this index."""
         return self._charge_size
 
+    def to_pytree(self):
+        return {
+            "num_charges": self._num_charges,
+            "charge_size": self._charge_size,
+            "dual": self._dual,
+            "subinfo": (
+                self._subinfo.to_pytree()
+                if self._subinfo is not None
+                else None
+            ),
+            "linearmap": self._linearmap,
+        }
+
+    @classmethod
+    def from_pytree(cls, pytree):
+        return cls(
+            num_charges=pytree["num_charges"],
+            charge_size=pytree["charge_size"],
+            dual=pytree["dual"],
+            subinfo=(
+                FlatSubIndexInfo.from_pytree(pytree["subinfo"])
+                if pytree["subinfo"] is not None
+                else None
+            ),
+            linearmap=pytree["linearmap"],
+        )
+
     # @property
     # def linearmap(self):
     #     """The linear map from charge and offset to linear index."""
@@ -243,6 +270,24 @@ class FlatSubIndexInfo(SubInfo):
 
         if DEBUG:
             self.check()
+
+    def to_pytree(self):
+        """Convert this flat subindex info to a pytree."""
+        return {
+            "indices": tuple(ix.to_pytree() for ix in self._indices),
+            "subkeys": self._subkeys,
+        }
+
+    @classmethod
+    def from_pytree(cls, pytree):
+        """Build a flat subindex info from a pytree."""
+        indices = tuple(
+            FlatIndex.from_pytree(ix_pytree) for ix_pytree in pytree["indices"]
+        )
+        return cls(
+            indices=indices,
+            subkeys=pytree["subkeys"],
+        )
 
     @property
     def subshape(self) -> tuple[int]:

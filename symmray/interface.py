@@ -183,6 +183,11 @@ def trace(a):
     return a.trace()
 
 
+def take(a, indices, axis, **kwargs):
+    """Take elements from a `symmray` array along an axis."""
+    return a.take(indices, axis, **kwargs)
+
+
 # non-standard 'composed' functions
 
 

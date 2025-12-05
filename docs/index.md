@@ -13,5 +13,5 @@ installation.md
 :caption: Development
 :hidden:
 
-GitHub Repository <https://github.com/jcmgray/cotengra>
+GitHub Repository <https://github.com/jcmgray/symmray>
 ```

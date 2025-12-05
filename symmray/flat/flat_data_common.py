@@ -10,7 +10,7 @@ class FlatCommon:
 
     def _init_flatcommon(self, sectors, blocks):
         self._blocks = (
-            blocks if hasattr(blocks, "shape") else ar.do("array", blocks)
+            blocks if hasattr(blocks, "shape") else ar.do("asarray", blocks)
         )
         # infer the backend to reuse for efficiency
         self.backend = ar.infer_backend(self._blocks)
@@ -18,7 +18,7 @@ class FlatCommon:
         self._sectors = (
             sectors
             if hasattr(sectors, "shape")
-            else ar.do("array", sectors, like=self._blocks)
+            else ar.do("asarray", sectors, like=self._blocks)
         )
 
     def _new_with_flatcommon(self, sectors, blocks):
@@ -52,6 +52,12 @@ class FlatCommon:
         if blocks is not None:
             self._blocks = blocks
         return self
+
+    def _to_pytree_flatcommon(self):
+        return {
+            "sectors": self._sectors,
+            "blocks": self._blocks,
+        }
 
     @property
     def sectors(self):
@@ -109,14 +115,14 @@ class FlatCommon:
 
     def get_params(self):
         """Interface for getting underlying arrays."""
-        return self._blocks
+        return {"blocks": self._blocks}
 
     def _set_params_flatcommon(self, params):
         """Interface for setting underlying arrays."""
-        self._blocks = params
+        self._blocks = params["blocks"]
         self.backend = ar.infer_backend(self._blocks)
         try:
-            self._sectors = ar.do("array", self._sectors, like=params)
+            self._sectors = ar.do("asarray", self._sectors, like=self._blocks)
         except ImportError:
             # params is possibly a placeholder of some kind
             pass
