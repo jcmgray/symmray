@@ -92,7 +92,7 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
                 raise ValueError(f"Invalid symmetry string: {sectors}")
             sectors = int(m[1])
 
-        if isinstance(sectors, numbers.Integral):
+        if ar.is_scalar(sectors):
             # integer specifying Z{N} symmetry
             n = sectors
             create_sectors = True

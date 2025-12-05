@@ -6,7 +6,6 @@ import contextlib
 import functools
 import itertools
 import math
-import numbers
 import operator
 import os
 import warnings
@@ -1226,7 +1225,7 @@ class SparseArrayCommon:
             fn_block = None
         else:
             # ... and possibly slice blocks
-            if isinstance(subselect, numbers.Integral):
+            if ar.is_scalar(subselect):
                 raise ValueError("subselect must be a slice or sequence.")
 
             selector = (
@@ -1259,7 +1258,7 @@ class SparseArrayCommon:
         """
         x = self if inplace else self.copy()
 
-        if isinstance(axis, numbers.Integral):
+        if ar.is_scalar(axis):
             axis = (axis,)
 
         keep = []

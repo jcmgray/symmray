@@ -543,7 +543,7 @@ class AbelianCommon:
         return self.isel(axis, idx)
 
     def take(self, indices, axis, inplace=False):
-        if isinstance(indices, numbers.Integral):
+        if ar.is_scalar(indices):
             return self.isel(axis, indices, inplace=inplace)
         raise NotImplementedError("Only single index selection is supported.")
 
@@ -578,7 +578,7 @@ def parse_tensordot_axes(axes, ndim_a, ndim_b):
     """Parse the axes argument for single integer and also negative indices.
     Returning the 4 axes groups that can be used for fusing.
     """
-    if isinstance(axes, numbers.Integral):
+    if ar.is_scalar(axes):
         axes_a = tuple(range(ndim_a - axes, ndim_a))
         axes_b = tuple(range(0, axes))
     else:

@@ -294,7 +294,9 @@ class FermionicArrayFlat(
 
         if self._phases is not None:
             try:
-                self._phases = ar.do("asarray", self._phases, like=params)
+                self._phases = ar.do(
+                    "asarray", self._phases, like=self._blocks
+                )
             except ImportError:
                 # params is possibly a placeholder of some kind
                 pass

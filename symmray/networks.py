@@ -1,6 +1,6 @@
 """Functions to create full tensor networks backed by `symmray`."""
 
-import numbers
+import autoray as ar
 
 
 def parse_edges_to_site_info(
@@ -179,7 +179,7 @@ def TN_abelian_from_edges_rand(
         if isinstance(phys_dim, dict):
             # custom physical charge map
             phys_chargemap = phys_dim
-        elif isinstance(phys_dim, numbers.Integral):
+        elif ar.is_scalar(phys_dim):
             phys_chargemap = _DEFAULT_PHYS_CHARGEMAPS[symmetry, phys_dim]
         else:
             phys_chargemap = phys_dim

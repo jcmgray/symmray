@@ -4,7 +4,6 @@ fermionic and bosonic.
 
 import functools
 import math
-import numbers
 import operator
 from itertools import repeat
 
@@ -493,7 +492,9 @@ class FlatArrayCommon:
             else:
                 try:
                     new_ix = ix.copy_with(
-                        linearmap=ar.do("asarray", ix._linearmap, like=params)
+                        linearmap=ar.do(
+                            "asarray", ix._linearmap, like=self._blocks
+                        )
                     )
                 except ImportError:
                     # params is possibly a placeholder of some kind
@@ -1071,7 +1072,7 @@ class FlatArrayCommon:
         -------
         FlatArrayCommon
         """
-        if isinstance(axis, numbers.Integral):
+        if ar.is_scalar(axis):
             axis = (axis,)
 
         axs_keep = []

@@ -1,8 +1,9 @@
 import functools
 import hashlib
-import numbers
 import os
 import pickle
+
+import autoray as ar
 
 # a simple flag for enabling rigorous checks in many places
 DEBUG = bool(os.environ.get("SYMMRAY_DEBUG", "0").upper() in ("1", "TRUE"))
@@ -494,7 +495,7 @@ def rand_index(
         # charges and sizes given explicitly, nothing more to generate
         return sr.BlockIndex(chargemap=d, dual=dual)
 
-    if not isinstance(d, numbers.Integral):
+    if not ar.is_scalar(d):
         # charges and sizes given as a linearmap, nothing more to generate
         return sr.BlockIndex(linearmap=d, dual=dual)
 

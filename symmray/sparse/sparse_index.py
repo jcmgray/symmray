@@ -1,7 +1,8 @@
 """Index objects for abelian arrays with block sparse backend."""
 
-import numbers
 import warnings
+
+import autoray as ar
 
 from ..index_common import Index, SubInfo
 from ..utils import hasher
@@ -276,7 +277,7 @@ class BlockIndex(Index):
                 raise ValueError(
                     f"Size of charge {c} is {d}, must be positive."
                 )
-            if not isinstance(d, numbers.Integral):
+            if not ar.is_scalar(d):
                 raise ValueError(f"Size of charge {c} is {d}, must be an int.")
 
         assert sorted(self._chargemap) == list(self._chargemap)

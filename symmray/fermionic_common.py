@@ -1,6 +1,6 @@
 """Common methods for any fermionic arrays."""
 
-import numbers
+import autoray as ar
 
 from .abelian_common import parse_tensordot_axes
 
@@ -337,7 +337,7 @@ class FermionicCommon:
         """
         new = self if inplace else self.copy()
 
-        if isinstance(axis, numbers.Integral):
+        if ar.is_scalar(axis):
             axis = (axis,)
 
         axes_squeeze = []
