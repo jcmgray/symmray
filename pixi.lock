@@ -4930,10 +4930,10 @@ packages:
   timestamp: 1760114795152
 - pypi: ./
   name: symmray
-  version: 0.1.2.dev6+g6c611d305.d20251205
-  sha256: 7e936deb35a3f70d7f84979a7eeca53b0519413be41e12aa76b58b1efbe2acd3
+  version: 0.1.2.dev7+ga647c4742.d20251208
+  sha256: f212c58672c7e1862f675bce77fad6efa15b1e22ef489eecab1538d2565ce908
   requires_dist:
-  - autoray>=0.8.4
+  - autoray>=0.8
   - astroid ; extra == 'docs'
   - furo ; extra == 'docs'
   - ipython ; extra == 'docs'

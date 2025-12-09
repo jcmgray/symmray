@@ -120,7 +120,7 @@ def rand_valid_tensordot(
         indices_a,
         charge=charge_a,
         seed=rng,
-        oddpos="a",
+        label="a",
         **kwargs,
     )
     b = get_rand(
@@ -128,7 +128,7 @@ def rand_valid_tensordot(
         indices_b,
         charge=charge_b,
         seed=rng,
-        oddpos="b",
+        label="b",
         **kwargs,
     )
 

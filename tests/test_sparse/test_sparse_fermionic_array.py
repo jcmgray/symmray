@@ -59,7 +59,7 @@ def test_fermi_norm_phase_dual(symmetry, charge, seed):
         (3, 4, 5, 6),
         fermionic=True,
         charge=charge,
-        oddpos="x",
+        label="x",
         seed=seed,
     )
     n2 = x.norm() ** 2

@@ -6,7 +6,7 @@ import autoray as ar
 
 from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
-from ..fermionic_common import FermionicCommon
+from ..fermionic_common import FermionicCommon, parse_dummy_modes
 from ..fermionic_local_operators import FermionicOperator
 from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
@@ -58,30 +58,6 @@ def perm_to_swaps(perm):
     return tuple(swaps)
 
 
-def oddpos_parse(oddpos, parity):
-    if oddpos is None:
-        # no dummy indices
-        return (), ()
-
-    if isinstance(oddpos, (list, tuple)) and isinstance(
-        oddpos[0], FermionicOperator
-    ):
-        # an explicit sequence of subsumed odd ranks
-        oddpos = tuple(oddpos)
-
-        if not isinstance(parity, (list, tuple)):
-            parities = (parity,) * len(oddpos)
-        else:
-            parities = tuple(parity)
-
-        return oddpos, parities
-
-    if not isinstance(oddpos, FermionicOperator):
-        oddpos = FermionicOperator(oddpos)
-
-    return (oddpos,), (parity,)
-
-
 class FermionicArrayFlat(
     FermionicCommon,
     FlatArrayCommon,
@@ -113,15 +89,17 @@ class FermionicArrayFlat(
     label : hashable, optional
         An optional label for the array, potentially needed for ordering dummy
         odd fermionic modes.
+    dummy_modes : sequence[FermionicOperator], optional
+        A sequence of dummy fermionic modes representing to effectively
+        prepend to the array.
     symmetry : str or Symmetry, optional
         The symmetry of the array, if not using a specific symmetry class.
     """
 
     __slots__ = (
         "_blocks",
+        "_dummy_modes",
         "_indices",
-        "_odd_parities",
-        "_oddpos",
         "_phases",
         "_sectors",
         "_symmetry",
@@ -137,9 +115,8 @@ class FermionicArrayFlat(
         indices,
         phases=None,
         label=None,
+        dummy_modes=None,
         symmetry=None,
-        oddpos=None,
-        odd_parities=None,
     ):
         self._init_abelian(
             sectors=sectors,
@@ -156,19 +133,11 @@ class FermionicArrayFlat(
         else:
             self._phases = ar.do("asarray", phases, like=self._blocks)
 
-        if oddpos is None and self.label is not None:
-            # default to the array label
-            oddpos = self.label
-
-        if oddpos:
-            oddpos, odd_parities = oddpos_parse(oddpos, self.parity)
-        else:
-            # None or empty
-            oddpos = ()
-            odd_parities = ()
-
-        self._oddpos = oddpos
-        self._odd_parities = odd_parities
+        self._dummy_modes = parse_dummy_modes(
+            parity=self.parity,
+            label=self.label,
+            dummy_modes=dummy_modes,
+        )
 
         if DEBUG:
             self.check()
@@ -181,16 +150,6 @@ class FermionicArrayFlat(
         return self._phases
 
     @property
-    def oddpos(self):
-        """Any labels of dummy fermionic modes for odd parity tensors."""
-        return self._oddpos
-
-    @property
-    def odd_parities(self):
-        """The parities of each oddpos label carried by this array."""
-        return self._odd_parities
-
-    @property
     def parity(self):
         """The total parity of the array, 0 for even, 1 for odd."""
         return ar.do("sum", self.sectors[0] % 2, like=self.backend) % 2
@@ -201,17 +160,15 @@ class FermionicArrayFlat(
         if self._phases is not None:
             assert ar.do("shape", self._phases) == (self.num_blocks,)
             assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
-        assert len(self._oddpos) == len(self._odd_parities)
 
     def new_with(self, sectors, blocks, indices) -> "FermionicArrayFlat":
         """Create a new flat fermionic array of the same class as this one.
         Unlike `copy`, this does not copy over any existing data and drops
-        for example `label`, `phases`, and `oddpos`.
+        for example `label`, `phases`, and `dummy_modes`.
         """
         new = self._new_with_abelian(sectors, blocks, indices)
         new._phases = None
-        new._oddpos = ()
-        new._odd_parities = ()
+        new._dummy_modes = ()
         return new
 
     def copy(self, deep=False) -> "FermionicArrayFlat":
@@ -226,8 +183,7 @@ class FermionicArrayFlat(
         else:
             new._phases = None
 
-        new._oddpos = self._oddpos
-        new._odd_parities = self._odd_parities
+        new._dummy_modes = self._dummy_modes
         return new
 
     def copy_with(
@@ -247,8 +203,7 @@ class FermionicArrayFlat(
             indices=indices,
         )
         new._phases = self._phases if phases is None else phases
-        new._oddpos = self._oddpos
-        new._odd_parities = self._odd_parities
+        new._dummy_modes = self._dummy_modes
         if DEBUG:
             new.check()
         return new
@@ -259,8 +214,7 @@ class FermionicArrayFlat(
         blocks=None,
         indices=None,
         phases=None,
-        oddpos=None,
-        odd_parities=None,
+        dummy_modes=None,
     ) -> "FermionicArrayFlat":
         """Modify this fermionic flat array in place with some attributes
         replaced. Note that checks are not performed on the new properties,
@@ -271,6 +225,7 @@ class FermionicArrayFlat(
             blocks=blocks,
             indices=indices,
         )
+
         if phases is not None:
             if isinstance(phases, str):
                 if phases == "reset":
@@ -280,10 +235,9 @@ class FermionicArrayFlat(
             else:
                 self._phases = phases
 
-        if oddpos is not None:
-            self._oddpos = oddpos
-        if odd_parities is not None:
-            self._odd_parities = odd_parities
+        if dummy_modes is not None:
+            self._dummy_modes = dummy_modes
+
         if DEBUG:
             self.check()
         return self
@@ -310,8 +264,7 @@ class FermionicArrayFlat(
         """
         data = self._to_pytree_abelian()
         data["phases"] = self._phases
-        data["oddpos"] = tuple(o.to_pytree() for o in self._oddpos)
-        data["odd_parities"] = self._odd_parities
+        data["dummy_modes"] = tuple(m.to_pytree() for m in self._dummy_modes)
         return data
 
     @classmethod
@@ -319,11 +272,11 @@ class FermionicArrayFlat(
         """Create a flat fermionic array from a pytree purely of non-symmray
         containers and objects.
         """
+        # attributes with internal structure
         indices = tuple(FlatIndex.from_pytree(d) for d in data["indices"])
-        oddpos = tuple(
-            FermionicOperator.from_pytree(d) for d in data["oddpos"]
+        dummy_modes = tuple(
+            FermionicOperator.from_pytree(d) for d in data["dummy_modes"]
         )
-
         return cls(
             sectors=data["sectors"],
             blocks=data["blocks"],
@@ -331,8 +284,7 @@ class FermionicArrayFlat(
             phases=data["phases"],
             label=data["label"],
             symmetry=data["symmetry"],
-            oddpos=oddpos,
-            odd_parities=data["odd_parities"],
+            dummy_modes=dummy_modes,
         )
 
     def _map_blocks(self, fn_sector=None, fn_block=None):
@@ -348,9 +300,9 @@ class FermionicArrayFlat(
         blocks,
         indices,
         phases=None,
-        oddpos=None,
-        symmetry=None,
         label=None,
+        dummy_modes=None,
+        symmetry=None,
     ) -> "FermionicArrayFlat":
         """Create a fermionic flat array from an explicit dictionary of blocks,
         and sequence of indices or duals.
@@ -368,11 +320,14 @@ class FermionicArrayFlat(
         phases : dict[tuple[int, ...], int], optional
             A dictionary mapping sector keys to +/- 1 phases. If not supplied,
             all phases are assumed to be +1.
-        symmetry : str or Symmetry, optional
-            The symmetry of the array, if not using a specific symmetry class.
         label : hashable, optional
             An optional label for the array, potentially needed for ordering
             dummy odd fermionic modes.
+        dummy_modes : sequence[FermionicOperator], optional
+            A sequence of dummy fermionic modes representing to effectively
+            prepend to the array.
+        symmetry : str or Symmetry, optional
+            The symmetry of the array, if not using a specific symmetry class.
 
         """
         sectors = list(map(list, blocks.keys()))
@@ -394,7 +349,7 @@ class FermionicArrayFlat(
             blocks=blocks,
             indices=indices,
             phases=phases,
-            oddpos=oddpos,
+            dummy_modes=dummy_modes,
             symmetry=symmetry,
             label=label,
         )
@@ -418,9 +373,9 @@ class FermionicArrayFlat(
             blocks=x.blocks,
             indices=[ix.to_flat() for ix in x.indices],
             phases=x.phases,
-            oddpos=x.oddpos,
-            symmetry=symmetry or x.symmetry,
             label=x.label,
+            dummy_modes=x.dummy_modes,
+            symmetry=symmetry or x.symmetry,
         )
 
     def to_blocksparse(self) -> "FermionicArray":
@@ -440,11 +395,10 @@ class FermionicArrayFlat(
                 if phase != 1
             }
 
-        oddpos = tuple(
-            f for f, p in zip(self._oddpos, self._odd_parities) if p == 1
+        dummy_modes = tuple(f for f in self._dummy_modes if f.parity == 1)
+        return self._to_blocksparse_abelian(
+            phases=phases, dummy_modes=dummy_modes
         )
-
-        return self._to_blocksparse_abelian(phases=phases, oddpos=oddpos)
 
     def sort_stack(
         self,
@@ -621,105 +575,96 @@ class FermionicArrayFlat(
         new.modify(phases=-new.phases)
         return new
 
-    def _resolve_oddpos_conj(self, phase_permutation=True):
+    def _resolve_dummy_modes_conj(self, phase_permutation=True):
         """Assuming we have effectively taken the conjugate of a fermionic
-        array with dummy oddpos modes, get their new order and compute any
+        array with dummy modes, get their new order and compute any
         phase changes coming from moving back to the beginning of the index
         order.
         """
-        if not self.oddpos:
+        if not self.dummy_modes:
             return
 
-        # 1. we get a reversal and conjugation of the oddpos modes
+        # 1. we get a reversal and conjugation of the dummy modes
         #       dummy modes          real indices
         # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
         #                     <-->
         # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-        new_oddpos = tuple(r.dag for r in reversed(self.oddpos))
-        new_odd_parities = tuple(reversed(self.odd_parities))
-        self.modify(oddpos=new_oddpos, odd_parities=new_odd_parities)
+        new_dummy_modes = tuple(r.dag for r in reversed(self.dummy_modes))
+        self.modify(dummy_modes=new_dummy_modes)
 
         if phase_permutation:
-            # 2. moving oddpos charges back to left
+            # 2. moving dummy modes back to left
             # after flipping might generate global sign
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
             #                     <--
             # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            sign = (self.parity * sum(self.odd_parities) % 2) * -2 + 1
+            dummy_parity = sum(m.parity for m in self.dummy_modes) % 2
+            sign = (self.parity * dummy_parity) * -2 + 1
             self.modify(phases=self.phases * sign)
 
-    def _resolve_oddpos_combine(self, a, b):
-        """Calculate the new combined dummy odd modes and any associated global
+    def _resolve_dummy_modes_combine(self, a, b):
+        """Calculate the new combined dummy modes and any associated global
         phases combing from contracting two fermionic arrays `a` and `b`. This
         modifies this array in place.
         """
-        l_oddpos = a.oddpos
-        r_oddpos = b.oddpos
-        if not l_oddpos and not r_oddpos:
-            # no odd modes to resolve
-            self._oddpos = self._odd_parities = ()
+        l_dummy_modes = a.dummy_modes
+        r_dummy_modes = b.dummy_modes
+        if not l_dummy_modes and not r_dummy_modes:
+            # no dummy modes to resolve
+            self._dummy_modes = ()
             return
 
-        l_odd_parities = a.odd_parities
-        r_odd_parities = b.odd_parities
-
-        oddpos = [*l_oddpos, *r_oddpos]
-        odd_parities = [*l_odd_parities, *r_odd_parities]
+        dummy_modes = [*l_dummy_modes, *r_dummy_modes]
 
         # 1. initially we have:
         # left dummy modes | left real modes | right dummy modes | right real modes
         # so we must calc phase from moving right dummy modes past left real modes
-        phase = (a.parity * sum(r_odd_parities) % 2) * -2 + 1
+        r_dummy_parity = sum(m.parity for m in r_dummy_modes) % 2
+        phase = (a.parity * r_dummy_parity) * -2 + 1
 
         # then we want to sort the joint set of left and right dummy modes,
-        perm = tuple(sorted(range(len(oddpos)), key=lambda i: oddpos[i]))
+        perm = tuple(
+            sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
+        )
         swaps = perm_to_swaps(perm)
         for i, j in swaps:
-            a, b = oddpos[i], oddpos[j]
-            pa, pb = odd_parities[i], odd_parities[j]
+            a, b = dummy_modes[i], dummy_modes[j]
             # compute sign from swap
-            phase = phase * ((pa * pb) * -2 + 1)
+            phase = phase * ((a.parity * b.parity) * -2 + 1)
             # perform swap
-            oddpos[i], oddpos[j] = b, a
-            odd_parities[i], odd_parities[j] = pb, pa
+            dummy_modes[i], dummy_modes[j] = b, a
 
-        # do the global phase, and set the new sorted oddpos labels and parities
-        self.modify(
-            oddpos=tuple(oddpos),
-            odd_parities=tuple(odd_parities),
-            phases=self.phases * phase,
-        )
+        # do the global phase, and set the new sorted dummy modes and parities
+        self.modify(dummy_modes=tuple(dummy_modes), phases=self.phases * phase)
 
-    def _resolve_oddpos_squeeze(self, axes_squeeze):
+    def _resolve_dummy_modes_squeeze(self, axes_squeeze):
         """Assuming we are about to squeeze away `axes_squeeze`, compute the
         phases associated with moving them to the beginning of the array, and
-        then turn them into dummy oddpos modes.
+        then turn them into dummy modes.
         """
         axes_leave = []
-        squeezed_oddpos = []
-        squeezed_odd_parities = []
+        squeezed_dummy_modes = []
         for ax, ix in enumerate(self.indices):
             if ax in axes_squeeze:
-                # all sectors should have same charge for squeezed axes
-                odd_parity = self._sectors[0, ax] % 2
-
                 label = self.label
                 if label is None:
                     raise ValueError(
                         "Cannot squeeze flat fermionic index with possible odd"
                         " parity if array has no ordering `.label` attribute."
                     )
-                op = FermionicOperator(("squeeze", label, ax), ix.dual)
-                squeezed_oddpos.append(op)
-                squeezed_odd_parities.append(odd_parity)
+
+                op = FermionicOperator(
+                    label=("squeeze", label, ax),
+                    dual=ix.dual,
+                    # all sectors should have same charge for squeezed axes
+                    parity=self._sectors[0, ax] % 2,
+                )
+                squeezed_dummy_modes.append(op)
             else:
                 axes_leave.append(ax)
 
         self.phase_transpose((*axes_squeeze, *axes_leave), inplace=True)
-        self.modify(
-            oddpos=(*self.oddpos, *squeezed_oddpos),
-            odd_parities=(*self.odd_parities, *squeezed_odd_parities),
-        )
+        self.modify(dummy_modes=(*self.dummy_modes, *squeezed_dummy_modes))
 
     def transpose(
         self,
@@ -800,9 +745,9 @@ class FermionicArrayFlat(
             )
             new.phase_flip(*axs_conj, inplace=True)
 
-        if new.oddpos:
+        if new.dummy_modes:
             # handle potential dummy odd modes
-            new._resolve_oddpos_conj(phase_permutation)
+            new._resolve_dummy_modes_conj(phase_permutation)
 
         return new
 
@@ -819,7 +764,7 @@ class FermionicArrayFlat(
 
         # handle potential dummy odd modes
         #     dagger defined by phaseless reversal of all axes
-        new._resolve_oddpos_conj(phase_permutation=True)
+        new._resolve_dummy_modes_conj(phase_permutation=True)
 
         return new
 
@@ -868,7 +813,7 @@ class FermionicArrayFlat(
         absorb=0,
         renorm=0,
         positive=0,
-        drop_oddpos=True,
+        drop_dummy_modes=True,
         **kwargs,
     ) -> tuple["FermionicArrayFlat", FlatVector, "FermionicArrayFlat"]:
         """Truncated hermitian eigen-decomposition of this assumed hermitian
@@ -903,9 +848,9 @@ class FermionicArrayFlat(
         positive: bool, optional
             If True, assume all eigenvalues are positive for a faster sort.
             By default False.
-        drop_oddpos : bool, optional
-            Whether to drop any dummy oddpos modes after the decomposition.
-            By default True.
+        drop_dummy_modes : bool, optional
+            Whether to drop any dummy modes after the decomposition. By default
+            True.
 
         Returns
         -------
@@ -950,9 +895,8 @@ class FermionicArrayFlat(
             w.check()
             U.check()
 
-        if drop_oddpos:
-            U._oddpos = ()
-            U._odd_parities = ()
+        if drop_dummy_modes:
+            U._dummy_modes = ()
             U._label = None
 
         VH = U._dagger_abelian()

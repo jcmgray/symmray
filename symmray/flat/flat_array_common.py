@@ -1523,7 +1523,7 @@ class FlatArrayCommon:
         )
 
         # R is always charge 0 and thus block diagonal
-        # NOTE: we don't `copy_with` as we need to drop phases/oddpos ...
+        # NOTE: we don't `copy_with` as we need to drop phases/dummy_modes ...
         r = self.new_with(
             sectors=self.sectors[:, (1, 1)],
             blocks=rb,
@@ -1566,7 +1566,7 @@ class FlatArrayCommon:
         )
 
         # VH is always charge 0 and thus block diagonal
-        # NOTE: we can't `copy_with` as we need to drop phases/oddpos ...
+        # NOTE: we can't `copy_with` as we need to drop phases/dummy_modes ...
         vh = self.new_with(
             sectors=self.sectors[:, (1, 1)],
             blocks=bvh,

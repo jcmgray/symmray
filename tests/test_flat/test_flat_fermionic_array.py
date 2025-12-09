@@ -48,19 +48,19 @@ def test_to_and_from_blocksparse_with_phase_sync(
     seed,
     sync,
 ):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     x = get_zn_blocksparse_flat_compat(
         symmetry,
         (2, 4, 6),
         charge=charge,
         fermionic=True,
         seed=seed,
+        label="x",
     )
     # add some non-trivial phases
-    x.transpose((2, 0, 1), inplace=True)
+    x.randomize_phases(seed + 1, inplace=True)
     assert x.phases
+    if charge:
+        assert x.dummy_modes
     fx = x.to_flat()
     assert fx.fermionic
     if sync:
@@ -84,18 +84,18 @@ def test_phase_flip(
     sync,
     axs,
 ):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     x = get_zn_blocksparse_flat_compat(
         symmetry,
         (2, 4, 6),
         charge=charge,
         fermionic=True,
         seed=seed,
+        label="x",
     )
     x.randomize_phases(seed + 1, inplace=True)
     assert x.phases
+    if charge:
+        assert x.dummy_modes
     fx = x.to_flat()
     xflipped = x.phase_flip(*axs)
     fxflipped = fx.phase_flip(*axs)
@@ -120,9 +120,6 @@ def test_phase_transpose(
     seed,
     sync,
 ):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     rng = sr.utils.get_rng(seed)
     N = rng.integers(1, 7)
     perm = tuple(rng.permutation(N))
@@ -134,6 +131,7 @@ def test_phase_transpose(
         charge=charge,
         fermionic=True,
         seed=seed,
+        label="x",
     )
     # add some non-trivial phases
     x.randomize_phases(seed + 1, inplace=True)
@@ -156,14 +154,13 @@ def test_phase_transpose(
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
 def test_phase_global(symmetry, charge, seed):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
     x = get_zn_blocksparse_flat_compat(
         symmetry,
         (2, 4, 6),
         charge=charge,
         fermionic=True,
         seed=seed,
+        label="x",
     )
     # add some non-trivial phases
     x.randomize_phases(seed + 1, inplace=True)
@@ -184,11 +181,7 @@ def test_transpose(
     seed,
     sync,
 ):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     rng = sr.utils.get_rng(seed)
-
     shape = [rng.choice([2, 4]) for _ in range(ndim)]
 
     if rng.random() < 0.2:
@@ -202,6 +195,7 @@ def test_transpose(
         charge=charge,
         fermionic=True,
         seed=rng,
+        label="x",
     )
     x.randomize_phases(rng, inplace=True)
     xt = x.transpose(perm)
@@ -236,7 +230,7 @@ def test_conj(
         shape,
         charge=charge,
         fermionic=True,
-        oddpos="x",
+        label="x",
         seed=seed,
     )
     # add some non-trivial phases
@@ -266,7 +260,7 @@ def test_dagger(symmetry, charge, ndim, dtype, seed):
         shape=[2] * ndim,
         charge=charge,
         fermionic=True,
-        oddpos="x",
+        label="x",
         seed=rng,
         dtype=dtype,
     )
@@ -296,7 +290,7 @@ def test_fermi_norm_phase_dual(symmetry, charge, seed):
         subsizes="equal",
         fermionic=True,
         charge=charge,
-        oddpos="x",
+        label="x",
         flat=False,
         seed=seed,
     )
@@ -359,15 +353,13 @@ def test_fuse(
     shape,
     axes_groups,
 ):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     x = get_zn_blocksparse_flat_compat(
         symmetry,
         shape=shape,
         charge=charge,
         fermionic=True,
         seed=42,
+        label="x",
     )
     x.randomize_phases(43, inplace=True)
     x_fused = x.fuse(*axes_groups, inplace=False)
@@ -383,9 +375,6 @@ def test_fuse(
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", range(10))
 def test_fuse_unfuse(symmetry, charge, seed):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     rng = sr.utils.get_rng(seed)
     x = get_zn_blocksparse_flat_compat(
         symmetry,
@@ -393,6 +382,7 @@ def test_fuse_unfuse(symmetry, charge, seed):
         charge=charge,
         fermionic=True,
         seed=rng,
+        label="x",
     )
     x.randomize_phases(seed + 1, inplace=True)
     fx = x.to_flat()
@@ -450,11 +440,13 @@ def test_fuse_unfuse(symmetry, charge, seed):
 )
 @pytest.mark.parametrize("charge", [0, 1])
 def test_fuse_roundtrip(symmetry, shape, axes_groups, charge):
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     sx = get_zn_blocksparse_flat_compat(
-        symmetry, shape, charge, fermionic=True, seed=42
+        symmetry,
+        shape,
+        charge,
+        fermionic=True,
+        seed=42,
+        label="x",
     )
     sx.randomize_phases(43, inplace=True)
     sy = sx.fuse(*axes_groups)
@@ -528,7 +520,7 @@ def test_matmul(symmetry, ndim_a, ndim_b, charge_a, charge_b, seed):
         seed=rng,
         charge=charge_a,
         fermionic=True,
-        oddpos="x",
+        label="x",
     )
     x.randomize_phases(rng, inplace=True)
     if ndim_b == 1:
@@ -541,7 +533,7 @@ def test_matmul(symmetry, ndim_a, ndim_b, charge_a, charge_b, seed):
         seed=rng,
         charge=charge_b,
         fermionic=True,
-        oddpos="y",
+        label="y",
     )
     y.randomize_phases(rng, inplace=True)
     z = x @ y
@@ -564,9 +556,6 @@ def test_block_multiply_diagonal(symmetry, charge, axis):
     import autoray as ar
     import numpy as np
 
-    if charge:
-        pytest.xfail("oddpos not implemented yet.")
-
     rng = np.random.default_rng(42)
     sx = get_zn_blocksparse_flat_compat(
         symmetry,
@@ -574,6 +563,7 @@ def test_block_multiply_diagonal(symmetry, charge, axis):
         seed=rng,
         charge=charge,
         fermionic=True,
+        label="x",
     )
     sx.randomize_phases(rng, inplace=True)
     x = sx.to_flat()

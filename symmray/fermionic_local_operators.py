@@ -35,22 +35,24 @@ def labels_lt(labela, labelb):
 
 
 class FermionicOperator:
-    """Simple class to represent a fermionic operator with a label and a
-    dual flag.
+    """Simple class to represent a fermionic operator with a label, a dual
+    flag, and a parity 'switch' indicating whether the fermion is present.
     """
 
-    __slots__ = ("_label", "_dual")
+    __slots__ = ("_label", "_dual", "_parity")
 
-    def __init__(self, label, dual=False):
+    def __init__(self, label, dual=False, parity=1):
         if label == ():
             raise ValueError("Label cannot be an empty tuple.")
         self._label = label
         self._dual = dual
+        self._parity = parity
 
     def to_pytree(self):
         return {
             "label": self._label,
             "dual": self._dual,
+            "parity": self._parity,
         }
 
     @classmethod
@@ -66,10 +68,15 @@ class FermionicOperator:
         return self._dual
 
     @property
+    def parity(self):
+        return self._parity
+
+    @property
     def dag(self):
-        return FermionicOperator(self._label, not self._dual)
+        return FermionicOperator(self._label, not self._dual, self.parity)
 
     def __eq__(self, other):
+        # XXX: do we need parity here?
         return (self._dual, self._label) == (other._dual, other._label)
 
     def __lt__(self, other):
@@ -100,7 +107,8 @@ def _ensure_fermionic_operator(op):
     if isinstance(op, FermionicOperator):
         return op
     label, symbol = op
-    return FermionicOperator(label, {"+": True, "-": False}[symbol])
+    dual = {"+": True, "-": False}[symbol]
+    return FermionicOperator(label, dual)
 
 
 def _parse_terms(terms):
@@ -210,6 +218,7 @@ def build_local_fermionic_elements(terms, bases):
                         element[k] = opr
                         element[k + 1] = opl
                         # flip phase from fermionic anticommutation
+                        # XXX: consider parities here?
                         phase = -phase
                         any_moves = True
 

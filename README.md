@@ -59,7 +59,7 @@ print(z)
 sr.linalg.svd(z.fuse((0, 3), (1, 2)))
 # (Z2FermionicArray(shape~(21, 21):[++], charge=0, num_blocks=2),
 #  BlockVector(total_size=21, num_blocks=2),
-#  Z2FermionicArray(shape~(21, 30):[-+], charge=0, num_blocks=2))
+#  Z2FermionicArray(shape~(21, 30):[-+], charge=0, num_b locks=2))
 ```
 
 or you can use the automatic dispatch library `autoray` to support multiple
@@ -258,36 +258,131 @@ And inserted when needed using:
 - `FermionicArray.phase_sync`: actually multiply the blocks by the phases.
 
 
-#### Multiple odd-parity fermionic arrays - `oddpos`
+#### Multiple odd-parity fermionic arrays - `label` and `dummy_modes`
 
-If you want to work with networks involving multiple odd-parity tensors then
-you must supply any *sortable* label `oddpos` to the `FermionicArray`
-constructor, which acts like a sequence of dummy indices with odd-parity.
-Whenever two arrays with `oddpos` are contracted, a global phase
-is possibly inserted coming from sorting these dummy odd-parity indices.
+If you want to work with networks involving multiple odd-parity tensors (and
+care about the global phase) then you must supply any *sortable* object as
+`label` to the `FermionicArray` constructor (typically lattice coordinate for
+example). This triggers the default creation of a single dummy mode, stored in
+the attribute `dummy_modes : tuple[FermionicOperator, ...]`. As fermionic
+arrays are contracted, these dummy modes are accumulated as if they were size 1
+indices **prepended** to the array. The modes are also sorted according to
+their `label` and dualness, yielding a global phase with respect to the sorted
+ordering. Adjacent conjugate pairs can also be contracted away.
 
-An initial single value of ``oddpos`` is converted into a length 1 tuple, and
-these are then concatenated and sorted when two arrays are contracted. For
-example, if `a` and `b` have accrued the following `oddpos` values:
-```
-oddpos_a = (2, 3, 5)
-oddpos_b = (4, 6,)
-```
-their contraction would result in:
-```
-(2, 3, 5, 4, 6)
--> sort introduces phase ->
-(2, 3, 4, 5, 6)
--> neighboring oddpos pairs can then be cancelled ->
-oddpos_new = (6,)
+For example, if we create two fermionic arrays with different labels:
+```python
+# indices
+a = sr.utils.rand_index("Z2", 2)
+b = sr.utils.rand_index("Z2", 4)
+c = sr.utils.rand_index("Z2", 6)
+d = sr.utils.rand_index("Z2", 8)
+
+# arrays
+x = sr.utils.get_rand(
+  "Z2", shape=(a, b, c), fermionic=True, charge=1, label="B",
+)
+y = sr.utils.get_rand(
+  "Z2", shape=(b.conj(), c.conj(), d,), fermionic=True, charge=1, label="A",
+)
+
+x, y
+# (Z2FermionicArray(shape~(2, 4, 6):[--+], charge=1, num_blocks=4),
+#  Z2FermionicArray(shape~(4, 6, 8):[+-+], charge=1, num_blocks=4))
+
 ```
 
-This gives a canonical sign to the overall network that is handled
-automatically and locally (once the initial `oddpos` values are chosen.)
-The phase is tracked lazily via `FermionicArray.phase_global`.
+You can see each has a single dummy mode with the corresponding array label and
+`dual=False`:
 
-If for some reason you would like to create a `FermionicArray` with multiple
-labels then you should supply a **list** of labels.
+```python
+x.dummy_modes, y.dummy_modes
+# ((B-,), (A-,))
+```
+
+These mean the arrays are effectively even parity overall and any global phases
+can still be calculated locally. If we contract these arrays the dummy modes
+are moved into sorted order at the start of the new array, and any requisite
+phases will be accumulated:
+
+```python
+z = sr.tensordot(x, y, axes=((1, 2), (0, 1)))
+z
+# Z2FermionicArray(shape~(2, 8):[-+], charge=0, num_blocks=2)
+
+z.dummy_modes
+# (A-, B-)
+```
+
+When you conjugate a fermionic array with dummy modes, the modes are conjugated
+and reversed in order:
+
+```python
+zc = z.conj()
+zc.dummy_modes
+# (B+, A+)
+```
+
+Now when we contract `zc` and `z`, during the sorting of the dummy modes,
+adjacent conjugate pairs are contracted away
+(`(B+, A+, A-, B-) -> (B+ B-) -> ()`):
+
+```python
+z2 = sr.tensordot(zc, z, axes=2, preserve_array=True)
+z2
+# Z2FermionicArray(-55.0255656563742, charge=0, num_blocks=1)
+
+# reverse order should still match
+z2 = sr.tensordot(z, zc, axes=2, preserve_array=True)
+z2
+# Z2FermionicArray(-55.0255656563742, charge=0, num_blocks=1)
+
+z2.dummy_modes
+# ()
+```
+
+##### Slicing and dummy modes
+
+Slicing an fermionic array (for example when computing an amplitude), even or
+odd, also can create dummy modes, equivalent to projecting that index without
+removing it:
+
+```python
+x = sr.utils.get_rand(
+    "Z2", shape=(a, b, c), charge=0, fermionic=True, label="X",
+)
+print(x)
+# Z2FermionicArray(ndim=3, charge=0, indices=[
+#     (2 = 1+1 : +[0,1])
+#     (4 = 3+1 : -[0,1])
+#     (6 = 3+3 : +[0,1])
+# ], num_blocks=4, backend=numpy, dtype=float64)
+
+x[:, 3, :].dummy_modes
+# (X-, ('squeeze', 'X', 1)+)
+```
+
+For this to work, the array needs to have a `label` specified, even if it is
+initially even parity. Note the type of mode label created here is specific to
+"squeezing" an index and results in these modes being sorted into a separate
+group.
+
+
+##### Explicit dummy_modes
+
+You can override the default dummy mode creation or supply an existing set of
+dummy modes by passing the `dummy_modes` argument to the `FermionicArray`
+constructor. This must be a tuple of `FermionicOperator` objects, and is
+assumed to result in an overall even array parity.
+
+
+##### FermionicOperator.parity
+
+In order to handle 'branchless' calculations (i.e. where the concrete value of
+parity is not known), the `FermionicOperator` object has a `.parity` attribute,
+which is set automatically upon creation in various methods. Swap phases are
+then calculated as `(-1) ** (op1.parity * op2.parity)` in the `flat` backend
+for examples, avoiding any data dependency.
 
 
 #### Conjugation and tensor networks

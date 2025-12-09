@@ -3,9 +3,45 @@
 import autoray as ar
 
 from .abelian_common import parse_tensordot_axes
+from .fermionic_local_operators import FermionicOperator
+
+
+def parse_dummy_modes(parity, label, dummy_modes):
+    """Parse the dummy modes for a fermionic array, possibly creating a single
+    mode from the array label to mimic an overall even parity array.
+    """
+    if isinstance(dummy_modes, (list, tuple)):
+        if len(dummy_modes) == 0:
+            # can't check first element
+            return ()
+        elif isinstance(dummy_modes[0], FermionicOperator):
+            # explicit sequence of dummy modes already given, assume correct
+            return tuple(dummy_modes)
+
+    if dummy_modes is None:
+        if label is None:
+            # no dummy modes, assume even parity
+            return ()
+        else:
+            # else create a default single dummy mode matching the array
+            # parity to form an overall even parity array
+            return (FermionicOperator(label, parity=parity),)
+
+    # XXX: might be other valid specifications in future
+    raise ValueError(
+        "Invalid dummy_modes specification, must be "
+        "None or a sequence of FermionicOperator."
+    )
 
 
 class FermionicCommon:
+    @property
+    def dummy_modes(self) -> tuple[FermionicOperator, ...]:
+        """A sequence of dummy fermionic modes effectively prepended to the
+        array, used to describe odd parity arrays.
+        """
+        return self._dummy_modes
+
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations.
 
@@ -268,12 +304,12 @@ class FermionicCommon:
         c = a._tensordot_abelian(
             b,
             axes=(new_axes_a, new_axes_b),
-            # preserve array for resolving oddposs
+            # preserve array for resolving dummy_modes
             preserve_array=True,
             **kwargs,
         )
 
-        c._resolve_oddpos_combine(a, b)
+        c._resolve_dummy_modes_combine(a, b)
 
         if (c.ndim == 0) and (not preserve_array):
             c.phase_sync(inplace=True)
@@ -303,7 +339,7 @@ class FermionicCommon:
         a = self.phase_sync()
         b = other.phase_sync()
         c = a._matmul_abelian(b, preserve_array=True)
-        c._resolve_oddpos_combine(a, b)
+        c._resolve_dummy_modes_combine(a, b)
 
         if c.ndim == 0 and (not preserve_array):
             c.phase_sync(inplace=True)
@@ -320,8 +356,8 @@ class FermionicCommon:
     def squeeze(self, axis=None, inplace=False) -> "FermionicCommon":
         """Squeeze the fermionic array, removing axes of size 1. If those axes
         correspond to odd parity charges, then they are converged into dummy
-        `oddpos` modes effectively to the left of the array. The sorting label
-        of the array is then required to have been set.
+        `dummy_modes` modes effectively to the left of the array. The sorting
+        `label` of the array is then required to have been set.
 
         Parameters
         ----------
@@ -356,8 +392,8 @@ class FermionicCommon:
             return new
 
         # this takes care of phases from moving the squeezed axes to the
-        # beginning of the array, and also turns them into dummy oddpos modes
-        new._resolve_oddpos_squeeze(axes_squeeze)
+        # beginning of the array, and also turns them into dummy modes
+        new._resolve_dummy_modes_squeeze(axes_squeeze)
 
         # actually do the data squeeze
         return new._squeeze_abelian(axes_squeeze, inplace=True)

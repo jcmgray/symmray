@@ -658,7 +658,7 @@ def get_rand(
     ]
 
     if not fermionic:
-        kwargs.pop("oddpos", None)
+        kwargs.pop("dummy_modes", None)
 
     x = cls.random(
         indices=indices,

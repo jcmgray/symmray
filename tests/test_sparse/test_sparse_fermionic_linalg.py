@@ -24,7 +24,7 @@ def test_qr_basics(symmetry, d0, d1, f0, f1, c):
         duals=[f0, f1],
         charge=c,
         fermionic=True,
-        oddpos="x",
+        label="x",
     )
     x.check()
     q, r = sr.linalg.qr(x)
@@ -47,7 +47,7 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
         charge=c,
         fermionic=True,
         subsizes="maximal",
-        oddpos="x",
+        label="x",
         seed=42,
     )
     x.check()
@@ -366,10 +366,10 @@ def test_solve_fermionic(symm, seed, b_charge):
     i = sr.utils.rand_index(symm, 100, seed=seed)
     j = i.conj()
     A = sr.utils.get_rand(
-        symm, shape=(i, j), fermionic=1, oddpos="a", seed=seed
+        symm, shape=(i, j), fermionic=1, label="a", seed=seed
     )
     b = sr.utils.get_rand(
-        symm, shape=(i,), fermionic=1, charge=b_charge, oddpos="b", seed=seed
+        symm, shape=(i,), fermionic=1, charge=b_charge, label="b", seed=seed
     )
     x = sr.linalg.solve(A, b)
     (A @ x).test_allclose(b)
@@ -388,10 +388,10 @@ def test_solve_fermionic_2d(symm, seed, b_charge):
     j = i.conj()
     k = sr.utils.rand_index(symm, 20, seed=seed)
     A = sr.utils.get_rand(
-        symm, shape=(i, j), fermionic=1, oddpos="a", seed=seed
+        symm, shape=(i, j), fermionic=1, label="a", seed=seed
     )
     b = sr.utils.get_rand(
-        symm, shape=(i, k), fermionic=1, charge=b_charge, oddpos="b", seed=seed
+        symm, shape=(i, k), fermionic=1, charge=b_charge, label="b", seed=seed
     )
     x = sr.linalg.solve(A, b)
     (A @ x).test_allclose(b)

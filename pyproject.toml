@@ -33,7 +33,7 @@ keywords = [
 requires-python = ">=3.10"
 
 dependencies = [
-    "autoray>=0.8.4"
+    "autoray>=0.8"
 ]
 
 [project.optional-dependencies]
@@ -90,7 +90,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 
 [tool.pixi.dependencies]
-autoray = ">=0.8.4"
+autoray = ">=0.8"
 
 [tool.pixi.pypi-dependencies]
 symmray = { path = ".", editable = true }
