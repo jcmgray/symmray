@@ -221,6 +221,16 @@ class FlatIndex(Index):
             )
             self._subinfo.check()
 
+    def __str__(self):
+        lines = [
+            f"({self.size_total} = "
+            f"{self._num_charges} x {self._charge_size} "
+            f": {'-' if self.dual else '+'}"
+            ")"
+            f"{'' if self.subinfo is None else ', fused'}"
+        ]
+        return "\n".join(lines)
+
     def __repr__(self):
         s = [f"{self.__class__.__name__}("]
         s.append(

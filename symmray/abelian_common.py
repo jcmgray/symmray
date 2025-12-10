@@ -549,22 +549,24 @@ class AbelianCommon:
 
     def __repr__(self):
         if self.static_symmetry is not None:
-            c = f"{self.__class__.__name__}("
+            s = [f"{self.__class__.__name__}("]
         else:
-            c = f"{self.__class__.__name__}{self.symmetry}("
+            s = [f"{self.__class__.__name__}{self.symmetry}("]
 
-        return "".join(
-            [
-                c,
-                (
-                    f"shape~{self.shape}:[{self.signature}]"
-                    if self.indices
-                    else f"{self.get_any_array()}"
-                ),
-                f", charge={self.charge}",
-                f", num_blocks={self.num_blocks})",
-            ]
-        )
+        if self.indices:
+            s.append(f"shape~{self.shape}:[{self.signature}]")
+        else:
+            s.append(f"{self.get_any_array()}")
+
+        s.append(f", charge={self.charge}")
+        s.append(f", num_blocks={self.num_blocks}")
+
+        dummy_modes = getattr(self, "dummy_modes", ())
+        if dummy_modes:
+            s.append(f", dummy_modes={dummy_modes}")
+
+        s.append(")")
+        return "".join(s)
 
 
 def without(it, remove):
