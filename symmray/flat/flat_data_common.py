@@ -120,9 +120,9 @@ class FlatCommon:
     def _set_params_flatcommon(self, params):
         """Interface for setting underlying arrays."""
         self._blocks = params["blocks"]
-        self.backend = ar.infer_backend(self._blocks)
         try:
             self._sectors = ar.do("asarray", self._sectors, like=self._blocks)
+            self.backend = ar.infer_backend(self._blocks)
         except ImportError:
             # params is possibly a placeholder of some kind
             pass

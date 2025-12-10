@@ -499,7 +499,7 @@ class FlatArrayCommon:
                 except ImportError:
                     # params is possibly a placeholder of some kind
                     # -> no backend.array function available
-                    pass
+                    new_ix = ix
 
             new_indices.append(new_ix)
         self._indices = tuple(new_indices)
