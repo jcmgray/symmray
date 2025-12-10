@@ -133,10 +133,15 @@ class FermionicArrayFlat(
         else:
             self._phases = ar.do("asarray", phases, like=self._blocks)
 
+        # if using abstract arrays for e.g. tracing, we can't check parity
+        concrete_backend = self.backend == "numpy"
+
         self._dummy_modes = parse_dummy_modes(
             parity=self.parity,
             label=self.label,
             dummy_modes=dummy_modes,
+            warn_odd=concrete_backend,
+            prune_even=concrete_backend,
         )
 
         if DEBUG:

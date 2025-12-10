@@ -84,6 +84,8 @@ class FermionicArray(
             parity=self.parity,
             label=self.label,
             dummy_modes=dummy_modes,
+            warn_odd=True,
+            prune_even=True,
         )
 
         if DEBUG:

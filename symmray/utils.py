@@ -622,7 +622,8 @@ def get_rand(
         odd fermionic modes.
     flat : bool, optional
         Whether to generate a 'flat' backend array (True) or the default
-        block-sparse backend array (False).
+        block-sparse backend array (False). If `flat`, then `subsizes` should
+        be set to `"equal"` or equivalent.
     subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 

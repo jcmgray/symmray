@@ -59,7 +59,7 @@ def test_to_and_from_blocksparse_with_phase_sync(
     # add some non-trivial phases
     x.randomize_phases(seed + 1, inplace=True)
     assert x.phases
-    if charge:
+    if x.parity:
         assert x.dummy_modes
     fx = x.to_flat()
     assert fx.fermionic
@@ -94,7 +94,7 @@ def test_phase_flip(
     )
     x.randomize_phases(seed + 1, inplace=True)
     assert x.phases
-    if charge:
+    if x.parity:
         assert x.dummy_modes
     fx = x.to_flat()
     xflipped = x.phase_flip(*axs)

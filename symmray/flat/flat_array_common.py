@@ -1025,7 +1025,6 @@ class FlatArrayCommon:
         )
 
         if subselect is not None:
-
             if isinstance(subselect, (list, tuple)):
                 # needed for e.g. jax
                 subselect = ar.do("array", subselect, like=new.blocks)

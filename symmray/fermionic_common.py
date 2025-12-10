@@ -6,7 +6,13 @@ from .abelian_common import parse_tensordot_axes
 from .fermionic_local_operators import FermionicOperator
 
 
-def parse_dummy_modes(parity, label, dummy_modes):
+def parse_dummy_modes(
+    parity,
+    label,
+    dummy_modes,
+    warn_odd=False,
+    prune_even=False,
+):
     """Parse the dummy modes for a fermionic array, possibly creating a single
     mode from the array label to mimic an overall even parity array.
     """
@@ -20,9 +26,22 @@ def parse_dummy_modes(parity, label, dummy_modes):
 
     if dummy_modes is None:
         if label is None:
+            if warn_odd and parity:
+                import warnings
+
+                warnings.warn(
+                    "This fermionic array has odd parity but no `label` "
+                    "to create a matching dummy mode, and no explicitly "
+                    "specified `dummy_modes`. Global phase may be incorrect.",
+                )
+
             # no dummy modes, assume even parity
             return ()
         else:
+            if prune_even and (not parity):
+                # even parity array, no dummy modes needed
+                return ()
+
             # else create a default single dummy mode matching the array
             # parity to form an overall even parity array
             return (FermionicOperator(label, parity=parity),)
