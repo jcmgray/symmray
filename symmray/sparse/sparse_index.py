@@ -238,8 +238,8 @@ class BlockIndex(Index):
             start, stop, step = subselect.indices(current_size)
             size = len(range(start, stop, step))
             new_chargemap[charge] = size
-        elif hasattr(subselect, "size"):  # numpy array or similar
-            new_chargemap[charge] = subselect.size
+        elif ar.is_array(subselect):
+            new_chargemap[charge] = ar.do("size", subselect)
         else:
             new_chargemap[charge] = len(subselect)
 

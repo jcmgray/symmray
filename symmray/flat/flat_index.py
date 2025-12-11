@@ -175,8 +175,8 @@ class FlatIndex(Index):
             if isinstance(subselect, slice):
                 start, stop, step = subselect.indices(self.charge_size)
                 updates["charge_size"] = len(range(start, stop, step))
-            elif hasattr(subselect, "size"):  # numpy array or similar
-                updates["charge_size"] = subselect.size
+            elif ar.is_array(subselect):
+                updates["charge_size"] = ar.do("size", subselect)
             else:
                 updates["charge_size"] = len(subselect)
 
@@ -209,7 +209,7 @@ class FlatIndex(Index):
         if self._linearmap is None:
             # default mapping is sorted charges
             return (i // self._charge_size, i % self._charge_size)
-        return self._linearmap[i]
+        return ar.do("take", self._linearmap, i, axis=0)
 
     def check(self):
         """Check that the index is valid."""
