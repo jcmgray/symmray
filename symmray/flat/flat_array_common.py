@@ -1027,8 +1027,9 @@ class FlatArrayCommon:
         if subselect is not None:
 
             if isinstance(subselect, (list, tuple)):
-                # needed for e.g. jax
-                subselect = ar.do("array", subselect, like=new.blocks)
+                # NOTE: need to convert to array for e.g. jax
+                # NOTE: need to use "stack" (vs. "array") to support torch.vmap
+                subselect = ar.do("stack", subselect, like=new.blocks)
 
             def fn_block(x):
                 return ar.do(
