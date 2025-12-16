@@ -40,13 +40,39 @@ def make_node_factory(U):
     return node_factory
 
 
-def tfim_local_array(symmetry, jx=-1.0, hz=-3.0, coordinations=(1, 1)):
+def tfim_local_array(
+    symmetry,
+    jx=-1.0,
+    hz=-3.0,
+    coordinations=(1, 1),
+    flat=False,
+):
     """Build an abelian symmetric local operator for the transverse field
     Ising model::
 
         H = jx * sum_ij X_i X_j + hz * sum_i Z_i
 
     Note that its rotated into the x-basis so that the Z2 symmetry is manifest.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Should be "Z2".
+    jx : float
+        The coupling strength for the X-X interactions, by default -1.0.
+    hz : float or tuple[float, float]
+        The coupling strength for the Z interactions, by default -3.0. If a
+        tuple is given it should contain the fields for the two sites.
+    coordinations : tuple[int, int], optional
+        The coordinations of the two sites, by default (1, 1). The fields
+        are divided by these values to account for double counting.
+    flat : bool, optional
+        Whether to return a flat array, by default False.
+
+    Returns
+    -------
+    Z2Array or Z2ArrayFlat
+        The local Hamiltonian term.
     """
     import quimb as qu
 
@@ -75,6 +101,7 @@ def tfim_local_array(symmetry, jx=-1.0, hz=-3.0, coordinations=(1, 1)):
         symmetry=symmetry,
         index_maps=[index_map] * 4,
         duals=[False, False, True, True],
+        flat=flat,
     )
 
 
@@ -83,6 +110,7 @@ def ham_tfim_from_edges(
     edges,
     jx=-1.0,
     hz=-3.0,
+    flat=False,
 ):
     """Return a dict of local 2-body Hamiltonian abelian symmetric terms for
     the transverse field Ising model on the given lattice defined by `edges`::
@@ -106,10 +134,12 @@ def ham_tfim_from_edges(
         The coupling strength for the Z interactions, by default -3.0. If a
         dict is given it should map sites to values, if a callable it should
         take the site as input.
+    flat : bool, optional
+        Whether to return flat arrays, by default False.
 
     Returns
     -------
-    dict[tuple[Hashable, Hashable], AbelianArray]
+    dict[tuple[Hashable, Hashable], AbelianArray | AbelianArrayFlat]
         A dictionary mapping edges to local Hamiltonian terms.
     """
     coordinations = {}
@@ -126,6 +156,7 @@ def ham_tfim_from_edges(
             jx=jx_factory(cooa, coob),
             hz=(hz_factory(cooa), hz_factory(coob)),
             coordinations=(coordinations[cooa], coordinations[coob]),
+            flat=flat,
         )
         for cooa, coob in edges
     }
@@ -134,8 +165,27 @@ def ham_tfim_from_edges(
 def ham_heisenberg_from_edges(
     symmetry,
     edges,
+    flat=False,
     **kwargs,
 ):
+    """Return a dict of local 2-body Hamiltonian abelian symmetric terms for
+    the Heisenberg model on the given lattice defined by `edges`.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2" or "U1".
+    edges : Sequence[tuple[Hashable, Hashable]]
+        A list of edges representing the lattice, each edge is a tuple of two
+        nodes, each node is some hashable label.
+    flat : bool, optional
+        Whether to return flat arrays, by default False.
+
+    Returns
+    -------
+    dict[tuple[Hashable, Hashable], AbelianArray | AbelianArrayFlat]
+        A dictionary mapping edges to local Hamiltonian terms.
+    """
     import quimb as qu
 
     from .utils import from_dense
@@ -148,6 +198,7 @@ def ham_heisenberg_from_edges(
         symmetry=symmetry,
         index_maps=[index_map] * 4,
         duals=[False, False, True, True],
+        flat=flat,
     )
 
     return {(a, b): h2 for a, b in edges}
@@ -160,6 +211,7 @@ def ham_fermi_hubbard_from_edges(
     U=8.0,
     mu=0.0,
     like="numpy",
+    flat=False,
 ):
     """Return a dict of local 2-body Hamiltonian terms for the Fermi-Hubbard
     model on the given lattice defined by `edges`. The indices are ordered as
@@ -184,10 +236,12 @@ def ham_fermi_hubbard_from_edges(
         The chemical potential, by default 0.0.
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return flat arrays, by default False.
 
     Returns
     -------
-    dict[tuple[Hashable, Hashable], FermionicArray]
+    dict[tuple[Hashable, Hashable], FermionicArray | FermionicArrayFlat]
         A dictionary mapping edges to local Hamiltonian terms.
     """
     from .fermionic_local_operators import fermi_hubbard_local_array
@@ -209,6 +263,7 @@ def ham_fermi_hubbard_from_edges(
             mu=(mu_factory(cooa), mu_factory(coob)),
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
+            flat=flat,
         )
         for cooa, coob in edges
     }
@@ -221,6 +276,7 @@ def ham_fermi_hubbard_spinless_from_edges(
     V=0.0,
     mu=0.0,
     like="numpy",
+    flat=False,
 ):
     """Return a dict of local 2-body Hamiltonian terms for the 'spinless
     Fermi-Hubbard' or ('t-V') model on the given lattice defined by `edges`.
@@ -241,10 +297,12 @@ def ham_fermi_hubbard_spinless_from_edges(
         The chemical potential, by default 0.0.
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return flat arrays, by default False.
 
     Returns
     -------
-    dict[tuple[Hashable, Hashable], FermionicArray]
+    dict[tuple[Hashable, Hashable], FermionicArray | FermionicArrayFlat]
         A dictionary mapping edges to local Hamiltonian terms.
     """
     from .fermionic_local_operators import fermi_hubbard_spinless_local_array
@@ -266,6 +324,7 @@ def ham_fermi_hubbard_spinless_from_edges(
             mu=(mu_factory(cooa), mu_factory(coob)),
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
+            flat=flat,
         )
         for cooa, coob in edges
     }

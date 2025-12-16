@@ -260,6 +260,7 @@ def build_local_fermionic_array(
     symmetry,
     index_maps,
     like="numpy",
+    flat=False,
 ):
     """Compute a local fermionic operator as a `FermionicArray`.
 
@@ -275,10 +276,14 @@ def build_local_fermionic_array(
         The symmetry of the model. Either "Z2", "U1", "Z2Z2" or "U1U1".
     index_maps : Sequence[Sequence[hashable]]
         For each basis, the sequence mapping linear index to charge sector.
+    like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    FermionicArray
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     from .utils import from_dense
@@ -292,6 +297,7 @@ def build_local_fermionic_array(
         symmetry=symmetry,
         fermionic=True,
         index_maps=index_maps * 2,
+        flat=flat,
     )
 
 
@@ -344,6 +350,7 @@ def fermi_hubbard_spinless_local_array(
     mu=0.0,
     coordinations=(1, 1),
     like="numpy",
+    flat=False,
 ):
     """Construct the fermionic local tensor for the spinless Fermi-Hubbard
     model. The indices are ordered as (a, b, a', b').
@@ -366,10 +373,12 @@ def fermi_hubbard_spinless_local_array(
         provided.
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    array
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     a, b = map(FermionicOperator, "ab")
@@ -402,6 +411,7 @@ def fermi_hubbard_spinless_local_array(
         symmetry,
         index_maps=[indexmap, indexmap],
         like=like,
+        flat=flat,
     )
 
 
@@ -412,6 +422,7 @@ def fermi_hubbard_local_array(
     mu=0.0,
     coordinations=(1, 1),
     like="numpy",
+    flat=False,
 ):
     """Construct the fermionic local tensor for the Fermi-Hubbard model. The
     indices are ordered as (a, b, a', b'), with the local basis like
@@ -437,10 +448,12 @@ def fermi_hubbard_local_array(
         provided.
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    array : FermionicArray
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     au = FermionicOperator("au")
@@ -483,10 +496,15 @@ def fermi_hubbard_local_array(
         symmetry,
         index_maps=[indexmap, indexmap],
         like=like,
+        flat=flat,
     )
 
 
-def fermi_number_operator_spinless_local_array(symmetry, like="numpy"):
+def fermi_number_operator_spinless_local_array(
+    symmetry,
+    like="numpy",
+    flat=False,
+):
     """Construct the fermionic number operator for the spinless Fermi-Hubbard
     model. The indices are ordered as (a, a'). The local basis is like
     (|0>, a+|0>) for single site a.
@@ -496,10 +514,13 @@ def fermi_number_operator_spinless_local_array(symmetry, like="numpy"):
     symmetry : str
         The symmetry of the model. Either "Z2" or "U1".
     like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    array : FermionicArray
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     a = FermionicOperator("a")
@@ -514,10 +535,15 @@ def fermi_number_operator_spinless_local_array(symmetry, like="numpy"):
         symmetry,
         index_maps=[indexmap],
         like=like,
+        flat=flat,
     )
 
 
-def fermi_number_operator_spinful_local_array(symmetry, like="numpy"):
+def fermi_number_operator_spinful_local_array(
+    symmetry,
+    like="numpy",
+    flat=False,
+):
     """Construct the fermionic number operator for the Fermi-Hubbard model. The
     indices are ordered as (a, a'), with the local basis like
     (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
@@ -529,6 +555,8 @@ def fermi_number_operator_spinful_local_array(symmetry, like="numpy"):
         The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
@@ -550,10 +578,11 @@ def fermi_number_operator_spinful_local_array(symmetry, like="numpy"):
         symmetry,
         index_maps=[indexmap],
         like=like,
+        flat=flat,
     )
 
 
-def fermi_number_up_local_array(symmetry, like="numpy"):
+def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
     """Construct the 'up' fermionic number operator for the Fermi-Hubbard
     model. The indices are ordered as (a, a'), with the local basis like
     (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
@@ -565,10 +594,12 @@ def fermi_number_up_local_array(symmetry, like="numpy"):
         The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    array : FermionicArray
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     au = FermionicOperator("au")
@@ -586,10 +617,11 @@ def fermi_number_up_local_array(symmetry, like="numpy"):
         symmetry,
         index_maps=[indexmap],
         like=like,
+        flat=flat,
     )
 
 
-def fermi_number_down_local_array(symmetry, like="numpy"):
+def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
     """Construct the 'down' fermionic number operator for the Fermi-Hubbard
     model. The indices are ordered as (a, a'), with the local basis like
     (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
@@ -601,10 +633,12 @@ def fermi_number_down_local_array(symmetry, like="numpy"):
         The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    array : FermionicArray
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     au = FermionicOperator("au")
@@ -622,10 +656,11 @@ def fermi_number_down_local_array(symmetry, like="numpy"):
         symmetry,
         index_maps=[indexmap],
         like=like,
+        flat=flat,
     )
 
 
-def fermi_spin_operator_local_array(symmetry, like="numpy"):
+def fermi_spin_operator_local_array(symmetry, like="numpy", flat=False):
     """Construct the fermionic spin operator for the Fermi-Hubbard model. The
     indices are ordered as (a, a'), with the local basis like
     (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
@@ -637,10 +672,12 @@ def fermi_spin_operator_local_array(symmetry, like="numpy"):
         The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
     like : str, optional
         The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
 
     Returns
     -------
-    array : FermionicArray
+    FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
     au = FermionicOperator("au")
@@ -658,4 +695,5 @@ def fermi_spin_operator_local_array(symmetry, like="numpy"):
         symmetry,
         index_maps=[indexmap],
         like=like,
+        flat=flat,
     )
