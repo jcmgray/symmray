@@ -167,7 +167,11 @@ class FermionicArrayFlat(
             assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
 
     def new_with(
-        self, sectors, blocks, indices, label=None
+        self,
+        sectors,
+        blocks,
+        indices,
+        label=None,
     ) -> "FermionicArrayFlat":
         """Create a new flat fermionic array of the same class as this one.
         Unlike `copy`, this does not copy over any existing data and drops

@@ -477,7 +477,7 @@ class FermionicArray(
                 axes_leave.append(ax)
 
         if squeezed_dummy_modes:
-            # only need to update we have removed dummy modes
+            # only need to update if we have removed dummy modes
             self.phase_transpose((*axes_squeeze, *axes_leave), inplace=True)
             self.modify(dummy_modes=(*self.dummy_modes, *squeezed_dummy_modes))
 
