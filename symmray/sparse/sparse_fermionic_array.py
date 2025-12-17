@@ -120,15 +120,16 @@ class FermionicArray(
         new._dummy_modes = self.dummy_modes
         return new
 
-    def new_with(self, indices, charge, blocks):
+    def new_with(self, indices, charge, blocks, label=None):
         """Create a new block sparse fermionic array of the same class as this
         one. Unlike `copy`, this does not copy over any existing data and drops
-        for example `label`, `phases`, and `dummy_modes`.
+        by default `label`, `phases`, and `dummy_modes`.
         """
         new = self._new_with_abelian(
             indices=indices,
             charge=charge,
             blocks=blocks,
+            label=label,
         )
         new._phases = {}
         new._dummy_modes = ()

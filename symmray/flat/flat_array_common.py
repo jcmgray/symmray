@@ -10,6 +10,7 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
+from ..abelian_common import maybe_keep_label
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..sparse.sparse_array_common import (
     calc_fuse_group_info,
@@ -435,11 +436,11 @@ class FlatArrayCommon:
         if self._blocks.__class__.__name__ != "Placeholder":
             assert ar.do("all", ar.do("isfinite", self._blocks))
 
-    def _new_with_abelian(self, sectors, blocks, indices):
+    def _new_with_abelian(self, sectors, blocks, indices, label=None):
         new = self._new_with_flatcommon(sectors, blocks)
         new._indices = indices
         new._symmetry = self._symmetry
-        new._label = None
+        new._label = label
         return new
 
     def _copy_abelian(self, deep=False) -> "FlatArrayCommon":
@@ -1263,6 +1264,7 @@ class FlatArrayCommon:
             sectors=new_sectors,
             indices=new_indices,
             blocks=new_blocks,
+            label=maybe_keep_label(self.label, other.label),
         )
 
     def _trace_abelian(self):
@@ -1339,6 +1341,7 @@ class FlatArrayCommon:
                 blocks=new_blocks,
                 sectors=new_sectors,
                 indices=new_indices,
+                label=maybe_keep_label(a.label, b.label),
             )
 
         # scalar output
@@ -1957,6 +1960,7 @@ def tensordot_flat_direct(
             sectors=new_sectors,
             blocks=new_blocks,
             indices=new_indices,
+            label=maybe_keep_label(a.label, b.label),
         )
 
     # scalar output

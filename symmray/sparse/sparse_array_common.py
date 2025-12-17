@@ -13,7 +13,7 @@ from collections import OrderedDict, defaultdict
 
 import autoray as ar
 
-from ..abelian_common import parse_tensordot_axes, without
+from ..abelian_common import maybe_keep_label, parse_tensordot_axes, without
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 from .sparse_index import BlockIndex, SubIndexInfo
 from .sparse_vector import BlockVector
@@ -529,12 +529,12 @@ class SparseArrayCommon:
         else:
             self._charge = charge
 
-    def _new_with_abelian(self, indices, charge, blocks):
+    def _new_with_abelian(self, indices, charge, blocks, label=None):
         new = self._new_with_blockcommon(blocks)
         new._indices = indices
         new._charge = charge
         new._symmetry = self._symmetry
-        new._label = None
+        new._label = label
         return new
 
     def _copy_abelian(self):
@@ -2367,7 +2367,14 @@ def truncate_svd_result_blocksparse(
 # --------------------------------------------------------------------------- #
 
 
-def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
+def _tensordot_blockwise(
+    a: SparseArrayCommon,
+    b: SparseArrayCommon,
+    left_axes: tuple[int, ...],
+    axes_a: tuple[int, ...],
+    axes_b: tuple[int, ...],
+    right_axes: tuple[int, ...],
+):
     """Perform a tensordot between two block arrays, performing the contraction
     of each pair of aligned blocks separately.
     """
@@ -2442,6 +2449,7 @@ def _tensordot_blockwise(a, b, left_axes, axes_a, axes_b, right_axes):
         indices=tuple(new_indices),
         charge=a.symmetry.combine(a.charge, b.charge),
         blocks=new_blocks,
+        label=maybe_keep_label(a.label, b.label),
     )
 
 

@@ -565,6 +565,10 @@ class AbelianCommon:
         if dummy_modes:
             s.append(f", dummy_modes={dummy_modes}")
 
+        label = getattr(self, "label", None)
+        if label is not None:
+            s.append(f", label={label}")
+
         s.append(")")
         return "".join(s)
 
@@ -595,3 +599,18 @@ def parse_tensordot_axes(axes, ndim_a, ndim_b):
     right_axes = without(range(ndim_b), axes_b)
 
     return left_axes, axes_a, axes_b, right_axes
+
+
+def maybe_keep_label(label_a, label_b):
+    """Decide whether to keep labels from operands when combining two arrays.
+    If both labels are the same, keep that. If only one is set, keep that.
+    Otherwise return None.
+    """
+    if label_b is None:
+        return label_a
+    if label_a is None:
+        return label_b
+    if label_a == label_b:
+        return label_a
+    # conflicting labels
+    return None
