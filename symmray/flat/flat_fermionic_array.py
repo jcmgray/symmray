@@ -284,9 +284,9 @@ class FermionicArrayFlat(
         containers and objects.
         """
         # attributes with internal structure
-        indices = tuple(FlatIndex.from_pytree(d) for d in data["indices"])
+        indices = tuple(map(FlatIndex.from_pytree, data["indices"]))
         dummy_modes = tuple(
-            FermionicOperator.from_pytree(d) for d in data["dummy_modes"]
+            map(FermionicOperator.from_pytree, data["dummy_modes"])
         )
         return cls(
             sectors=data["sectors"],

@@ -64,6 +64,34 @@ class BlockIndex(Index):
         self._hashkey = None
         self._linearmap = linearmap
 
+    def to_pytree(self):
+        """Convert this sparse index to a pytree purely of non-symmray
+        containers and objects.
+        """
+        return {
+            "chargemap": self._chargemap,
+            "dual": self._dual,
+            "subinfo": (self._subinfo.to_pytree() if self._subinfo else None),
+            "linearmap": self._linearmap,
+        }
+
+    @classmethod
+    def from_pytree(cls, pytree):
+        """Create a sparse index from a pytree purely of non-symmray
+        containers and objects.
+        """
+        subinfo = (
+            SubIndexInfo.from_pytree(pytree["subinfo"])
+            if pytree["subinfo"] is not None
+            else None
+        )
+        return cls(
+            chargemap=pytree["chargemap"],
+            dual=pytree["dual"],
+            subinfo=subinfo,
+            linearmap=pytree["linearmap"],
+        )
+
     def copy_with(self, **kwargs):
         """A copy of this index with some attributes replaced. Note that checks
         are not performed on the new propoerties, this is intended for internal
@@ -435,6 +463,20 @@ class SubIndexInfo(SubInfo):
         new._extents = self._extents if extents is None else extents
         new._hashkey = None
         return new
+
+    def to_pytree(self):
+        """Convert this sparse subindex info to a pytree."""
+        return {
+            "indices": tuple(ix.to_pytree() for ix in self._indices),
+            "extents": self._extents,
+        }
+
+    @classmethod
+    def from_pytree(cls, pytree):
+        """Build a sparse subindex info from a pytree."""
+        indices = tuple(BlockIndex.from_pytree(ix) for ix in pytree["indices"])
+        extents = pytree["extents"]
+        return cls(indices=indices, extents=extents)
 
     def conj(self):
         """A copy of this subindex information with the relevant dualnesses

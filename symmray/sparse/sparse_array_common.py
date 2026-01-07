@@ -584,6 +584,14 @@ class SparseArrayCommon:
     def modify(self, indices=None, charge=None, blocks=None):
         pass
 
+    def _to_pytree_abelian(self):
+        data = self._to_pytree_blockcommon()
+        data["indices"] = tuple(ix.to_pytree() for ix in self._indices)
+        data["charge"] = self._charge
+        data["symmetry"] = str(self._symmetry)
+        data["label"] = self._label
+        return data
+
     @property
     def label(self):
         """The label of the array, possibly used for ordering odd parity

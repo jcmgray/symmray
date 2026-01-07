@@ -404,3 +404,29 @@ def test_einsum_vs_tensordot(symm, seed):
     seq = eq.replace(",", "")
     z2 = xy.einsum(seq)
     assert z1.allclose(z2)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+@pytest.mark.parametrize("shape", [(4, 8, 12), (8,)])
+@pytest.mark.parametrize("charge", [0, 1])
+def test_to_pytree_and_back(symmetry, shape, charge):
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        subsizes="equal",
+        charge=charge,
+        label="x",
+        fermionic=True,
+    )
+    x.randomize_phases(42, inplace=True)
+    tree = x.to_pytree()
+    y = type(x).from_pytree(tree)
+    x.test_allclose(y)
+
+    if len(shape) > 1:
+        # test with subinfo
+        xf = x.fuse(tuple(range(x.ndim)))
+        tree = xf.to_pytree()
+        yf = type(xf).from_pytree(tree)
+        xf.test_allclose(yf)
+        yf.unfuse_all().test_allclose(x)

@@ -95,6 +95,9 @@ class FlatIndex(Index):
         return self._charge_size
 
     def to_pytree(self):
+        """Convert this flat index to a pytree purely of non-symmray
+        containers and objects.
+        """
         return {
             "num_charges": self._num_charges,
             "charge_size": self._charge_size,
@@ -109,6 +112,9 @@ class FlatIndex(Index):
 
     @classmethod
     def from_pytree(cls, pytree):
+        """Create a flat index from a pytree purely of non-symmray
+        containers and objects.
+        """
         return cls(
             num_charges=pytree["num_charges"],
             charge_size=pytree["charge_size"],
@@ -282,7 +288,9 @@ class FlatSubIndexInfo(SubInfo):
             self.check()
 
     def to_pytree(self):
-        """Convert this flat subindex info to a pytree."""
+        """Convert this flat subindex info to a pytree purely of non-symmray
+        containers and objects.
+        """
         return {
             "indices": tuple(ix.to_pytree() for ix in self._indices),
             "subkeys": self._subkeys,
@@ -290,7 +298,9 @@ class FlatSubIndexInfo(SubInfo):
 
     @classmethod
     def from_pytree(cls, pytree):
-        """Build a flat subindex info from a pytree."""
+        """Create a flat subindex info from a pytree purely of non-symmray
+        containers and objects.
+        """
         indices = tuple(
             FlatIndex.from_pytree(ix_pytree) for ix_pytree in pytree["indices"]
         )

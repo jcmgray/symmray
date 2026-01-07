@@ -14,6 +14,7 @@ from .sparse_array_common import (
     truncate_svd_result_blocksparse,
 )
 from .sparse_data_common import BlockCommon
+from .sparse_index import BlockIndex
 from .sparse_vector import BlockVector
 
 
@@ -90,6 +91,35 @@ class FermionicArray(
 
         if DEBUG:
             self.check()
+
+    def to_pytree(self):
+        """Convert this sparse fermionic array to a pytree purely of
+        non-symmray containers and objects.
+        """
+        data = self._to_pytree_abelian()
+        data["phases"] = self._phases
+        data["dummy_modes"] = tuple(m.to_pytree() for m in self._dummy_modes)
+        return data
+
+    @classmethod
+    def from_pytree(cls, data):
+        """Create a sparse fermionic array from a pytree purely of non-symmray
+        containers and objects.
+        """
+        # attributes with internal structure
+        indices = tuple(map(BlockIndex.from_pytree, data["indices"]))
+        dummy_modes = tuple(
+            map(FermionicOperator.from_pytree, data["dummy_modes"])
+        )
+        return cls(
+            indices=indices,
+            charge=data["charge"],
+            blocks=data["blocks"],
+            phases=data["phases"],
+            label=data["label"],
+            dummy_modes=dummy_modes,
+            symmetry=data["symmetry"],
+        )
 
     @property
     def parity(self):

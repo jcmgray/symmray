@@ -52,6 +52,11 @@ class BlockCommon:
     def modify(self, blocks=None):
         pass
 
+    def _to_pytree_blockcommon(self):
+        return {
+            "blocks": self._blocks,
+        }
+
     @property
     def blocks(self):
         """The blocks of the array."""

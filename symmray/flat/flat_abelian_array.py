@@ -162,10 +162,10 @@ class AbelianArrayFlat(
 
     @classmethod
     def from_pytree(cls, pytree) -> "AbelianArrayFlat":
-        """Build a flat abelian array from a pytree."""
-        indices = tuple(
-            FlatIndex.from_pytree(ix_pytree) for ix_pytree in pytree["indices"]
-        )
+        """Create a flat abelian array from a pytree purely of non-symmray
+        containers and objects.
+        """
+        indices = tuple(map(FlatIndex.from_pytree, pytree["indices"]))
         return cls(
             sectors=pytree["sectors"],
             blocks=pytree["blocks"],

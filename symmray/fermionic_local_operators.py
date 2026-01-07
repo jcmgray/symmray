@@ -49,6 +49,9 @@ class FermionicOperator:
         self._parity = parity
 
     def to_pytree(self):
+        """Convert this fermionic operator to a pytree purely of non-symmray
+        containers and objects.
+        """
         return {
             "label": self._label,
             "dual": self._dual,
@@ -57,6 +60,9 @@ class FermionicOperator:
 
     @classmethod
     def from_pytree(cls, data):
+        """Create a fermionic operator from a pytree purely of non-symmray
+        containers and objects.
+        """
         return cls(**data)
 
     @property

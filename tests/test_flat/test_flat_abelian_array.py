@@ -433,3 +433,11 @@ def test_to_pytree_and_back(symmetry, shape, charge):
     tree = x.to_pytree()
     y = type(x).from_pytree(tree)
     x.test_allclose(y)
+
+    if len(shape) > 1:
+        # test with subinfo
+        xf = x.fuse(tuple(range(x.ndim)))
+        tree = xf.to_pytree()
+        yf = type(xf).from_pytree(tree)
+        xf.test_allclose(yf)
+        yf.unfuse_all().test_allclose(x)

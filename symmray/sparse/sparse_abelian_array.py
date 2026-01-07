@@ -6,6 +6,7 @@ from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .sparse_array_common import SparseArrayCommon
 from .sparse_data_common import BlockCommon
+from .sparse_index import BlockIndex
 from .sparse_vector import BlockVector
 
 
@@ -99,6 +100,26 @@ class AbelianArray(
         if DEBUG:
             self.check()
         return self
+
+    def to_pytree(self):
+        """Convert this sparse abelian array to a pytree purely of non-symmray
+        containers and objects.
+        """
+        return self._to_pytree_abelian()
+
+    @classmethod
+    def from_pytree(cls, pytree):
+        """Create a sparse abelian array from a pytree purely of non-symmray
+        containers and objects.
+        """
+        indices = tuple(map(BlockIndex.from_pytree, pytree["indices"]))
+        return cls(
+            indices=indices,
+            charge=pytree["charge"],
+            blocks=pytree["blocks"],
+            symmetry=pytree["symmetry"],
+            label=pytree["label"],
+        )
 
     def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
         return self._binary_blockwise_op_abelian(
