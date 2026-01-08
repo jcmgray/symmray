@@ -368,6 +368,7 @@ class BlockIndex(Index):
                     tuple(self._chargemap.items()),
                     self._dual,
                     self._subinfo.hashkey() if self._subinfo else None,
+                    self.linearmap,
                 )
             )
         return self._hashkey
