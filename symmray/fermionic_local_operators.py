@@ -354,6 +354,7 @@ def fermi_hubbard_spinless_local_array(
     t=1.0,
     V=8.0,
     mu=0.0,
+    delta=0.0,
     coordinations=(1, 1),
     like="numpy",
     flat=False,
@@ -372,6 +373,8 @@ def fermi_hubbard_spinless_local_array(
     mu : float or (float, float), optional
         The chemical potential, by default 0.0. If a tuple, then the chemical
         potential is different for each site.
+    delta : float, optional
+        The nearest neighbor superconducting pairing parameter, by default 0.0.
     coordinations : tuple[int, int], optional
         The coordinations of the sites, by default (1, 1). If applying this
         local operator to every edge in a graph, then the single site
@@ -404,6 +407,9 @@ def fermi_hubbard_spinless_local_array(
         # mu is single site and will be overcounted without coordinations
         (-mua / coordinations[0], (a.dag, a)),
         (-mub / coordinations[1], (b.dag, b)),
+        # superconducting pairing
+        (delta, (a.dag, b.dag)),
+        (delta, (b, a)),
     )
 
     basis_a = ((), (a.dag,))

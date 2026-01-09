@@ -1,41 +1,45 @@
 """Abelian symmetric and fermionic Hamiltonians in terms of local operators."""
 
 
-def make_edge_factory(t):
-    """Ensure `t` is a function that takes two sites and returns an edge coeff."""
-    if isinstance(t, dict):
+def make_edge_factory(coeff):
+    """Ensure `coeff` is a function that takes two sites and returns an edge
+    coeff."""
+    if isinstance(coeff, dict):
 
         def edge_factory(cooa, coob):
             try:
-                return t[(cooa, coob)]
+                return coeff[(cooa, coob)]
             except KeyError:
-                return t[(coob, cooa)]
+                return coeff[(coob, cooa)]
 
-    elif callable(t):
-        edge_factory = t
+    elif callable(coeff):
+        edge_factory = coeff
 
     else:
 
         def edge_factory(cooa, coob):
-            return t
+            # constant
+            return coeff
 
     return edge_factory
 
 
-def make_node_factory(U):
-    """Ensure `U` is a function that takes a site and returns a node coeff."""
-    if isinstance(U, dict):
+def make_node_factory(coeff):
+    """Ensure `coeff` is a function that takes a site and returns a node
+    coeff."""
+    if isinstance(coeff, dict):
 
         def node_factory(coo):
-            return U[coo]
+            return coeff[coo]
 
-    elif callable(U):
-        node_factory = U
+    elif callable(coeff):
+        node_factory = coeff
 
     else:
 
         def node_factory(coo):
-            return U
+            # constant
+            return coeff
 
     return node_factory
 
@@ -275,6 +279,7 @@ def ham_fermi_hubbard_spinless_from_edges(
     t=1.0,
     V=0.0,
     mu=0.0,
+    delta=0.0,
     like="numpy",
     flat=False,
 ):
@@ -295,6 +300,8 @@ def ham_fermi_hubbard_spinless_from_edges(
         The nearest neighbor interaction parameter, by default 0.0.
     mu : float, optional
         The chemical potential, by default 0.0.
+    delta : float, optional
+        The nearest neighbor superconducting pairing parameter, by default 0.0.
     like : str, optional
         The backend to use, by default "numpy".
     flat : bool, optional
@@ -315,6 +322,7 @@ def ham_fermi_hubbard_spinless_from_edges(
     t_factory = make_edge_factory(t)
     V_factory = make_edge_factory(V)
     mu_factory = make_node_factory(mu)
+    delta_factory = make_edge_factory(delta)
 
     return {
         (cooa, coob): fermi_hubbard_spinless_local_array(
@@ -322,6 +330,7 @@ def ham_fermi_hubbard_spinless_from_edges(
             t=t_factory(cooa, coob),
             V=V_factory(cooa, coob),
             mu=(mu_factory(cooa), mu_factory(coob)),
+            delta=delta_factory(cooa, coob),
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
             flat=flat,
