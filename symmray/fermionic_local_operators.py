@@ -468,37 +468,57 @@ def fermi_hubbard_local_array(
     FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
-    au = FermionicOperator("au")
-    ad = FermionicOperator("ad")
-    bu = FermionicOperator("bu")
-    bd = FermionicOperator("bd")
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
+    bu = FermionicOperator("b↑")
+    bd = FermionicOperator("b↓")
 
     try:
+        # different hopping for up and down spins
+        tu, td = t
+    except TypeError:
+        tu = td = t
+
+    try:
+        # different U for each site
         Ua, Ub = U
     except TypeError:
         Ua = Ub = U
 
     try:
+        # different chemical potential for each site
         mua, mub = mu
     except TypeError:
         mua = mub = mu
 
+    try:
+        # different chemical potential for up and down spins
+        mua_up, mua_down = mua
+    except TypeError:
+        mua_up = mua_down = mua
+
+    try:
+        # different chemical potential for up and down spins
+        mub_up, mub_down = mub
+    except TypeError:
+        mub_up = mub_down = mub
+
     terms = [
-        (-t, (au.dag, bu)),
-        (-t, (bu.dag, au)),
-        (-t, (ad.dag, bd)),
-        (-t, (bd.dag, ad)),
+        (-tu, (au.dag, bu)),
+        (-tu, (bu.dag, au)),
+        (-td, (ad.dag, bd)),
+        (-td, (bd.dag, ad)),
         # U, mu are single site and will be overcounted without coordinations
         (Ua / coordinations[0], (au.dag, au, ad.dag, ad)),
         (Ub / coordinations[1], (bu.dag, bu, bd.dag, bd)),
-        (-mua / coordinations[0], (au.dag, au)),
-        (-mua / coordinations[0], (ad.dag, ad)),
-        (-mub / coordinations[1], (bu.dag, bu)),
-        (-mub / coordinations[1], (bd.dag, bd)),
+        (-mua_up / coordinations[0], (au.dag, au)),
+        (-mua_down / coordinations[0], (ad.dag, ad)),
+        (-mub_up / coordinations[1], (bu.dag, bu)),
+        (-mub_down / coordinations[1], (bd.dag, bd)),
     ]
 
-    basis_a = ((), (ad.dag,), (au.dag,), (au.dag, ad.dag))
-    basis_b = ((), (bd.dag,), (bu.dag,), (bu.dag, bd.dag))
+    basis_a = ((), (au.dag,), (ad.dag,), (ad.dag, au.dag))
+    basis_b = ((), (bu.dag,), (bd.dag,), (bd.dag, bu.dag))
     bases = [basis_a, basis_b]
     indexmap = get_spinful_charge_indexmap(symmetry)
 
@@ -575,13 +595,13 @@ def fermi_number_operator_spinful_local_array(
     array : FermionicArray
         The local operator in fermionic array form.
     """
-    au = FermionicOperator("au")
-    ad = FermionicOperator("ad")
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
 
     # nup + ndown
     terms = [(1, (au.dag, au)), (1, (ad.dag, ad))]
     # |00>, |01>, |10>, |11>
-    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
     indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
@@ -614,13 +634,13 @@ def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
     FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
-    au = FermionicOperator("au")
-    ad = FermionicOperator("ad")
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
 
     # nup
     terms = [(1, (au.dag, au))]
     # |00>, |01>, |10>, |11>
-    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
     indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
@@ -653,13 +673,13 @@ def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
     FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
-    au = FermionicOperator("au")
-    ad = FermionicOperator("ad")
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
 
     # nup
     terms = [(1, (ad.dag, ad))]
     # |00>, |01>, |10>, |11>
-    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
     indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
@@ -692,13 +712,13 @@ def fermi_spin_operator_local_array(symmetry, like="numpy", flat=False):
     FermionicArray or FermionicArrayFlat
         The local operator in fermionic array form.
     """
-    au = FermionicOperator("au")
-    ad = FermionicOperator("ad")
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
 
     # S^z = 1/2 (nup - ndown)
     terms = [(0.5, (au.dag, au)), (-0.5, (ad.dag, ad))]
     # |00>, |01>, |10>, |11>
-    bases = [((), (ad.dag,), (au.dag,), (au.dag, ad.dag))]
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
     indexmap = get_spinful_charge_indexmap(symmetry)
 
     return build_local_fermionic_array(
