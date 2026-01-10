@@ -408,8 +408,9 @@ def fermi_hubbard_spinless_local_array(
         (-mua / coordinations[0], (a.dag, a)),
         (-mub / coordinations[1], (b.dag, b)),
         # superconducting pairing
-        (delta, (a.dag, b.dag)),
-        (delta, (b, a)),
+        # XXX: work out why b+a+ rathern than a+b+ required here?
+        (delta, (b.dag, a.dag)),
+        (delta, (a, b)),
     )
 
     basis_a = ((), (a.dag,))
