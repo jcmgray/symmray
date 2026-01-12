@@ -67,10 +67,10 @@ def test_spinless_su_energy_matches_z2(edges, sector):
     # define random fermi-hubbard spinless model,
     # with edge and site dependent coefficients for testing generality
     rng = np.random.default_rng(42)
-    tijs = {edge: 1.0 * rng.uniform() for edge in edges}
-    Vijs = {edge: 1.0 * rng.uniform() for edge in edges}
-    mus = {site: 1.0 * rng.uniform() for site in sites}
-    deltas = {edge: 1.0 * rng.uniform() for edge in edges}
+    tijs = {edge: rng.uniform() for edge in edges}
+    Vijs = {edge: rng.uniform() for edge in edges}
+    mus = {site: rng.uniform() for site in sites}
+    deltas = {edge: rng.uniform() for edge in edges}
 
     H = qop.fermi_hubbard_spinless_from_edges(
         edges,
@@ -141,6 +141,115 @@ def test_spinless_su_energy_matches_z2(edges, sector):
         tnx = psi_su.isel(
             {psi_su.site_ind(coo): xi for coo, xi in config.items()}
         )
+        return tnx.contract(all)
+
+    energy_vmc = H.evaluate_exact_configs(fn_amplitude)
+
+    assert energy_vmc == pytest.approx(en_local_exact)
+
+
+edges_square_2x2_obc = (
+    ((0, 0), (0, 1)),
+    ((0, 0), (1, 0)),
+    ((0, 1), (1, 1)),
+    ((1, 0), (1, 1)),
+)
+edges_complete_5 = (
+    (0, 1),
+    (0, 2),
+    (0, 3),
+    (0, 4),
+    (1, 2),
+    (1, 3),
+    (1, 4),
+    (2, 3),
+    (2, 4),
+    (3, 4),
+)
+
+
+@pytest.mark.parametrize("edges", [edges_square_2x2_obc, edges_complete_5])
+@pytest.mark.parametrize("sector", [0, 1])
+def test_spinful_su_energy_matches_z2(edges, sector):
+    import numpy as np
+    import quimb.operator as qop
+    import quimb.tensor as qtn
+
+    import symmray as sr
+
+    sites = sorted(set().union(*edges))
+
+    # define random fermi-hubbard spinless model,
+    # with edge, site and spin dependent coefficients for testing generality
+    rng = np.random.default_rng(42)
+    tijs = {edge: (rng.uniform(), rng.uniform()) for edge in edges}
+    Uijs = {site: rng.uniform() for site in sites}
+    mus = {site: (rng.uniform(), rng.uniform()) for site in sites}
+
+    H = qop.fermi_hubbard_from_edges(
+        edges,
+        t=tijs,
+        U=Uijs,
+        mu=mus,
+        sector=sector,
+        symmetry="Z2",
+        # need to order sites by spatial coordinate first, then spin
+        order=lambda coo: (coo[1], coo[0]),
+    )
+
+    terms = sr.ham_fermi_hubbard_from_edges(
+        "Z2",
+        edges,
+        t=tijs,
+        U=Uijs,
+        mu=mus,
+    )
+    ham = qtn.LocalHamGen(terms)
+
+    if sector == 0:
+
+        def site_charge(site):
+            return 0
+
+    elif sector == 1:
+        num_odd_sites = len(sites) // 2
+        if num_odd_sites % 2 == 0:
+            num_odd_sites += 1
+
+        def site_charge(site):
+            return 1 if site in sites[:num_odd_sites] else 0
+
+    psi = sr.networks.TN_fermionic_from_edges_rand(
+        "Z2",
+        edges,
+        bond_dim=4,
+        phys_dim=4,
+        seed=42,
+        site_charge=site_charge,
+    )
+
+    su = qtn.SimpleUpdateGen(psi, ham, ordering="smallest_last")
+    su.evolve(10, progbar=True)
+    psi_su = su.state
+
+    # compute energy via exact contraction of local tensor terms
+    en_local_exact = psi_su.compute_local_expectation_exact(terms)
+
+    # NOTE: can't compute 'dense wavefunction' without reordering local
+    # basis to account for spin up/down, so skip that test here
+
+    def fn_amplitude(config):
+        # map (spin-up, spin-down) to 0...3 indexing
+        # into symmetry grouped: [ 00, 11 ], [ 10, 11 ]
+        selector = {
+            psi_su.site_ind(coo):
+            # first bit set by parity
+            2 * (config[("↑", coo)] != config[("↓", coo)])
+            # second bit by spin down
+            + config[("↓", coo)]
+            for coo in sites
+        }
+        tnx = psi_su.isel(selector)
         return tnx.contract(all)
 
     energy_vmc = H.evaluate_exact_configs(fn_amplitude)
