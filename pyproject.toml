@@ -99,6 +99,7 @@ symmray = { path = ".", editable = true }
 cotengra = "*"
 coverage = "*"
 einops = "*"
+networkx = "*"
 numpy = "*"
 pytest = "*"
 pytest-cov = "*"
