@@ -4785,9 +4785,9 @@ packages:
 - pypi: ./
   name: symmray
   version: 0.1.2.dev31+g0a44ad4e2.d20260112
-  sha256: 4ba5abbb384320e7ed627e7024f30a03ff1ff7aec15eecad7ba7981fb425ed20
+  sha256: 4a2305384635a405eadf8575ecf5ca1a8ed55b8b5d52ad3c7bc46abcd2e46f1a
   requires_dist:
-  - autoray
+  - autoray>=0.8
   - astroid ; extra == 'docs'
   - furo ; extra == 'docs'
   - ipython ; extra == 'docs'
