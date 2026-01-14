@@ -1,3 +1,7 @@
+"""Methods common to all 'vector' symmray objects that typically are used to
+represent singular- or eigen- values.
+"""
+
 import operator
 
 from .common import SymmrayCommon

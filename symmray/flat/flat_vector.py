@@ -1,6 +1,4 @@
-"""Flat backend block vector class."""
-
-import numbers
+"""Block vector class with flat backend."""
 
 import autoray as ar
 

@@ -1,9 +1,6 @@
-"""Methods that apply to all Abelian symmetric arrays, regardless of
-backend.
-"""
+"""Methods that apply to all Abelian symmetric arrays, regardless of backend."""
 
 import functools
-import numbers
 import operator
 
 import autoray as ar

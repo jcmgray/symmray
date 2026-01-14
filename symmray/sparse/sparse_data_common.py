@@ -1,4 +1,6 @@
-"""Basic classes and functions for block sparse backend objects."""
+"""Common interface methods for arrays or vectors with block sparse backend
+storage.
+"""
 
 import functools
 import operator

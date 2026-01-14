@@ -1,4 +1,4 @@
-"""Basic classes and functions for flat backend objects."""
+"""Common interface methods for arrays or vectors with flat backend storage."""
 
 import autoray as ar
 

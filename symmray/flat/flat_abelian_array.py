@@ -1,15 +1,4 @@
-"""Abelian symmetric arrays with flat backend.
-
-Flat backend with branchless design to allow static
-computational graphs that can be easily compiled and vectorized etc.
-
-TODO:
-
-- [ ] cache patterns and reshapers/slicers
-- [ ] cache properties, funcs
-- [ ] roll our own repeat and rearrange to avoid einops dependency
-
-"""
+"""Abelian symmetric arrays with flat backend."""
 
 import autoray as ar
 

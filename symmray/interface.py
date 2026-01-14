@@ -1,4 +1,4 @@
-"""Common interface functions for `symmray` array objects."""
+"""Functional interface for `symmray` array objects."""
 
 import autoray as ar
 

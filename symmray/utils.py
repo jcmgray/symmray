@@ -1,3 +1,5 @@
+"""Utility functions, mostly for generating random symmray indices and arrays"""
+
 import functools
 import hashlib
 import os
