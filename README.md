@@ -1,6 +1,12 @@
-# symmray
+<img src="https://raw.githubusercontent.com/jcmgray/symmray/main/docs/_static/logo-title.png" alt="symmray logo" width="640"/>
 
-A minimal library for block sparse, abelian symetric and fermionic arrays,
+[![Pixi Badge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
+[![Tests](https://github.com/jcmgray/symmray/actions/workflows/tests.yml/badge.svg)](https://github.com/jcmgray/symmray/actions/workflows/tests.yml)
+[![Code Coverage](https://codecov.io/gh/jcmgray/symmray/branch/main/graph/badge.svg)](https://codecov.io/gh/jcmgray/symmray)
+[![PyPI](https://img.shields.io/pypi/v/symmray?color=teal)](https://pypi.org/project/symmray/)
+[![Anaconda-Server Badge](https://anaconda.org/conda-forge/symmray/badges/version.svg)](https://anaconda.org/conda-forge/symmray)
+
+`symmray` is minimal library for block sparse, abelian symmetric and fermionic arrays,
 designed to look as much as possible like standard ndarrays, whose blocks can
 be backed by `numpy`, `torch` or any other `autoray` compatible library.
 
