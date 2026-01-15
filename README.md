@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/jcmgray/symmray/main/docs/_static/logo-title.png" alt="symmray logo" width="640"/>
+<img src="https://github.com/jcmgray/symmray/blob/HEAD/docs/_static/logo-title.png?raw=true" alt="symmray logo" width="640"/>
 
 [![Pixi Badge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
 [![Tests](https://github.com/jcmgray/symmray/actions/workflows/tests.yml/badge.svg)](https://github.com/jcmgray/symmray/actions/workflows/tests.yml)
