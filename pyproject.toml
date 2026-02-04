@@ -113,6 +113,6 @@ python = "3.13.*"
 python = "3.14.*"
 
 [tool.pixi.environments]
-testing = { features = ["pymid", "testing"] }
-testing-pyold = { features = ["pyold", "testing"] }
-testing-pynew = { features = ["pynew", "testing"] }
+testpyold = { features = ["pyold", "testing"] }
+testpymid = { features = ["pymid", "testing"] }
+testpynew = { features = ["pynew", "testing"] }
