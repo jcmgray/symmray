@@ -132,6 +132,8 @@ testpynew = { features = ["pynew", "testing"] }
 docs = { features = ["pynew", "docs"] }
 
 [tool.pixi.tasks.test]
+default-environment = "testpymid"
+env = { SYMMRAY_DEBUG = "1" }
 cmd = """
 pytest \
     tests/ \
@@ -141,7 +143,6 @@ pytest \
     --durations=10
 """
 cwd = "."
-default-environment = "testpymid"
 
 [tool.pixi.feature.docs.tasks]
 docs = { cmd = "sphinx-build -b html docs docs/_build/html", cwd = "." }
