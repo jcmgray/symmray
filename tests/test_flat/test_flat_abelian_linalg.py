@@ -1,3 +1,4 @@
+import autoray as ar
 import pytest
 
 import symmray as sr
@@ -120,3 +121,114 @@ def test_eigh_flat(symmetry, d, seed, duals):
     fy = fvecs.multiply_diagonal(fevals, 1) @ fvecs.H
     fy.check()
     assert fy.allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_flat_svd_via_eig(symmetry, d1, d2, charge, seed):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        charge=charge,
+        seed=seed,
+    )
+    fx = sx.to_flat()
+    fx.check()
+
+    fU, fS, fVh = fx.svd_via_eig()
+    fU.check()
+    fVh.check()
+
+    assert fU.charge == fx.charge
+
+    # roundtrip via right multiply
+    fy = fU @ fVh.multiply_diagonal(fS, 0)
+    fy.check()
+    assert fy.charge == fx.charge
+    assert fy.allclose(fx)
+
+    # roundtrip via left multiply
+    fy = fU.multiply_diagonal(fS, 1) @ fVh
+    fy.check()
+    assert fy.charge == fx.charge
+    assert fy.allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_flat_svd_via_eig_truncated(symmetry, d1, d2, absorb, seed):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+    fx.check()
+
+    u, s, vh = fx.svd_via_eig_truncated(absorb=absorb)
+    u.check()
+    vh.check()
+
+    if absorb is None:
+        s.check()
+        xr = u @ vh.multiply_diagonal(s, 0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    assert xr.allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_flat_svd_via_eig_truncated_max_bond(symmetry, d1, d2, absorb, seed):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+    fx.check()
+
+    u, s, vh = fx.svd_via_eig_truncated(max_bond=4, absorb=absorb)
+    u.check()
+    vh.check()
+
+    if absorb is None:
+        s.check()
+        assert s.size <= 4
+    else:
+        assert s is None
+
+    bond_u = u.indices[1].charge_size
+    bond_vh = vh.indices[0].charge_size
+    assert bond_u == bond_vh
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+def test_flat_svd_via_eig_truncated_ar_dispatch(symmetry, d1, d2, seed=42):
+    """Check that autoray dispatch works for svd_via_eig_truncated."""
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+
+    u, s, vh = ar.do("svd_via_eig_truncated", fx, max_bond=4, absorb=None)
+    u.check()
+    vh.check()
+    s.check()
+    assert s.size <= 4

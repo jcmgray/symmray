@@ -315,3 +315,165 @@ def test_lq_via_qr(symmetry, shape, duals, seed=42):
     fL = ar.do("transpose", fLT)
     fL.check()
     fL.to_blocksparse().test_allclose(L)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_svd_via_eig(symmetry, shape, duals, seed=42):
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+
+    fx = x.to_flat()
+    fx.check()
+
+    fu, fs, fvh = fx.svd_via_eig()
+    fu.check()
+    fvh.check()
+    fs.check()
+
+    fxr = fu @ fvh.multiply_diagonal(fs, axis=0)
+    fxr.check()
+    fxr.to_blocksparse().test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2",))
+@pytest.mark.parametrize("seed", range(10))
+def test_svd_via_eig_roundtrip(symmetry, seed):
+    rng = sr.utils.get_rng(seed)
+
+    sx = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=[4, 6, 6, 8, 8],
+        fermionic=True,
+        dist="normal",
+        seed=rng,
+        subsizes="equal",
+    )
+    sx.randomize_phases(seed=rng, inplace=True)
+    x = sx.to_flat()
+
+    axes = tuple(rng.permutation(x.ndim))
+    nleft = rng.integers(1, x.ndim - 1)
+
+    axes_left = axes[:nleft]
+    axes_right = axes[nleft:]
+    order = (*axes_left, *axes_right)
+    perm_back = invert_permutation(order)
+
+    # fuse into matrix
+    xf = x.fuse(axes_left, axes_right)
+
+    # perform SVD via eig into matrix components
+    u, s, vh = xf.svd_via_eig()
+
+    # reconstruct matrix
+    xfr = u @ ar.do("multiply_diagonal", vh, s, axis=0)
+
+    # unfuse back into transpose tensor
+    xrt = xfr.unfuse_all()
+
+    # permute back to original order
+    xr = xrt.transpose(perm_back)
+
+    x.test_allclose(xr)
+    x.to_blocksparse().test_allclose(sx)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", range(5))
+def test_svd_via_eig_truncated(symmetry, shape, absorb, seed):
+    rng = sr.utils.get_rng(seed)
+
+    sx = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        subsizes="equal",
+    )
+    sx.randomize_phases(seed=rng, inplace=True)
+    x = sx.to_flat()
+
+    u, s, vh = x.svd_via_eig_truncated(absorb=absorb)
+    u.check()
+    vh.check()
+
+    if absorb is None:
+        s.check()
+        xr = u @ vh.multiply_diagonal(s, axis=0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    assert xr.allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([84, 96], [96, 96], [96, 84]))
+@pytest.mark.parametrize("seed", range(5))
+def test_svd_via_eig_truncated_max_bond(symmetry, shape, seed):
+    rng = sr.utils.get_rng(seed)
+
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        flat=True,
+        subsizes="equal",
+    )
+
+    # max_bond only, using ar.do dispatch
+    _, s, _ = ar.do(
+        "svd_via_eig_truncated",
+        x,
+        cutoff=0.0,
+        max_bond=12,
+        absorb=None,
+    )
+    assert s.size == 12
+
+
+@pytest.mark.parametrize("symmetry", ("Z2",))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 24]))
+@pytest.mark.parametrize("dtype", ("float64", "complex128"))
+def test_svd_via_eig_complex(symmetry, shape, dtype, seed=42):
+    fx = sr.utils.get_rand(
+        symmetry,
+        shape,
+        fermionic=True,
+        dtype=dtype,
+        seed=seed,
+        flat=True,
+        subsizes="equal",
+    )
+
+    u, s, vh = fx.svd_via_eig()
+    u.check()
+    vh.check()
+    s.check()
+
+    xr = u @ vh.multiply_diagonal(s, axis=0)
+    xr.check()
+    assert xr.allclose(fx)

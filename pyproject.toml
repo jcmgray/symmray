@@ -145,9 +145,6 @@ pytest \
 cwd = "."
 
 [tool.pixi.feature.docs.tasks]
-docs = { cmd = "sphinx-build -b html docs docs/_build/html", cwd = "." }
-docs-clean = { cmd = "rm -rf docs/_build", cwd = "." }
-docs-serve = { cmd = "python -m http.server -d docs/_build/html 8000", cwd = "." }
 lint = { cmd = """
     ruff check --select I
     && ruff format --check

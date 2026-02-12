@@ -7263,8 +7263,8 @@ packages:
   timestamp: 1761343475105
 - pypi: ./
   name: symmray
-  version: 0.2.1.dev12+gb70558c79.d20260205
-  sha256: d8e9d214f6f38588644995d2b6b77a62db1b24bc9d1946a1a203836550d88897
+  version: 0.2.1.dev13+g1e9395cf8.d20260205
+  sha256: 0ff8f06b7ea16db804ea7c1bdeaf05b4c972903b91d509158ab90c62001ae6cd
   requires_dist:
   - autoray>=0.8
   - astroid ; extra == 'docs'

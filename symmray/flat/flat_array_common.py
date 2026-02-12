@@ -1,5 +1,5 @@
-"""Methods that apply to abelian arrays with flat backend, both
-fermionic and bosonic.
+"""Methods that apply to abelian arrays with flat backend, both fermionic and
+simply abelian (bosonic).
 """
 
 import functools
@@ -1637,6 +1637,79 @@ class FlatArrayCommon:
             u, s, vh, cutoff, cutoff_mode, max_bond, absorb, renorm
         )
 
+    def _svd_via_eig_truncated_abelian(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        **kwargs,
+    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
+        if cutoff > 0.0 or renorm:
+            raise NotImplementedError(
+                "Cutoff is not implemented for flat SVD via eig yet."
+            )
+
+        absorb = _ABSORB_MAP[absorb]
+
+        ixl, ixr = self.indices
+        rank = min(ixl.charge_size, ixr.charge_size)
+        num_charges = ixl.num_charges
+
+        if max_bond > 0:
+            new_charge_size = min(max_bond // num_charges, rank)
+        else:
+            new_charge_size = rank
+
+        bu, bs, bvh = _blocklevel_svd_via_eig_truncated(
+            self._blocks,
+            cutoff=cutoff,
+            cutoff_mode=cutoff_mode,
+            max_bond=new_charge_size,
+            absorb=absorb,
+            renorm=renorm,
+            **kwargs,
+        )
+
+        # drop fusing info from bond
+        bond_ind = FlatIndex(
+            num_charges=num_charges,
+            charge_size=new_charge_size,
+            dual=ixr.dual,
+        )
+        u = self.copy_with(
+            blocks=bu,
+            indices=(ixl, bond_ind),
+        )
+        # VH is always charge 0 and thus block diagonal
+        # NOTE: we can't `copy_with` as we need to drop phases/dummy_modes ...
+        vh = self.new_with(
+            sectors=self.sectors[:, (1, 1)],
+            blocks=bvh,
+            indices=(bond_ind.conj(), ixr),
+        )
+
+        if bs is None:
+            # singular values already absorbed correctly, and not needed
+            return u, None, vh
+        else:
+            # still have truncation or absorption to do
+            s = FlatVector(sectors=self.sectors[:, -1], blocks=bs)
+            return truncate_svd_result_flat(
+                u, s, vh, cutoff, cutoff_mode, max_bond, absorb, renorm
+            )
+
+    def _svd_via_eig_abelian(
+        self,
+    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
+        return self._svd_via_eig_truncated_abelian(
+            cutoff=0.0,
+            max_bond=-1,
+            absorb=None,
+            renorm=0,
+        )
+
     def _eigh_abelian(self) -> tuple["FlatArrayCommon", FlatVector]:
         if self.ndim != 2:
             raise NotImplementedError(
@@ -1757,20 +1830,14 @@ def truncate_svd_result_flat(
             blocks=U._blocks[:, :, :charge_size],
             indices=(
                 U.indices[0],
-                U.indices[1].copy_with(
-                    charge_size=charge_size,
-                    subinfo=None,
-                ),
+                U.indices[1].copy_with(charge_size=charge_size, subinfo=None),
             ),
         )
         s.modify(blocks=s._blocks[:, :charge_size])
         VH.modify(
             blocks=VH._blocks[:, :charge_size, :],
             indices=(
-                VH.indices[0].copy_with(
-                    charge_size=charge_size,
-                    subinfo=None,
-                ),
+                VH.indices[0].copy_with(charge_size=charge_size, subinfo=None),
                 VH.indices[1],
             ),
         )
@@ -1800,6 +1867,96 @@ def truncate_svd_result_flat(
     if DEBUG:
         U.check()
         VH.check()
+
+    return U, s, VH
+
+
+def _blocklevel_svd_via_eig_truncated(
+    x,
+    cutoff=-1.0,
+    cutoff_mode=4,
+    max_bond=-1,
+    absorb=0,
+    renorm=0,
+):
+    xp = ar.get_namespace(x)
+
+    _, da, db = xp.shape(x)
+    xdag = xp.conj(xp.transpose(x, (0, 2, 1)))
+    need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
+
+    if da > db:
+        tall = True
+    elif da < db:
+        tall = False
+    else:  # da == db
+        # base choice to compute Us or sVH on absorb
+        tall = absorb == -1
+
+    if tall:
+        s2, V = xp.linalg.eigh(xdag @ x)
+
+        if not need_full_spectrum and (0 < max_bond < db):
+            # more efficient to truncate here than when trimming
+            s2 = s2[:, -max_bond:]
+            V = V[:, :, -max_bond:]
+
+        Us = x @ V
+        VH = xp.conj(xp.transpose(V, (0, 2, 1)))
+
+        if not need_full_spectrum and absorb == -1:
+            # shortcut - don't need s itself and already absorbed *left*
+            return Us, None, VH
+
+        # need to explicitly construct s and U
+        s2 = xp.clip(s2, 0.0, None)
+        s = xp.sqrt(s2)
+        sb = s[:, None, :]
+        U = Us / (sb + (sb == 0.0))
+    else:
+        s2, U = xp.linalg.eigh(x @ xdag)
+
+        if not need_full_spectrum and (0 < max_bond < da):
+            # more efficient to truncate here than when trimming
+            s2 = s2[:, -max_bond:]
+            U = U[:, :, -max_bond:]
+
+        sVH = xp.conj(xp.transpose(U, (0, 2, 1))) @ x
+
+        if not need_full_spectrum and absorb == 1:
+            # shortcut - don't need s itself and already absorbed *right*
+            return U, None, sVH
+
+        # need to explicitly construct s and VH
+        s2 = xp.clip(s2, 0.0, None)
+        s = xp.sqrt(s2)
+        sb = s[:, :, None]
+        VH = sVH / (sb + (sb == 0.0))
+
+    # XXX: we need singular values and vectors in descending order
+    # for compat with svd truncation function
+    U = xp.flip(U, axis=2)
+    s = xp.flip(s, axis=1)
+    VH = xp.flip(VH, axis=1)
+
+    # XXX: directly handle absorption here for efficiency?
+    # if absorb is None:
+    #     # don't absorb, return singular values as a BlockVector
+    #     return U, s, VH
+    # elif absorb == 0:
+    #     # absorb sqrt(s) into both U and VH
+    #     s_sqrt = xp.sqrt(s)
+    #     return U * s_sqrt[:, None, :], None, VH * s_sqrt[:, :, None]
+    # elif absorb == -1:
+    #     # absorb s left into U
+    #     return U * s[:, None, :], None, VH
+    # elif absorb == 1:
+    #     # absorb s right into VH
+    #     return U, None, VH * s[:, :, None]
+    # else:
+    #     raise ValueError(
+    #         f"absorb must be 0, -1, 1, or None. Got {absorb} instead."
+    #     )
 
     return U, s, VH
 
