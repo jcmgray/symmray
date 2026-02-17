@@ -1878,6 +1878,7 @@ def _blocklevel_svd_via_eig_truncated(
     max_bond=-1,
     absorb=0,
     renorm=0,
+    eps=1e-12,
 ):
     xp = ar.get_namespace(x)
 
@@ -1909,10 +1910,9 @@ def _blocklevel_svd_via_eig_truncated(
             return Us, None, VH
 
         # need to explicitly construct s and U
-        s2 = xp.clip(s2, 0.0, None)
+        s2 = xp.clip(s2, s2[-1] * eps, None)
         s = xp.sqrt(s2)
-        sb = s[:, None, :]
-        U = Us / (sb + (sb == 0.0))
+        U = Us / s[:, None, :]
     else:
         s2, U = xp.linalg.eigh(x @ xdag)
 
@@ -1928,10 +1928,9 @@ def _blocklevel_svd_via_eig_truncated(
             return U, None, sVH
 
         # need to explicitly construct s and VH
-        s2 = xp.clip(s2, 0.0, None)
+        s2 = xp.clip(s2, s2[-1] * eps, None)
         s = xp.sqrt(s2)
-        sb = s[:, :, None]
-        VH = sVH / (sb + (sb == 0.0))
+        VH = sVH / s[:, :, None]
 
     # XXX: we need singular values and vectors in descending order
     # for compat with svd truncation function
