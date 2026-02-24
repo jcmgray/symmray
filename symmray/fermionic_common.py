@@ -611,6 +611,38 @@ class FermionicCommon:
 
         return u, s, vh
 
+    def cholesky(self, *, upper=False) -> "FermionicCommon":
+        """Cholesky decomposition of a fermionic array, with optional stabilization.
+
+        Parameters
+        ----------
+        upper : bool, optional
+            Whether to return the upper triangular Cholesky factor. Default is
+            False, returning the lower triangular factor.
+        shift : bool, optional
+            Whether to apply a small positive shift to the diagonal for stabilization.
+            Default is False.
+
+        Returns
+        -------
+        L or R : FermionicCommon
+            The Cholesky factor of the array, which is lower triangular if
+            `upper=False` and upper triangular if `upper=True`.
+        """
+        x = self.phase_sync()
+        l_or_r = x._cholesky_abelian(upper=upper)
+        return l_or_r
+
+    def cholesky_regularized(self, absorb=0, shift=0.0) -> "FermionicCommon":
+        x = self.phase_sync()
+        l = x._cholesky_abelian(shift=shift)
+        if absorb == -12:  # get_Usq
+            return l, None, None
+        if absorb == 12:  # get_sqVH
+            return None, None, l.dagger_project_right()
+        # absorb == get_Usq_sqVH
+        return l, None, l.dagger_project_right()
+
     def solve(self, b: "FermionicCommon", **kwargs) -> "FermionicCommon":
         """Solve linear system Ax = b for x, where A is this fermionic array.
 

@@ -1581,6 +1581,31 @@ class FlatArrayCommon:
             s.check()
 
         return u, s, vh
+    
+    def _cholesky_abelian(self, upper=False, shift=0.0) -> "FlatArrayCommon":
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "Cholesky decomposition is only defined "
+                "for 2D FlatArrayCommon objects."
+            )
+        
+        blocks = self._blocks
+        xp = ar.get_namespace(self.backend)
+
+        if shift < 0.0:
+            # auto compute
+            shift = xp.finfo(blocks.dtype).eps
+
+        if shift > 0.0:
+            trace = xp.stop_gradient(xp.trace(blocks))
+            blocks = blocks + shift * trace * xp.eye(blocks.shape[-1])[None, :, :]
+
+        l_or_r_blocks = ar.do(
+            "linalg.cholesky", blocks, like=self.backend, upper=upper
+        )
+
+        l_or_r = self.copy_with(blocks=l_or_r_blocks)
+        return l_or_r
 
     def svd_truncated(
         self,
