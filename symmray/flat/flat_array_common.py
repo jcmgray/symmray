@@ -1597,13 +1597,11 @@ class FlatArrayCommon:
             shift = xp.finfo(blocks.dtype).eps
 
         if shift > 0.0:
-            trace = xp.stop_gradient(xp.trace(blocks))
+            trace = xp.stop_gradient(xp.linalg.trace(blocks))[:, None, None]
             I = xp.eye(blocks.shape[-1], dtype=blocks.dtype)[None, :, :]
             blocks = blocks + shift * trace * I
 
-        l_or_r_blocks = ar.do(
-            "linalg.cholesky", blocks, like=self.backend, upper=upper
-        )
+        l_or_r_blocks = xp.linalg.cholesky(blocks, upper=upper)
 
         l_or_r = self.copy_with(blocks=l_or_r_blocks)
         return l_or_r
