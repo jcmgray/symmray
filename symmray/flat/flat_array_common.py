@@ -1598,7 +1598,8 @@ class FlatArrayCommon:
 
         if shift > 0.0:
             trace = xp.stop_gradient(xp.trace(blocks))
-            blocks = blocks + shift * trace * xp.eye(blocks.shape[-1])[None, :, :]
+            I = xp.eye(blocks.shape[-1], dtype=blocks.dtype)[None, :, :]
+            blocks = blocks + shift * trace * I
 
         l_or_r_blocks = ar.do(
             "linalg.cholesky", blocks, like=self.backend, upper=upper
