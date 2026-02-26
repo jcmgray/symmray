@@ -1582,7 +1582,7 @@ class FlatArrayCommon:
 
         return u, s, vh
     
-    def _cholesky_abelian(self, upper=False, shift=0.0) -> "FlatArrayCommon":
+    def _cholesky_abelian(self, upper=False, shift=-1) -> "FlatArrayCommon":
         if self.ndim != 2:
             raise NotImplementedError(
                 "Cholesky decomposition is only defined "
@@ -1590,7 +1590,7 @@ class FlatArrayCommon:
             )
         
         blocks = self._blocks
-        xp = ar.get_namespace(self.backend)
+        xp = ar.get_namespace(blocks)
 
         if shift < 0.0:
             # auto compute
