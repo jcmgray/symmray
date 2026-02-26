@@ -166,8 +166,17 @@ def svd_via_eig_truncated(x, *args, **kwargs):
     return x.svd_via_eig_truncated(*args, **kwargs)
 
 
+def cholesky(x, *args, **kwargs):
+    return x.cholesky(*args, **kwargs)
+
+
+def cholesky_regularized(x, *args, **kwargs):
+    return x.cholesky_regularized(*args, **kwargs)
+
+
 # used by quimb
 ar.register_function("symmray", "eigh_truncated", eigh_truncated)
 ar.register_function("symmray", "qr_stabilized", qr_stabilized)
 ar.register_function("symmray", "svd_truncated", svd_truncated)
 ar.register_function("symmray", "svd_via_eig_truncated", svd_via_eig_truncated)
+ar.register_function("symmray", "cholesky_regularized", cholesky_regularized)
