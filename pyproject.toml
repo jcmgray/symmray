@@ -131,6 +131,12 @@ testpymid = { features = ["pymid", "testing"] }
 testpynew = { features = ["pynew", "testing"] }
 docs = { features = ["pynew", "docs"] }
 
+[tool.pixi.tasks.pytest]
+default-environment = "testpymid"
+cmd = "pytest"
+cwd = "."
+description = "Run pytest."
+
 [tool.pixi.tasks.test]
 default-environment = "testpymid"
 env = { SYMMRAY_DEBUG = "1" }
@@ -143,18 +149,29 @@ pytest \
     --durations=10
 """
 cwd = "."
+description = "Run tests with coverage."
 
-[tool.pixi.feature.docs.tasks]
-lint = { cmd = """
+[tool.pixi.feature.docs.tasks.lint]
+cmd = """
     ruff check --select I
     && ruff format --check
-""", cwd = "." }
-format = { cmd = """
+"""
+cwd = "."
+description = "Check code formatting and imports with ruff."
+
+[tool.pixi.feature.docs.tasks.format]
+cmd = """
     ruff check --select I --fix
     && ruff format
-""", cwd = "." }
-format-all = { cmd = """
+"""
+cwd = "."
+description = "Apply code formatting and fix imports with ruff."
+
+[tool.pixi.feature.docs.tasks.format-all]
+cmd = """
     ruff check --select I --fix
     && ruff format
     && find . -name "*.ipynb" -print0 | xargs -0 squeaky
-""", cwd = "." }
+"""
+cwd = "."
+description = "Format all files including notebooks with squeaky."
