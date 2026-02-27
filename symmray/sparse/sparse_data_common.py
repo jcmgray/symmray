@@ -121,6 +121,10 @@ class BlockCommon:
         """
         return next(iter(self.get_all_blocks()), 0.0)
 
+    def get_namespace(self):
+        """Get the array namespace for the underlying blocks."""
+        return ar.get_namespace(self.get_any_array())
+
     def get_scalar_element(self):
         """Assuming the block array is a scalar, get that scalar element."""
         sectors = self.sectors

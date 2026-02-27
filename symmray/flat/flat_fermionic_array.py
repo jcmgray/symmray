@@ -344,10 +344,11 @@ class FermionicArrayFlat(
         sectors = list(map(list, blocks.keys()))
 
         if phases is not None:
+            # need phases in same order as blocks
             phases = ar.do(
                 "array",
                 [phases.get(sector, 1) for sector in blocks.keys()],
-                like=blocks,
+                like=next(iter(blocks.values())),
             )
 
         if blocks:
@@ -475,6 +476,9 @@ class FermionicArrayFlat(
         if new._phases is not None:
             # do broadcasted multiply to resolve phases
             phases_b = new._phases[(slice(None),) + (None,) * (new.ndim)]
+            # NOTE: cast phases as we don't want to upcast the blocks
+            # for example in numpy int32 * float32 => float64
+            phases_b = ar.do("astype", phases_b, new._blocks.dtype)
             new.modify(
                 blocks=new._blocks * phases_b,
                 phases="reset",
@@ -910,11 +914,7 @@ class FermionicArrayFlat(
             U._dummy_modes = ()
             U._label = None
 
-        VH = U._dagger_abelian()
-
-        if VH.indices[0].dual:
-            # inner index is like |x><x| so introduce a phase flip
-            VH.phase_flip(0, inplace=True)
+        VH = U.dagger_compose_right()
 
         return truncate_svd_result_flat(
             U, w, VH, cutoff, cutoff_mode, max_bond, absorb, renorm

@@ -167,10 +167,57 @@ def svd_via_eig_truncated(x, *args, **kwargs):
 
 
 def cholesky(x, *args, **kwargs):
+    """Cholesky decomposition of an assumed positive-definite symmray array.
+
+    Parameters
+    ----------
+    x : AbelianCommon
+        The 2D block-symmetric array to decompose.
+    upper : bool, optional
+        Whether to return the upper triangular Cholesky factor.
+        Default is False, returning the lower triangular factor.
+
+    Returns
+    -------
+    l_or_r : AbelianCommon
+        The Cholesky factor. Lower triangular if ``upper=False``,
+        upper triangular if ``upper=True``.
+    """
     return x.cholesky(*args, **kwargs)
 
 
 def cholesky_regularized(x, *args, **kwargs):
+    """Cholesky decomposition with optional diagonal regularization,
+    returning results in an SVD-like ``(left, None, right)`` format
+    for compatibility with tensor network split drivers.
+
+    Parameters
+    ----------
+    x : AbelianCommon
+        The 2D block-symmetric array to decompose. Must be positive
+        (semi-)definite.
+    absorb : {-12, 0, 12}, optional
+        How to return the factors:
+
+        - ``0`` (``'both'``): return ``(L, None, L^H)``.
+        - ``-12`` (``'lsqrt'``): return ``(L, None, None)``.
+        - ``12`` (``'rsqrt'``): return ``(None, None, L^H)``.
+
+    shift : float, optional
+        Diagonal regularization shift. If negative, auto-compute
+        proportional to dtype machine epsilon. If positive, take as
+        relative shift to the trace of each block. Default is -1.0
+        (auto-compute).
+
+    Returns
+    -------
+    left : AbelianCommon or None
+        The lower Cholesky factor, or None.
+    s : None
+        Always None (no singular values).
+    right : AbelianCommon or None
+        The conjugate transpose of the Cholesky factor, or None.
+    """
     return x.cholesky_regularized(*args, **kwargs)
 
 

@@ -240,23 +240,9 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("dtype", ("float64", "complex128"))
 def test_eigh_fermionic(symm, seed, dtype):
-    d = 10
-    i = sr.utils.rand_index(
-        symm,
-        d,
-        subsizes=None,
-        seed=seed,
+    x = sr.utils_test.rand_herm(
+        symm, 10, seed=seed, dtype=dtype, fermionic=True
     )
-    x = sr.utils.get_rand(
-        symm,
-        shape=(i, i.conj()),
-        fermionic=True,
-        dtype=dtype,
-        seed=seed,
-    )
-    # needs to be hermitian for eigh
-    for sector, block in x.get_sector_block_pairs():
-        x.set_block(sector, block + block.conj().T)
     el, ev = sr.linalg.eigh(x)
     # reconstruct the matrix
     y = sr.multiply_diagonal(ev, el, 1) @ ev.H
@@ -267,23 +253,9 @@ def test_eigh_fermionic(symm, seed, dtype):
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("dtype", ("float64", "complex128"))
 def test_eigh_truncated_fermionic(symm, seed, dtype):
-    d = 10
-    i = sr.utils.rand_index(
-        symm,
-        d,
-        subsizes=None,
-        seed=seed,
+    x = sr.utils_test.rand_herm(
+        symm, 10, seed=seed, dtype=dtype, fermionic=True
     )
-    x = sr.utils.get_rand(
-        symm,
-        shape=(i, i.conj()),
-        fermionic=True,
-        dtype=dtype,
-        seed=seed,
-    )
-    # needs to be hermitian for eigh
-    for sector, block in x.get_sector_block_pairs():
-        x.set_block(sector, block + block.conj().T)
     u, s, vh = sr.linalg.eigh_truncated(x, max_bond=-1, absorb=None)
     # reconstruct the matrix
     y = sr.multiply_diagonal(u, s, 1) @ vh
@@ -351,6 +323,86 @@ def test_eigh_truncated_fermionic_fsued(symm, seed, dtype):
         ],
         output=tuple("abij"),
     )
+    y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
+@pytest.mark.parametrize("seed", range(1))
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+def test_cholesky_fermionic(symmetry, d, seed, dtype):
+    x = sr.utils_test.rand_posdef(
+        symmetry, d, seed=seed, dtype=dtype, fermionic=True
+    )
+
+    left = sr.linalg.cholesky(x, upper=False)
+    left.check()
+    assert left.ndim == 2
+    assert left.dtype == dtype
+    # roundtrip: L @ L^H should equal A
+    y = left @ left.dagger_compose_right()
+    y.check()
+    y.test_allclose(x)
+
+    right = sr.linalg.cholesky(x, upper=True)
+    right.check()
+    assert right.ndim == 2
+    assert right.dtype == dtype
+    # roundtrip: R^H @ R should equal A
+    y = right.dagger_compose_left() @ right
+    y.check()
+    y.test_allclose(x)
+
+    # check left/lower and right/upper are consistent with each other
+    y = left @ right
+    y.check()
+    y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (2, 3, 5))
+@pytest.mark.parametrize("absorb", [-12, 0, 12])
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+@pytest.mark.parametrize("seed", range(1))
+def test_cholesky_regularized_fermionic(symmetry, d, absorb, seed, dtype):
+    x = sr.utils_test.rand_posdef(
+        symmetry, d, seed=seed, dtype=dtype, fermionic=True
+    )
+
+    left, s, right = sr.linalg.cholesky_regularized(x, absorb=absorb)
+    assert s is None
+
+    if absorb == -12:
+        assert right is None
+        left.check()
+        y = left @ left.dagger_compose_right()
+        y.check()
+        y.test_allclose(x)
+    elif absorb == 12:
+        assert left is None
+        right.check()
+        y = right.dagger_compose_left() @ right
+        y.check()
+        y.test_allclose(x)
+    else:
+        left.check()
+        right.check()
+        y = left @ right
+        y.check()
+        y.test_allclose(x)
+
+
+def test_cholesky_regularized_fermionic_ar_dispatch():
+    """Check that autoray dispatch works for cholesky_regularized."""
+    x = sr.utils_test.rand_posdef(
+        "U1", 2, seed=0, dtype="complex128", fermionic=True
+    )
+    left, s, right = ar.do("cholesky_regularized", x)
+    assert s is None
+    left.check()
+    right.check()
+    y = left @ right
+    y.check()
     y.test_allclose(x)
 
 

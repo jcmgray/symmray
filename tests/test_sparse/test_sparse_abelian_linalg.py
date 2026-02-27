@@ -66,21 +66,92 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
-def test_eigh(symmetry, d):
-    x = sr.utils.get_rand(
-        symmetry,
-        (d, d),
-        duals=[0, 1],
-        subsizes="equal",
-    )
-    # need to make sure x is hermitian
-    x.apply_to_arrays(lambda x: (x + x.T) / 2)
+@pytest.mark.parametrize("seed", range(1))
+def test_eigh(symmetry, d, seed):
+    x = sr.utils_test.rand_herm(symmetry, d, seed=seed)
     el, ev = ar.do("linalg.eigh", x)
     el.check()
     ev.check()
     xr = ev @ ar.do("multiply_diagonal", ev.H, el, axis=0)
     xr.check()
     assert x.allclose(xr)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+@pytest.mark.parametrize("seed", range(1))
+def test_cholesky(symmetry, d, seed, dtype):
+    x = sr.utils_test.rand_posdef(symmetry, d, seed=seed, dtype=dtype)
+
+    left = sr.linalg.cholesky(x, upper=False)
+    left.check()
+    assert left.ndim == 2
+    assert left.dtype == dtype
+    # roundtrip: L @ L^H should equal A
+    y = left @ left.H
+    y.check()
+    y.test_allclose(x)
+
+    right = sr.linalg.cholesky(x, upper=True)
+    right.check()
+    assert right.ndim == 2
+    assert right.dtype == dtype
+    # roundtrip: R^H @ R should equal A
+    y = right.H @ right
+    y.check()
+    y.test_allclose(x)
+
+    # check left/lower and right/upper are consistent with each other
+    y = left @ right
+    y.check()
+    y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (2, 3, 5))
+@pytest.mark.parametrize("absorb", [-12, 0, 12])
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+@pytest.mark.parametrize("seed", range(1))
+def test_cholesky_regularized(symmetry, d, absorb, seed, dtype):
+    x = sr.utils_test.rand_posdef(symmetry, d, seed=seed, dtype=dtype)
+
+    left, s, right = sr.linalg.cholesky_regularized(x, absorb=absorb)
+    assert s is None
+
+    if absorb == -12:
+        assert right is None
+        left.check()
+        # reconstruct
+        y = left @ left.H
+        y.check()
+        y.test_allclose(x)
+    elif absorb == 12:
+        assert left is None
+        right.check()
+        # reconstruct
+        y = right.H @ right
+        y.check()
+        y.test_allclose(x)
+    else:
+        left.check()
+        right.check()
+        # roundtrip: L @ L^H == A
+        y = left @ right
+        y.check()
+        y.test_allclose(x)
+
+
+def test_cholesky_regularized_ar_dispatch():
+    """Check that autoray dispatch works for cholesky_regularized."""
+    x = sr.utils_test.rand_posdef("Z2", 2, seed=0, dtype="complex128")
+    left, s, right = ar.do("cholesky_regularized", x)
+    assert s is None
+    left.check()
+    right.check()
+    y = left @ right
+    y.check()
+    y.test_allclose(x)
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))

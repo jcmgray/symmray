@@ -1581,14 +1581,32 @@ class FlatArrayCommon:
             s.check()
 
         return u, s, vh
-    
-    def _cholesky_abelian(self, upper=False, shift=-1) -> "FlatArrayCommon":
+
+    def _cholesky_abelian(self, upper=False, shift=-1.0) -> "FlatArrayCommon":
+        """Cholesky decomposition of a 2D flat abelian array.
+
+        Parameters
+        ----------
+        upper : bool, optional
+            Whether to return the upper triangular Cholesky factor.
+            Default is False, returning the lower triangular factor.
+        shift : float, optional
+            Diagonal regularization shift. If negative, auto-compute
+            proportional to dtype machine epsilon. If positive, take as
+            relative shift to the trace of each block. Default is -1.0
+            (auto-compute).
+
+        Returns
+        -------
+        l_or_r : FlatArrayCommon
+            The Cholesky factor.
+        """
         if self.ndim != 2:
             raise NotImplementedError(
                 "Cholesky decomposition is only defined "
                 "for 2D FlatArrayCommon objects."
             )
-        
+
         blocks = self._blocks
         xp = ar.get_namespace(blocks)
 
@@ -1597,8 +1615,12 @@ class FlatArrayCommon:
             shift = xp.finfo(blocks.dtype).eps
 
         if shift > 0.0:
-            trace = xp.stop_gradient(xp.linalg.trace(blocks))[:, None, None]
-            I = xp.eye(blocks.shape[-1], dtype=blocks.dtype)[None, :, :]
+            trace = xp.linalg.trace(blocks)[:, None, None]
+            try:
+                trace = xp.stop_gradient(trace)
+            except (ImportError, AttributeError):
+                pass
+            I = xp.eye(blocks.shape[-1])[None, :, :]
             blocks = blocks + shift * trace * I
 
         l_or_r_blocks = xp.linalg.cholesky(blocks, upper=upper)

@@ -232,3 +232,110 @@ def test_flat_svd_via_eig_truncated_ar_dispatch(symmetry, d1, d2, seed=42):
     vh.check()
     s.check()
     assert s.size <= 4
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [2, 3])
+@pytest.mark.parametrize("dtype", ["float64", "complex128", "complex64"])
+@pytest.mark.parametrize("seed", range(1))
+def test_cholesky_flat(symmetry, d, seed, dtype):
+    sx = sr.utils_test.rand_posdef(
+        symmetry,
+        d * int(symmetry[1:]),
+        seed=seed,
+        dtype=dtype,
+        subsizes="equal",
+    )
+    sleft = sr.linalg.cholesky(sx, upper=False)
+    sright = sr.linalg.cholesky(sx, upper=True)
+
+    fx = sx.to_flat()
+    fleft = sr.linalg.cholesky(fx)
+    fleft.check()
+    assert fleft.ndim == 2
+    assert fleft.dtype == dtype
+    fleft.to_blocksparse().test_allclose(sleft)
+    # roundtrip: L @ L^H == A
+    fy = fleft @ fleft.H
+    fy.check()
+    fy.test_allclose(fx)
+    fy.to_blocksparse().test_allclose(sx)
+
+    fright = sr.linalg.cholesky(fx, upper=True)
+    fright.check()
+    assert fright.ndim == 2
+    assert fright.dtype == dtype
+    fright.to_blocksparse().test_allclose(sright)
+    # roundtrip: U^H @ U == A
+    fy = fright.H @ fright
+    fy.check()
+    fy.test_allclose(fx)
+    fy.to_blocksparse().test_allclose(sx)
+
+    # combine lower and upper factors
+    fy = fleft @ fright
+    fy.check()
+    fy.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [4, 8])
+@pytest.mark.parametrize("absorb", [-12, 0, 12])
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+@pytest.mark.parametrize("seed", range(1))
+def test_cholesky_regularized_flat(symmetry, d, seed, absorb, dtype):
+    sx = sr.utils_test.rand_posdef(
+        symmetry,
+        d * int(symmetry[1:]),
+        seed=seed,
+        subsizes="equal",
+        dtype=dtype,
+    )
+    sleft, _, sright = sr.linalg.cholesky_regularized(sx, absorb=absorb)
+
+    fx = sx.to_flat()
+    fleft, fs, fright = sr.linalg.cholesky_regularized(fx, absorb=absorb)
+    assert fs is None
+
+    if absorb == -12:
+        assert fright is None
+        fleft.check()
+        fleft.to_blocksparse().test_allclose(sleft)
+        y = fleft @ fleft.H
+        y.check()
+        y.test_allclose(fx)
+    elif absorb == 12:
+        assert fleft is None
+        fright.check()
+        fright.to_blocksparse().test_allclose(sright)
+        y = fright.H @ fright
+        y.check()
+        y.test_allclose(fx)
+    else:
+        fleft.check()
+        fright.check()
+        # roundtrip: L @ R == A
+        fy = fleft @ fright
+        fy.check()
+        fy.test_allclose(fx)
+        fleft.to_blocksparse().test_allclose(sleft)
+        fright.to_blocksparse().test_allclose(sright)
+
+
+def test_cholesky_regularized_flat_ar_dispatch():
+    """Check that autoray dispatch works for cholesky_regularized."""
+    sx = sr.utils_test.rand_posdef(
+        "Z4",
+        8,
+        seed=42,
+        subsizes="equal",
+    )
+    fx = sx.to_flat()
+
+    left, s, right = ar.do("cholesky_regularized", fx, absorb=0)
+    assert s is None
+    left.check()
+    right.check()
+    fy = left @ right
+    fy.check()
+    fy.test_allclose(fx)

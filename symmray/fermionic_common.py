@@ -417,9 +417,20 @@ class FermionicCommon:
         # actually do the data squeeze
         return new._squeeze_abelian(axes_squeeze, inplace=True)
 
+    def dagger_compose_left(self) -> "FermionicCommon":
+        """Take the dagger (conjugate transpose) of this fermionic array,
+        assuming we have the right factor of a hermitian decomposition and want
+        to left factor.
+        """
+        new = self._dagger_abelian()
+        if not new.indices[-1].dual:
+            # 'inner' index is like |x><x| so introduce a phase flip
+            new.phase_flip(-1, inplace=True)
+        return new
+
     def dagger_project_left(self) -> "FermionicCommon":
         """Take the dagger (conjugate transpose) of this fermionic array,
-        assuming we are going to use to projector from the left on another
+        assuming we are going to use to project from the left on another
         operator.
         """
         new = self._dagger_abelian()
@@ -427,9 +438,20 @@ class FermionicCommon:
             new.phase_flip(-1, inplace=True)
         return new
 
+    def dagger_compose_right(self) -> "FermionicCommon":
+        """Take the dagger (conjugate transpose) of this fermionic array,
+        assuming we have the left factor of a hermitian decomposition and want
+        to right factor.
+        """
+        new = self._dagger_abelian()
+        if new.indices[0].dual:
+            # 'inner' index is like |x><x| so introduce a phase flip
+            new.phase_flip(0, inplace=True)
+        return new
+
     def dagger_project_right(self) -> "FermionicCommon":
         """Take the dagger (conjugate transpose) of this fermionic array,
-        assuming we are going to use to projector from the right on another
+        assuming we are going to use to project from the right on another
         operator.
         """
         new = self._dagger_abelian()
@@ -612,36 +634,76 @@ class FermionicCommon:
         return u, s, vh
 
     def cholesky(self, *, upper=False) -> "FermionicCommon":
-        """Cholesky decomposition of a fermionic array, with optional stabilization.
+        """Cholesky decomposition of a fermionic array.
 
         Parameters
         ----------
         upper : bool, optional
-            Whether to return the upper triangular Cholesky factor. Default is
-            False, returning the lower triangular factor.
-        shift : bool, optional
-            Whether to apply a small positive shift to the diagonal for stabilization.
-            Default is False.
+            Whether to return the upper triangular Cholesky factor.
+            Default is False, returning the lower triangular factor.
 
         Returns
         -------
-        L or R : FermionicCommon
-            The Cholesky factor of the array, which is lower triangular if
-            `upper=False` and upper triangular if `upper=True`.
+        l_or_r : FermionicCommon
+            The Cholesky factor. Lower triangular if ``upper=False``,
+            upper triangular if ``upper=True``.
         """
         x = self.phase_sync()
         l_or_r = x._cholesky_abelian(upper=upper)
+        if upper and l_or_r.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            l_or_r.phase_flip(0, inplace=True)
         return l_or_r
 
-    def cholesky_regularized(self, absorb=0, shift=0.0) -> "FermionicCommon":
+    def cholesky_regularized(self, absorb=0, shift=-1.0) -> "FermionicCommon":
+        """Cholesky decomposition with optional diagonal regularization,
+        returning results in an SVD-like ``(left, None, right)`` format
+        for compatibility with tensor network split drivers. Handles
+        fermionic phase synchronization automatically.
+
+        Parameters
+        ----------
+        absorb : {-12, 0, 12}, optional
+            How to return the factors:
+
+            - ``0`` (``'both'``): return ``(L, None, L^H)``.
+            - ``-12`` (``'lsqrt'``): return ``(L, None, None)``.
+            - ``12`` (``'rsqrt'``): return ``(None, None, L^H)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If negative, auto-compute
+            proportional to dtype machine epsilon. If positive, take as
+            relative shift to the trace of each block. Default is -1.0
+            (auto-compute).
+
+        Returns
+        -------
+        left : FermionicCommon or None
+            The lower Cholesky factor, or None.
+        s : None
+            Always None (no singular values).
+        right : FermionicCommon or None
+            The conjugate transpose of the Cholesky factor, or None.
+        """
         x = self.phase_sync()
-        l = x._cholesky_abelian(shift=shift)
+        if absorb == 12:  # get_sqVH
+            r = x._cholesky_abelian(shift=shift, upper=True)
+            if not r.indices[0].dual:
+                r.phase_flip(0, inplace=True)
+            return None, None, r
+
+        l = x._cholesky_abelian(shift=shift, upper=False)
         if absorb == -12:  # get_Usq
             return l, None, None
-        if absorb == 12:  # get_sqVH
-            return None, None, l.dagger_project_right()
-        # absorb == get_Usq_sqVH
-        return l, None, l.dagger_project_right()
+
+        if absorb == 0:  # get_Usq_sqVH
+            r = l.dagger_compose_right()
+            return l, None, r
+
+        raise ValueError(
+            "Invalid absorb value, must be one of -12 ('lsqrt' / 'Usq') 0 "
+            "('both' / 'Usq_sqVH'), or 12 ( 'rsqrt' / 'sqVH')."
+        )
 
     def solve(self, b: "FermionicCommon", **kwargs) -> "FermionicCommon":
         """Solve linear system Ax = b for x, where A is this fermionic array.

@@ -1,5 +1,19 @@
 """Utility functions specifically for testing."""
 
+import functools
+
+
+def hash_kwargs_to_int(**kwargs) -> int:
+    """Hash a set of keyword arguments to a deterministic integer, which can be
+    used for seeding random number generators in tests, for example, allowing a
+    varying but reproducible seed.
+    """
+    import hashlib
+
+    kwargs_str = str(sorted(kwargs.items()))
+    kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()
+    return int(kwargs_hash, 16) % (2**32 - 1)
+
 
 def rand_valid_tensordot(
     symmetry,
@@ -133,3 +147,72 @@ def rand_valid_tensordot(
     )
 
     return a, b, axes
+
+
+def rand_matrix(
+    symmetry,
+    d,
+    seed=None,
+    subsizes="equal",
+    dtype="float64",
+    fermionic=False,
+    flat=False,
+    matrix_type="general",
+):
+    """Create a general, hermitian, or positive definite matrix (with conjugate
+    indices) with the given symmetry and shape (d, d). For testing purposes.
+    """
+    from .symmetries import get_symmetry
+    from .utils import get_rand, get_rng, rand_index
+
+    symm = get_symmetry(symmetry)
+
+    rng = get_rng(
+        hash_kwargs_to_int(
+            symmetry=symmetry,
+            d=d,
+            seed=seed,
+            subsizes=subsizes,
+            dtype=dtype,
+            fermionic=fermionic,
+            flat=flat,
+            matrix_type=matrix_type,
+        )
+    )
+
+    i = rand_index(symm, d, subsizes=subsizes, seed=rng)
+
+    sx = get_rand(
+        symm,
+        shape=(i, i.conj()),
+        dtype=dtype,
+        seed=rng,
+        fermionic=fermionic,
+    )
+
+    xp = sx.get_namespace()
+
+    if matrix_type == "hermitian":
+
+        def fn_blocks(block):
+            return block + xp.conj(xp.transpose(block))
+
+    elif matrix_type == "posdef":
+
+        def fn_blocks(block):
+            bh = block @ xp.conj(xp.transpose(block))
+            bh = bh + 1e-4 * xp.eye(bh.shape[0], dtype=dtype)
+            return bh
+
+    elif matrix_type != "general":
+        raise ValueError(f"Invalid matrix_type: {matrix_type}")
+
+    sx._map_blocks(fn_blocks)
+    if flat:
+        return sx.to_flat()
+    else:
+        return sx
+
+
+rand_herm = functools.partial(rand_matrix, matrix_type="hermitian")
+rand_posdef = functools.partial(rand_matrix, matrix_type="posdef")

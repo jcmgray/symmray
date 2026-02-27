@@ -2006,6 +2006,60 @@ class SparseArrayCommon:
 
         return eigenvalues, eigenvectors
 
+    def _cholesky_abelian(
+        self,
+        upper=False,
+        shift=-1.0,
+    ) -> "SparseArrayCommon":
+        """Cholesky decomposition of a 2D block-sparse abelian array.
+
+        Parameters
+        ----------
+        upper : bool, optional
+            Whether to return the upper triangular Cholesky factor.
+            Default is False, returning the lower triangular factor.
+        shift : float, optional
+            Diagonal regularization shift. If negative, auto-compute
+            proportional to dtype machine epsilon. If positive, take as
+            relative shift to the trace of each block. Default is -1.0
+            (auto-compute).
+
+        Returns
+        -------
+        l_or_r : SparseArrayCommon
+            The Cholesky factor.
+        """
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "Cholesky decomposition only implemented for 2D "
+                f"AbelianArrays, got {self.ndim}D. Consider fusing first."
+            )
+        if self.charge != self.symmetry.combine():
+            raise ValueError(
+                "Total charge must be the identity (zero) element."
+            )
+
+        xp = ar.get_namespace(self.get_any_array())
+
+        if shift < 0.0:
+            shift = xp.finfo(self.dtype).eps
+
+        l_blocks = {}
+        for sector, block in self.get_sector_block_pairs():
+            if shift > 0.0:
+                tr = xp.trace(block)
+                eye = xp.eye(block.shape[0])
+                block = block + (shift * tr) * eye
+
+            l_blocks[sector] = xp.linalg.cholesky(block, upper=upper)
+
+        l_or_r = self.copy_with(blocks=l_blocks)
+
+        if DEBUG:
+            l_or_r.check()
+
+        return l_or_r
+
     def _eigh_truncated_abelian(
         self,
         cutoff=-1.0,

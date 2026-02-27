@@ -103,6 +103,10 @@ class FlatCommon:
         """Get an arbitrary (the first) block from the stack."""
         return self._blocks[0]
 
+    def get_namespace(self):
+        """Get the array namespace for the underlying blocks."""
+        return ar.get_namespace(self._blocks)
+
     def get_scalar_element(self):
         """Get the scalar element from a scalar block array."""
         if self.shape_block != ():

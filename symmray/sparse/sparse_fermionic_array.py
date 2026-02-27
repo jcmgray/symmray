@@ -839,10 +839,7 @@ class FermionicArray(
             U._dummy_modes = ()
             U._label = ()
 
-        VH = U._dagger_abelian()
-        if VH.indices[0].dual:
-            # inner index is like |x><x| so introduce a phase flip
-            VH.phase_flip(0, inplace=True)
+        VH = U.dagger_compose_right()
 
         return truncate_svd_result_blocksparse(
             U,
