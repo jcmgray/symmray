@@ -11,6 +11,21 @@ import autoray as ar
 import cotengra as ctg
 
 from ..abelian_common import maybe_keep_label
+from ..linalg_common import (
+    _ABSORB_MAP,
+    _do_absorb,
+    get_s,
+    get_sqVH,
+    get_sVH,
+    get_U,
+    get_U_s_VH,
+    get_U_sVH,
+    get_Us,
+    get_Us_VH,
+    get_Usq,
+    get_Usq_sqVH,
+    get_VH,
+)
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..sparse.sparse_array_common import (
     calc_fuse_group_info,
@@ -1692,59 +1707,108 @@ class FlatArrayCommon:
         renorm=0,
         **kwargs,
     ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        if cutoff > 0.0 or renorm:
-            raise NotImplementedError(
-                "Cutoff is not implemented for flat SVD via eig yet."
-            )
-
         absorb = _ABSORB_MAP[absorb]
+        need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
 
         ixl, ixr = self.indices
         rank = min(ixl.charge_size, ixr.charge_size)
         num_charges = ixl.num_charges
 
-        if max_bond > 0:
-            new_charge_size = min(max_bond // num_charges, rank)
-        else:
-            new_charge_size = rank
-
-        bu, bs, bvh = _blocklevel_svd_via_eig_truncated(
-            self._blocks,
-            cutoff=cutoff,
-            cutoff_mode=cutoff_mode,
-            max_bond=new_charge_size,
-            absorb=absorb,
-            renorm=renorm,
-            **kwargs,
-        )
-
-        # drop fusing info from bond
-        bond_ind = FlatIndex(
-            num_charges=num_charges,
-            charge_size=new_charge_size,
-            dual=ixr.dual,
-        )
-        u = self.copy_with(
-            blocks=bu,
-            indices=(ixl, bond_ind),
-        )
-        # VH is always charge 0 and thus block diagonal
-        # NOTE: we can't `copy_with` as we need to drop phases/dummy_modes ...
-        vh = self.new_with(
-            sectors=self.sectors[:, (1, 1)],
-            blocks=bvh,
-            indices=(bond_ind.conj(), ixr),
-        )
-
-        if bs is None:
-            # singular values already absorbed correctly, and not needed
-            return u, None, vh
-        else:
-            # still have truncation or absorption to do
-            s = FlatVector(sectors=self.sectors[:, -1], blocks=bs)
-            return truncate_svd_result_flat(
-                u, s, vh, cutoff, cutoff_mode, max_bond, absorb, renorm
+        if need_full_spectrum:
+            # 1. compute full svd via eig ...
+            bu, bs, bvh = _blocklevel_svd_via_eig(
+                self._blocks,
+                absorb=get_U_s_VH,
+                max_bond=-1,
+                descending=True,
             )
+
+            bond_ind = FlatIndex(
+                num_charges=num_charges,
+                charge_size=rank,
+                dual=ixr.dual,
+            )
+            u = self.copy_with(
+                blocks=bu,
+                indices=(ixl, bond_ind),
+            )
+            s = FlatVector(
+                sectors=self.sectors[:, -1],
+                blocks=bs,
+            )
+            vh = self.new_with(
+                sectors=self.sectors[:, (1, 1)],
+                blocks=bvh,
+                indices=(bond_ind.conj(), ixr),
+            )
+
+            # 2. ... then truncate separately
+            return truncate_svd_result_flat(
+                u,
+                s,
+                vh,
+                cutoff,
+                cutoff_mode,
+                max_bond,
+                absorb,
+                renorm,
+            )
+        else:
+            # perform in one step, taking advantage of shortcuts
+            if max_bond > 0:
+                new_charge_size = min(max_bond // num_charges, rank)
+            else:
+                new_charge_size = rank
+
+            bu, bs, bvh = _blocklevel_svd_via_eig(
+                self._blocks,
+                absorb=absorb,
+                max_bond=new_charge_size,
+                descending=False,
+            )
+
+            bond_ind = FlatIndex(
+                num_charges=num_charges,
+                charge_size=new_charge_size,
+                dual=ixr.dual,
+            )
+
+            # wrap non-None results in symmray objects
+            u = (
+                self.copy_with(
+                    blocks=bu,
+                    indices=(ixl, bond_ind),
+                )
+                if bu is not None
+                else None
+            )
+            vh = (
+                self.new_with(
+                    sectors=self.sectors[:, (1, 1)],
+                    blocks=bvh,
+                    indices=(bond_ind.conj(), ixr),
+                )
+                if bvh is not None
+                else None
+            )
+            s = (
+                FlatVector(
+                    sectors=self.sectors[:, -1],
+                    blocks=bs,
+                )
+                if bs is not None
+                else None
+            )
+
+            if DEBUG:
+                if u is not None:
+                    u.check()
+                if vh is not None:
+                    vh.check()
+                if s is not None:
+                    s.check()
+
+            return u, s, vh
 
     def _svd_via_eig_abelian(
         self,
@@ -1753,7 +1817,6 @@ class FlatArrayCommon:
             cutoff=0.0,
             max_bond=-1,
             absorb=None,
-            renorm=0,
         )
 
     def _eigh_abelian(self) -> tuple["FlatArrayCommon", FlatVector]:
@@ -1829,17 +1892,6 @@ class FlatArrayCommon:
         )
 
 
-_ABSORB_MAP = {
-    -1: -1,
-    "left": -1,
-    0: 0,
-    "both": 0,
-    1: 1,
-    "right": 1,
-    None: None,
-}
-
-
 def truncate_svd_result_flat(
     U: FlatArrayCommon,
     s: FlatVector,
@@ -1888,122 +1940,184 @@ def truncate_svd_result_flat(
             ),
         )
 
-    if absorb is None:
-        if DEBUG:
-            s.check()
-    elif absorb == 0:
-        # absorb sqrt(s) into both U and VH
-        s_sqrt = s.sqrt()
-        U.multiply_diagonal(s_sqrt, axis=1, inplace=True)
-        VH.multiply_diagonal(s_sqrt, axis=0, inplace=True)
-        s = None
-    elif absorb == -1:
-        # absorb s left into U
-        U.multiply_diagonal(s, axis=1, inplace=True)
-        s = None
-    elif absorb == 1:
-        # absorb s right into VH
-        VH.multiply_diagonal(s, axis=0, inplace=True)
-        s = None
-    else:
-        raise ValueError(
-            f"absorb must be 0, -1, 1, or None. Got {absorb} instead."
-        )
+    U, s, VH = _do_absorb(U, s, VH, absorb)
 
     if DEBUG:
-        U.check()
-        VH.check()
+        if U is not None:
+            U.check()
+        if VH is not None:
+            VH.check()
+        if s is not None:
+            s.check()
 
     return U, s, VH
 
 
-def _blocklevel_svd_via_eig_truncated(
+def _blocklevel_svd_via_eig(
     x,
-    cutoff=-1.0,
-    cutoff_mode=4,
+    absorb=get_U_s_VH,
     max_bond=-1,
-    absorb=0,
-    renorm=0,
-    eps=1e-12,
+    descending=True,
+    right=None,
 ):
+    """SVD of batched 2D blocks ``x`` via eigendecomposition of the Gram
+    matrix, with static truncation and all absorb mode shortcuts.
+
+    Parameters
+    ----------
+    x : array_like
+        Batched 2D blocks, shape ``(num_blocks, da, db)``.
+    absorb : int or None, optional
+        Absorption mode code controlling what to compute / return.
+    max_bond : int, optional
+        Maximum bond dimension per block, use -1 for no truncation.
+    descending : bool, optional
+        Whether to return singular values in descending order.
+    right : bool, optional
+        Whether to eigendecompose ``xdag @ x`` (True) or ``x @ xdag``
+        (False). If None, choose based on shape and absorb mode.
+
+    Returns
+    -------
+    U : array_like or None
+    s : array_like or None
+    VH : array_like or None
+    """
     xp = ar.get_namespace(x)
 
     _, da, db = xp.shape(x)
     xdag = xp.conj(xp.transpose(x, (0, 2, 1)))
-    need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
 
-    if da > db:
-        tall = True
-    elif da < db:
-        tall = False
-    else:  # da == db
-        # base choice to compute Us or sVH on absorb
-        tall = absorb == -1
+    if right is None:
+        if da > db:
+            right = True
+        elif da < db:
+            right = False
+        else:
+            # avoid division if possible
+            right = absorb in (
+                get_VH,
+                get_sVH,
+                get_sqVH,
+                get_Us_VH,
+            )
 
-    if tall:
+    if right:
+        # tall: eigendecompose xdag @ x
         s2, V = xp.linalg.eigh(xdag @ x)
-
-        if not need_full_spectrum and (0 < max_bond < db):
-            # more efficient to truncate here than when trimming
+        if 0 < max_bond < min(da, db):
             s2 = s2[:, -max_bond:]
             V = V[:, :, -max_bond:]
+        if descending:
+            s2 = xp.flip(s2, axis=1)
+            V = xp.flip(V, axis=2)
+        s2 = xp.maximum(s2, 0.0)
+
+        if absorb == get_s:  # 'svals'
+            s = xp.sqrt(s2)
+            return None, s, None
+        if absorb == get_VH:  # 'rorthog'
+            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
+            return None, None, VH
+        if absorb == get_sVH:  # 'rfactor'
+            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
+            s = xp.sqrt(s2)
+            sVH = s[:, :, None] * VH
+            return None, None, sVH
+        if absorb == get_sqVH:  # 'rsqrt'
+            sq = xp.sqrt(xp.sqrt(s2))
+            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
+            sqVH = sq[:, :, None] * VH
+            return None, None, sqVH
 
         Us = x @ V
-        VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-
-        if not need_full_spectrum and absorb == -1:
-            # shortcut - don't need s itself and already absorbed *left*
+        if absorb == get_Us:  # 'lfactor'
+            return Us, None, None
+        if absorb == get_Us_VH:  # 'left'
+            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
             return Us, None, VH
 
-        # need to explicitly construct s and U
-        s2 = xp.clip(s2, s2[-1] * eps, None)
+        # for all other options we need U
         s = xp.sqrt(s2)
-        U = Us / s[:, None, :]
-    else:
-        s2, U = xp.linalg.eigh(x @ xdag)
+        eps = xp.finfo(s.dtype).eps
+        cutoff = xp.max(s) * eps * max(da, db)
+        sinv = s / (s**2 + cutoff**2)
+        U = Us * sinv[:, None, :]
 
-        if not need_full_spectrum and (0 < max_bond < da):
-            # more efficient to truncate here than when trimming
+        if absorb == get_U:  # 'lorthog'
+            return U, None, None
+        if absorb == get_Usq:  # 'lsqrt'
+            sq = xp.sqrt(s)
+            Usq = U * sq[:, None, :]
+            return Usq, None, None
+
+        # need U and VH for all remaining options
+        VH = xp.conj(xp.transpose(V, (0, 2, 1)))
+        if absorb == get_U_s_VH:  # 'full'
+            return U, s, VH
+        if absorb == get_U_sVH:  # 'right'
+            sVH = s[:, :, None] * VH
+            return U, None, sVH
+        if absorb == get_Usq_sqVH:  # 'both'
+            sq = xp.sqrt(s)
+            Usq = U * sq[:, None, :]
+            sqVH = sq[:, :, None] * VH
+            return Usq, None, sqVH
+
+    else:
+        # wide: eigendecompose x @ xdag
+        s2, U = xp.linalg.eigh(x @ xdag)
+        if 0 < max_bond < min(da, db):
             s2 = s2[:, -max_bond:]
             U = U[:, :, -max_bond:]
+        if descending:
+            s2 = xp.flip(s2, axis=1)
+            U = xp.flip(U, axis=2)
+        s2 = xp.maximum(s2, 0.0)
+
+        if absorb == get_s:  # 'svals'
+            s = xp.sqrt(s2)
+            return None, s, None
+        if absorb == get_U:  # 'lorthog'
+            return U, None, None
+        if absorb == get_Us:  # 'lfactor'
+            s = xp.sqrt(s2)
+            Us = U * s[:, None, :]
+            return Us, None, None
+        if absorb == get_Usq:  # 'lsqrt'
+            sq = xp.sqrt(xp.sqrt(s2))
+            Usq = U * sq[:, None, :]
+            return Usq, None, None
 
         sVH = xp.conj(xp.transpose(U, (0, 2, 1))) @ x
-
-        if not need_full_spectrum and absorb == 1:
-            # shortcut - don't need s itself and already absorbed *right*
+        if absorb == get_sVH:  # 'rfactor'
+            return None, None, sVH
+        if absorb == get_U_sVH:  # 'right'
             return U, None, sVH
 
-        # need to explicitly construct s and VH
-        s2 = xp.clip(s2, s2[-1] * eps, None)
+        # for all other options we need VH
         s = xp.sqrt(s2)
-        VH = sVH / s[:, :, None]
+        eps = xp.finfo(s.dtype).eps
+        cutoff = xp.max(s) * eps * max(da, db)
+        sinv = s / (s**2 + cutoff**2)
+        VH = sinv[:, :, None] * sVH
 
-    # XXX: we need singular values and vectors in descending order
-    # for compat with svd truncation function
-    U = xp.flip(U, axis=2)
-    s = xp.flip(s, axis=1)
-    VH = xp.flip(VH, axis=1)
+        if absorb == get_VH:  # 'rorthog'
+            return None, None, VH
+        if absorb == get_U_s_VH:  # 'full'
+            return U, s, VH
+        if absorb == get_Us_VH:  # 'left'
+            Us = U * s[:, None, :]
+            return Us, None, VH
+        sq = xp.sqrt(s)
+        sqVH = sq[:, :, None] * VH
+        if absorb == get_Usq_sqVH:  # 'both'
+            Usq = U * sq[:, None, :]
+            return Usq, None, sqVH
+        if absorb == get_sqVH:  # 'rsqrt'
+            return None, None, sqVH
 
-    # XXX: directly handle absorption here for efficiency?
-    # if absorb is None:
-    #     # don't absorb, return singular values as a BlockVector
-    #     return U, s, VH
-    # elif absorb == 0:
-    #     # absorb sqrt(s) into both U and VH
-    #     s_sqrt = xp.sqrt(s)
-    #     return U * s_sqrt[:, None, :], None, VH * s_sqrt[:, :, None]
-    # elif absorb == -1:
-    #     # absorb s left into U
-    #     return U * s[:, None, :], None, VH
-    # elif absorb == 1:
-    #     # absorb s right into VH
-    #     return U, None, VH * s[:, :, None]
-    # else:
-    #     raise ValueError(
-    #         f"absorb must be 0, -1, 1, or None. Got {absorb} instead."
-    #     )
-
-    return U, s, VH
+    raise ValueError(f"Invalid absorb mode: {absorb}")
 
 
 # ------------------------ tensordot implementations ------------------------ #

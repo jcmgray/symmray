@@ -561,7 +561,7 @@ class FermionicCommon:
         x = self.phase_sync()
         u, s, vh = x._svd_via_eig_abelian()
 
-        if vh.indices[0].dual:
+        if vh is not None and vh.indices[0].dual:
             # inner index is like |x><x| so introduce a phase flip
             vh.phase_flip(0, inplace=True)
 
@@ -609,11 +609,11 @@ class FermionicCommon:
 
         Returns
         -------
-        u : AbelianCommon
+        u : AbelianCommon or None
             The abelian array of left singular vectors.
         s : VectorCommon or None
             The vector of singular values, or None if absorbed.
-        vh : AbelianCommon
+        vh : AbelianCommon or None
             The abelian array of right singular vectors.
         """
         x = self.phase_sync()
@@ -627,7 +627,7 @@ class FermionicCommon:
             **kwargs,
         )
 
-        if vh.indices[0].dual:
+        if vh is not None and vh.indices[0].dual:
             # inner index is like |x><x| so introduce a phase flip
             vh.phase_flip(0, inplace=True)
 
