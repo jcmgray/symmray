@@ -2,6 +2,7 @@
 
 from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
+from ..linalg_common import Absorb
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .sparse_array_common import SparseArrayCommon
@@ -467,17 +468,20 @@ class AbelianArray(
         right : AbelianArray or None
             The conjugate transpose of the Cholesky factor, or None.
         """
-        if absorb == 12:  # get_sqVH
+        absorb = Absorb.parse(absorb)
+        if absorb == Absorb.sqVH:
             r = self._cholesky_abelian(shift=shift, upper=True)
             return None, None, r
 
         l = self._cholesky_abelian(shift=shift, upper=False)
 
-        if absorb == -12:  # get_Usq
+        if absorb == Absorb.Usq:
             return l, None, None
 
-        # absorb == get_Usq_sqVH (0)
-        return l, None, l.H
+        if absorb == Absorb.Usq_sqVH:
+            return l, None, l.H
+
+        raise ValueError(f"Invalid absorb option: {absorb}")
 
     def solve(self, b: "AbelianArray", **kwargs) -> "AbelianArray":
         """Solve the linear system `A @ x == b` for x, where A is this array.

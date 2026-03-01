@@ -4,6 +4,7 @@ import autoray as ar
 
 from ..abelian_common import AbelianCommon
 from ..common import SymmrayCommon
+from ..linalg_common import Absorb
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
@@ -614,15 +615,17 @@ class AbelianArrayFlat(
         right : AbelianArrayFlat or None
             The conjugate transpose of the Cholesky factor, or None.
         """
-        if absorb == 12:  # get_sqVH
+        absorb = Absorb.parse(absorb)
+
+        if absorb == Absorb.sqVH:
             r = self._cholesky_abelian(shift=shift, upper=True)
             return None, None, r
 
         l = self._cholesky_abelian(shift=shift, upper=False)
-        if absorb == -12:  # get_Usq
+        if absorb == Absorb.Usq:
             return l, None, None
 
-        # absorb == get_Usq_sqVH (0 or 'both')
+        # absorb == Absorb.Usq_sqVH (0 or 'both')
         return l, None, l.H
 
     def eigh(self) -> tuple[FlatVector, "AbelianArrayFlat"]:

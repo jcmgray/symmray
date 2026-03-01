@@ -11,21 +11,7 @@ import autoray as ar
 import cotengra as ctg
 
 from ..abelian_common import maybe_keep_label
-from ..linalg_common import (
-    _ABSORB_MAP,
-    _do_absorb,
-    get_s,
-    get_sqVH,
-    get_sVH,
-    get_U,
-    get_U_s_VH,
-    get_U_sVH,
-    get_Us,
-    get_Us_VH,
-    get_Usq,
-    get_Usq_sqVH,
-    get_VH,
-)
+from ..linalg_common import Absorb, absorb_svd_result
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..sparse.sparse_array_common import (
     calc_fuse_group_info,
@@ -1707,7 +1693,7 @@ class FlatArrayCommon:
         renorm=0,
         **kwargs,
     ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        absorb = _ABSORB_MAP[absorb]
+        absorb = Absorb.parse(absorb)
         need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
 
         ixl, ixr = self.indices
@@ -1718,7 +1704,7 @@ class FlatArrayCommon:
             # 1. compute full svd via eig ...
             bu, bs, bvh = _blocklevel_svd_via_eig(
                 self._blocks,
-                absorb=get_U_s_VH,
+                absorb=Absorb.U_s_VH,
                 max_bond=-1,
                 descending=True,
             )
@@ -1902,7 +1888,7 @@ def truncate_svd_result_flat(
     absorb: int,
     renorm: int,
 ):
-    absorb = _ABSORB_MAP[absorb]
+    absorb = Absorb.parse(absorb)
 
     if cutoff > 0.0:
         raise NotImplementedError(
@@ -1940,7 +1926,7 @@ def truncate_svd_result_flat(
             ),
         )
 
-    U, s, VH = _do_absorb(U, s, VH, absorb)
+    U, s, VH = absorb_svd_result(U, s, VH, absorb)
 
     if DEBUG:
         if U is not None:
@@ -1955,7 +1941,7 @@ def truncate_svd_result_flat(
 
 def _blocklevel_svd_via_eig(
     x,
-    absorb=get_U_s_VH,
+    absorb=Absorb.U_s_VH,
     max_bond=-1,
     descending=True,
     right=None,
@@ -1996,10 +1982,10 @@ def _blocklevel_svd_via_eig(
         else:
             # avoid division if possible
             right = absorb in (
-                get_VH,
-                get_sVH,
-                get_sqVH,
-                get_Us_VH,
+                Absorb.VH,
+                Absorb.sVH,
+                Absorb.sqVH,
+                Absorb.Us_VH,
             )
 
     if right:
@@ -2013,27 +1999,27 @@ def _blocklevel_svd_via_eig(
             V = xp.flip(V, axis=2)
         s2 = xp.maximum(s2, 0.0)
 
-        if absorb == get_s:  # 'svals'
+        if absorb == Absorb.s:  # 'svals'
             s = xp.sqrt(s2)
             return None, s, None
-        if absorb == get_VH:  # 'rorthog'
+        if absorb == Absorb.VH:  # 'rorthog'
             VH = xp.conj(xp.transpose(V, (0, 2, 1)))
             return None, None, VH
-        if absorb == get_sVH:  # 'rfactor'
+        if absorb == Absorb.sVH:  # 'rfactor'
             VH = xp.conj(xp.transpose(V, (0, 2, 1)))
             s = xp.sqrt(s2)
             sVH = s[:, :, None] * VH
             return None, None, sVH
-        if absorb == get_sqVH:  # 'rsqrt'
+        if absorb == Absorb.sqVH:  # 'rsqrt'
             sq = xp.sqrt(xp.sqrt(s2))
             VH = xp.conj(xp.transpose(V, (0, 2, 1)))
             sqVH = sq[:, :, None] * VH
             return None, None, sqVH
 
         Us = x @ V
-        if absorb == get_Us:  # 'lfactor'
+        if absorb == Absorb.Us:  # 'lfactor'
             return Us, None, None
-        if absorb == get_Us_VH:  # 'left'
+        if absorb == Absorb.Us_VH:  # 'left'
             VH = xp.conj(xp.transpose(V, (0, 2, 1)))
             return Us, None, VH
 
@@ -2044,21 +2030,21 @@ def _blocklevel_svd_via_eig(
         sinv = s / (s**2 + cutoff**2)
         U = Us * sinv[:, None, :]
 
-        if absorb == get_U:  # 'lorthog'
+        if absorb == Absorb.U:  # 'lorthog'
             return U, None, None
-        if absorb == get_Usq:  # 'lsqrt'
+        if absorb == Absorb.Usq:  # 'lsqrt'
             sq = xp.sqrt(s)
             Usq = U * sq[:, None, :]
             return Usq, None, None
 
         # need U and VH for all remaining options
         VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-        if absorb == get_U_s_VH:  # 'full'
+        if absorb == Absorb.U_s_VH:  # 'full'
             return U, s, VH
-        if absorb == get_U_sVH:  # 'right'
+        if absorb == Absorb.U_sVH:  # 'right'
             sVH = s[:, :, None] * VH
             return U, None, sVH
-        if absorb == get_Usq_sqVH:  # 'both'
+        if absorb == Absorb.Usq_sqVH:  # 'both'
             sq = xp.sqrt(s)
             Usq = U * sq[:, None, :]
             sqVH = sq[:, :, None] * VH
@@ -2075,24 +2061,24 @@ def _blocklevel_svd_via_eig(
             U = xp.flip(U, axis=2)
         s2 = xp.maximum(s2, 0.0)
 
-        if absorb == get_s:  # 'svals'
+        if absorb == Absorb.s:  # 'svals'
             s = xp.sqrt(s2)
             return None, s, None
-        if absorb == get_U:  # 'lorthog'
+        if absorb == Absorb.U:  # 'lorthog'
             return U, None, None
-        if absorb == get_Us:  # 'lfactor'
+        if absorb == Absorb.Us:  # 'lfactor'
             s = xp.sqrt(s2)
             Us = U * s[:, None, :]
             return Us, None, None
-        if absorb == get_Usq:  # 'lsqrt'
+        if absorb == Absorb.Usq:  # 'lsqrt'
             sq = xp.sqrt(xp.sqrt(s2))
             Usq = U * sq[:, None, :]
             return Usq, None, None
 
         sVH = xp.conj(xp.transpose(U, (0, 2, 1))) @ x
-        if absorb == get_sVH:  # 'rfactor'
+        if absorb == Absorb.sVH:  # 'rfactor'
             return None, None, sVH
-        if absorb == get_U_sVH:  # 'right'
+        if absorb == Absorb.U_sVH:  # 'right'
             return U, None, sVH
 
         # for all other options we need VH
@@ -2102,19 +2088,19 @@ def _blocklevel_svd_via_eig(
         sinv = s / (s**2 + cutoff**2)
         VH = sinv[:, :, None] * sVH
 
-        if absorb == get_VH:  # 'rorthog'
+        if absorb == Absorb.VH:  # 'rorthog'
             return None, None, VH
-        if absorb == get_U_s_VH:  # 'full'
+        if absorb == Absorb.U_s_VH:  # 'full'
             return U, s, VH
-        if absorb == get_Us_VH:  # 'left'
+        if absorb == Absorb.Us_VH:  # 'left'
             Us = U * s[:, None, :]
             return Us, None, VH
         sq = xp.sqrt(s)
         sqVH = sq[:, :, None] * VH
-        if absorb == get_Usq_sqVH:  # 'both'
+        if absorb == Absorb.Usq_sqVH:  # 'both'
             Usq = U * sq[:, None, :]
             return Usq, None, sqVH
-        if absorb == get_sqVH:  # 'rsqrt'
+        if absorb == Absorb.sqVH:  # 'rsqrt'
             return None, None, sqVH
 
     raise ValueError(f"Invalid absorb mode: {absorb}")

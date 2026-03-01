@@ -14,6 +14,7 @@ from collections import OrderedDict, defaultdict
 import autoray as ar
 
 from ..abelian_common import maybe_keep_label, parse_tensordot_axes, without
+from ..linalg_common import Absorb
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 from .sparse_index import BlockIndex, SubIndexInfo
 from .sparse_vector import BlockVector
@@ -1970,7 +1971,7 @@ class SparseArrayCommon:
             cutoff,
             _CUTOFF_MODE_MAP[cutoff_mode],
             max_bond,
-            _ABSORB_MAP[absorb],
+            absorb,
             renorm,
             backend=self.backend,
         )
@@ -2263,16 +2264,6 @@ _CUTOFF_MODE_MAP = {
     "rsum1": 6,
 }
 
-_ABSORB_MAP = {
-    -1: -1,
-    "left": -1,
-    0: 0,
-    "both": 0,
-    1: 1,
-    "right": 1,
-    None: None,
-}
-
 
 def truncate_svd_result_blocksparse(
     U: SparseArrayCommon,
@@ -2286,6 +2277,8 @@ def truncate_svd_result_blocksparse(
     backend: str = None,
     use_abs: bool = False,
 ) -> tuple[SparseArrayCommon, BlockVector, SparseArrayCommon]:
+    absorb = Absorb.parse(absorb)
+
     if renorm:
         raise NotImplementedError("renorm not implemented yet.")
 
@@ -2383,7 +2376,7 @@ def truncate_svd_result_blocksparse(
         )
     )
 
-    if absorb is None:
+    if absorb is Absorb.U_s_VH:
         if DEBUG:
             U.check_with(s, 1)
             s.check()
@@ -2394,17 +2387,17 @@ def truncate_svd_result_blocksparse(
 
     # absorb the singular values block by block
     for c0, c1 in U.sectors:
-        if absorb in (-1, "left"):
+        if absorb == Absorb.Us_VH:
             U.set_block(
                 (c0, c1),
                 U.get_block((c0, c1)) * s.get_block(c1).reshape((1, -1)),
             )
-        elif absorb in (1, "right"):
+        elif absorb == Absorb.U_sVH:
             VH.set_block(
                 (c1, c1),
                 VH.get_block((c1, c1)) * s.get_block(c1).reshape((-1, 1)),
             )
-        elif absorb in (0, "both"):
+        elif absorb == Absorb.Usq_sqVH:
             s_sqrt = ar.do("sqrt", s.get_block(c1), like=backend)
             U.set_block(
                 (c0, c1), U.get_block((c0, c1)) * s_sqrt.reshape((1, -1))

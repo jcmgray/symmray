@@ -4,6 +4,7 @@ import autoray as ar
 
 from .abelian_common import parse_tensordot_axes
 from .fermionic_local_operators import FermionicOperator
+from .linalg_common import Absorb
 
 
 def parse_dummy_modes(
@@ -685,18 +686,19 @@ class FermionicCommon:
         right : FermionicCommon or None
             The conjugate transpose of the Cholesky factor, or None.
         """
+        absorb = Absorb.parse(absorb)
         x = self.phase_sync()
-        if absorb == 12:  # get_sqVH
+        if absorb == Absorb.sqVH:
             r = x._cholesky_abelian(shift=shift, upper=True)
             if not r.indices[0].dual:
                 r.phase_flip(0, inplace=True)
             return None, None, r
 
         l = x._cholesky_abelian(shift=shift, upper=False)
-        if absorb == -12:  # get_Usq
+        if absorb == Absorb.Usq:
             return l, None, None
 
-        if absorb == 0:  # get_Usq_sqVH
+        if absorb == Absorb.Usq_sqVH:
             r = l.dagger_compose_right()
             return l, None, r
 
