@@ -192,7 +192,7 @@ class BlockCommon:
             self.set_block(sector, fn(array))
 
     def item(self):
-        """Convert the block array to a scalar if it is a scalar block array."""
+        """Convert block array to a scalar if it is a scalar block array."""
         (array,) = self.get_all_blocks()
         return array.item()
 
@@ -272,7 +272,7 @@ class BlockCommon:
         return xy
 
     def _do_reduction(self, fn):
-        """Perform an (associative) reduction operation on blocks of the array."""
+        """Perform (associative) reduction operation on blocks of the array."""
         if isinstance(fn, str):
             fn = ar.get_lib_fn(self.backend, fn)
             _stack = ar.get_lib_fn(self.backend, "stack")

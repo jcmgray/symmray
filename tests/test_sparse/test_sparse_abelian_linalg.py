@@ -155,6 +155,104 @@ def test_cholesky_regularized_ar_dispatch():
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d0", (3, 5))
+@pytest.mark.parametrize("d1", (3, 7))
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+@pytest.mark.parametrize("seed", range(1))
+def test_lq_via_cholesky(symmetry, d0, d1, dtype, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        dtype=dtype,
+        seed=seed,
+        subsizes="maximal",
+    )
+    x.check()
+
+    # default absorb: left => (L, None, Q)
+    l, s, q = sr.linalg.lq_via_cholesky(x)
+    assert s is None
+    l.check()
+    q.check()
+
+    # roundtrip: L @ Q == x
+    y = l @ q
+    y.check()
+    y.test_allclose(x)
+
+    # lfactor absorb: (L, None, None)
+    l2, _, q2 = sr.linalg.lq_via_cholesky(x, absorb="lfactor")
+    assert q2 is None
+    l2.check()
+
+    # rorthog absorb: (None, None, Q)
+    l3, _, q3 = sr.linalg.lq_via_cholesky(x, absorb="rorthog")
+    assert l3 is None
+    q3.check()
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d0", (3, 5))
+@pytest.mark.parametrize("d1", (3, 7))
+@pytest.mark.parametrize("dtype", ("complex128", "float64"))
+@pytest.mark.parametrize("seed", range(1))
+def test_qr_via_cholesky(symmetry, d0, d1, dtype, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        dtype=dtype,
+        seed=seed,
+        subsizes="maximal",
+    )
+    x.check()
+
+    # default absorb: right => (Q, None, R)
+    q, s, r = sr.linalg.qr_via_cholesky(x)
+    assert s is None
+    q.check()
+    r.check()
+
+    # roundtrip: Q @ R == x
+    y = q @ r
+    y.check()
+    y.test_allclose(x)
+
+    # rfactor absorb: (None, None, R)
+    q2, _, r2 = sr.linalg.qr_via_cholesky(x, absorb="rfactor")
+    assert q2 is None
+    r2.check()
+
+    # lorthog absorb: (Q, None, None)
+    q3, _, r3 = sr.linalg.qr_via_cholesky(x, absorb="lorthog")
+    assert r3 is None
+    q3.check()
+
+
+def test_lq_via_cholesky_ar_dispatch():
+    """Check that autoray dispatch works for lq_via_cholesky."""
+    x = sr.utils.get_rand("Z2", (4, 6), dtype="complex128", subsizes="maximal")
+    l, s, q = ar.do("lq_via_cholesky", x)
+    assert s is None
+    l.check()
+    q.check()
+    y = l @ q
+    y.check()
+    y.test_allclose(x)
+
+
+def test_qr_via_cholesky_ar_dispatch():
+    """Check that autoray dispatch works for qr_via_cholesky."""
+    x = sr.utils.get_rand("Z2", (4, 6), dtype="complex128", subsizes="maximal")
+    q, s, r = ar.do("qr_via_cholesky", x)
+    assert s is None
+    q.check()
+    r.check()
+    y = q @ r
+    y.check()
+    y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 7, 31))
 def test_solve(symmetry, d):
     ind = sr.utils.rand_index(symmetry, d)

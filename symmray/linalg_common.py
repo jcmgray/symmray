@@ -47,6 +47,7 @@ class Absorb:
     sqVH = 12  # 'rsqrt'
 
     _map = {}
+    _transpose_map = {}
 
     @classmethod
     def parse(cls, absorb):
@@ -71,6 +72,27 @@ class Absorb:
         """
         return cls._map[absorb]
 
+    @classmethod
+    def transpose(cls, absorb):
+        """Map an absorb mode to its transposed equivalent.
+
+        Swaps left/right roles: e.g. ``U_sVH`` ('right') becomes
+        ``Us_VH`` ('left'), ``sVH`` ('rfactor') becomes ``Us``
+        ('lfactor'), etc. Symmetric modes (``both``, ``full``,
+        ``svals``) are unchanged.
+
+        Parameters
+        ----------
+        absorb : int or None
+            A canonical absorb mode code (already parsed).
+
+        Returns
+        -------
+        int or None
+            The transposed absorb mode code.
+        """
+        return cls._transpose_map[absorb]
+
 
 # populate the map once at import time
 for _mode, _aliases in [
@@ -90,6 +112,20 @@ for _mode, _aliases in [
     for _alias in _aliases:
         Absorb._map[_alias] = _mode
 del _mode, _aliases, _alias  # noqa: F821
+
+# populate the transpose map: swap left <-> right roles
+for _a, _b in [
+    (Absorb.Us_VH, Absorb.U_sVH),
+    (Absorb.Us, Absorb.sVH),
+    (Absorb.VH, Absorb.U),
+    (Absorb.Usq, Absorb.sqVH),
+]:
+    Absorb._transpose_map[_a] = _b
+    Absorb._transpose_map[_b] = _a
+# symmetric modes map to themselves
+for _a in (Absorb.U_s_VH, Absorb.s, Absorb.Usq_sqVH):
+    Absorb._transpose_map[_a] = _a
+del _a, _b
 
 
 def absorb_svd_result(U, s, VH, absorb):

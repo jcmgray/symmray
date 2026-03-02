@@ -1,1 +1,1 @@
-"""Submodule for the 'sparse' backend, where blocks are stored in a dictionary."""
+"""Submodule for 'sparse' backend, where blocks are stored in dictionary."""

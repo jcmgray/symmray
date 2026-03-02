@@ -578,3 +578,167 @@ def test_cholesky_regularized_fermionic_flat_ar_dispatch():
     fy = left @ right
     fy.check()
     fy.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_lq_via_cholesky_fermionic(symmetry, shape, duals, seed=42):
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+
+    fx = x.to_flat()
+    fx.check()
+
+    # default absorb: left => (L, None, Q)
+    fL, fs, fQ = fx.lq_via_cholesky()
+    assert fs is None
+    fL.check()
+    fQ.check()
+
+    # roundtrip: L @ Q == x
+    fy = fL @ fQ
+    fy.check()
+    assert fy.allclose(fx)
+
+    # lfactor absorb: (L, None, None)
+    fL2, _, fQ2 = fx.lq_via_cholesky(absorb="lfactor")
+    assert fQ2 is None
+    fL2.check()
+
+    # rorthog absorb: (None, None, Q)
+    fL3, _, fQ3 = fx.lq_via_cholesky(absorb="rorthog")
+    assert fL3 is None
+    fQ3.check()
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_qr_via_cholesky_fermionic(symmetry, shape, duals, seed=42):
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+
+    fx = x.to_flat()
+    fx.check()
+
+    # default absorb: right => (Q, None, R)
+    fQ, fs, fR = fx.qr_via_cholesky()
+    assert fs is None
+    fQ.check()
+    fR.check()
+
+    # roundtrip: Q @ R == x
+    fy = fQ @ fR
+    fy.check()
+    assert fy.allclose(fx)
+
+    # rfactor absorb: (None, None, R)
+    fQ2, _, fR2 = fx.qr_via_cholesky(absorb="rfactor")
+    assert fQ2 is None
+    fR2.check()
+
+    # lorthog absorb: (Q, None, None)
+    fQ3, _, fR3 = fx.qr_via_cholesky(absorb="lorthog")
+    assert fR3 is None
+    fQ3.check()
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_lq_via_cholesky_fermionic_ar_dispatch(
+    symmetry, shape, duals, seed=42
+):
+    """Check that autoray dispatch works for lq_via_cholesky."""
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+    fx = x.to_flat()
+
+    left, s, right = ar.do("lq_via_cholesky", fx)
+    assert s is None
+    left.check()
+    right.check()
+    fy = left @ right
+    fy.check()
+    fy.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize(
+    "duals",
+    (
+        [False, False],
+        [True, False],
+        [False, True],
+        [True, True],
+    ),
+)
+def test_qr_via_cholesky_fermionic_ar_dispatch(
+    symmetry, shape, duals, seed=42
+):
+    """Check that autoray dispatch works for qr_via_cholesky."""
+    x = sr.utils.get_rand(
+        symmetry,
+        shape,
+        duals=duals,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+    )
+    x.randomize_phases(seed=seed + 1, inplace=True)
+    fx = x.to_flat()
+
+    left, s, right = ar.do("qr_via_cholesky", fx)
+    assert s is None
+    left.check()
+    right.check()
+    fy = left @ right
+    fy.check()
+    fy.test_allclose(fx)

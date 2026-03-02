@@ -135,7 +135,7 @@ def test_spinless_su_energy_matches_z2(edges, sector, flat):
     en_local_exact = psi_su.compute_local_expectation_exact(terms)
 
     if not flat:
-        # compute energy via contracting the full wavefunction as a dense vector
+        # compute energy via contracting full wavefunction as dense vector
         psi_su_dense = (
             psi_su.contract(all)
             .data.fuse(range(psi.nsites))

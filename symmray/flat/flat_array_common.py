@@ -1583,7 +1583,7 @@ class FlatArrayCommon:
 
         return u, s, vh
 
-    def _cholesky_abelian(self, upper=False, shift=-1.0) -> "FlatArrayCommon":
+    def _cholesky_abelian(self, upper=False, shift=True) -> "FlatArrayCommon":
         """Cholesky decomposition of a 2D flat abelian array.
 
         Parameters
@@ -1592,10 +1592,9 @@ class FlatArrayCommon:
             Whether to return the upper triangular Cholesky factor.
             Default is False, returning the lower triangular factor.
         shift : float, optional
-            Diagonal regularization shift. If negative, auto-compute
-            proportional to dtype machine epsilon. If positive, take as
-            relative shift to the trace of each block. Default is -1.0
-            (auto-compute).
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
 
         Returns
         -------
@@ -1608,26 +1607,181 @@ class FlatArrayCommon:
                 "for 2D FlatArrayCommon objects."
             )
 
-        blocks = self._blocks
-        xp = ar.get_namespace(blocks)
-
-        if shift < 0.0:
-            # auto compute
-            shift = xp.finfo(blocks.dtype).eps
-
-        if shift > 0.0:
-            trace = xp.linalg.trace(blocks)[:, None, None]
-            try:
-                trace = xp.stop_gradient(trace)
-            except (ImportError, AttributeError):
-                pass
-            I = xp.eye(blocks.shape[-1])[None, :, :]
-            blocks = blocks + shift * trace * I
-
-        l_or_r_blocks = xp.linalg.cholesky(blocks, upper=upper)
+        l_or_r_blocks = _blocklevel_cholesky_regularized(
+            self._blocks, upper=upper, shift=shift
+        )
 
         l_or_r = self.copy_with(blocks=l_or_r_blocks)
         return l_or_r
+
+    def _lq_via_cholesky_abelian(
+        self,
+        absorb=Absorb.Us_VH,
+        shift=True,
+        solve_triangular=True,
+    ) -> tuple["FlatArrayCommon", None, "FlatArrayCommon"]:
+        """LQ decomposition of a 2D flat abelian array via Cholesky
+        factorization of the Gram matrix ``x @ x^H``.
+
+        Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q``
+        is isometric.
+
+        Parameters
+        ----------
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``Absorb.Us_VH`` (-1, 'left'): return ``(L, None, Q)``.
+            - ``Absorb.Us`` (-10, 'lfactor'): return ``(L, None, None)``.
+            - ``Absorb.VH`` (-11, 'rorthog'): return ``(None, None, Q)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+        solve_triangular : bool, optional
+            Whether to use triangular solve (faster) or general solve
+            to compute Q. Default is True.
+
+        Returns
+        -------
+        L : FlatArrayCommon or None
+            The lower triangular factor.
+        s : None
+            Always None.
+        Q : FlatArrayCommon or None
+            The isometric factor.
+        """
+        if self.ndim != 2:
+            raise ValueError(
+                "LQ via Cholesky is only defined for "
+                "2D FlatArrayCommon objects."
+            )
+
+        absorb = Absorb.parse(absorb)
+
+        bl, _, bq = _blocklevel_lq_via_cholesky(
+            self._blocks,
+            absorb=absorb,
+            shift=shift,
+            solve_triangular=solve_triangular,
+        )
+
+        ixl, ixr = self.indices
+
+        # L is square (da, da), always charge 0 (block diagonal)
+        l = (
+            self.new_with(
+                sectors=self.sectors[:, (0, 0)],
+                blocks=bl,
+                indices=(ixl, ixl.conj()),
+            )
+            if bl is not None
+            else None
+        )
+
+        # Q is (da, db) — carries the original charge of x
+        q = (
+            self.copy_with(
+                blocks=bq,
+                indices=(ixl, ixr),
+            )
+            if bq is not None
+            else None
+        )
+
+        if DEBUG:
+            if l is not None:
+                l.check()
+            if q is not None:
+                q.check()
+
+        return l, None, q
+
+    def _qr_via_cholesky_abelian(
+        self,
+        absorb=Absorb.U_sVH,
+        shift=True,
+        solve_triangular=True,
+    ) -> tuple["FlatArrayCommon", None, "FlatArrayCommon"]:
+        """QR decomposition of a 2D flat abelian array via Cholesky
+        factorization. Implemented by transposing to LQ at the block
+        level.
+
+        Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
+        upper triangular.
+
+        Parameters
+        ----------
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``Absorb.U_sVH`` (1, 'right'): return ``(Q, None, R)``.
+            - ``Absorb.sVH`` (11, 'rfactor'): return ``(None, None, R)``.
+            - ``Absorb.U`` (10, 'lorthog'): return ``(Q, None, None)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+        solve_triangular : bool, optional
+            Whether to use triangular solve (faster) or general solve.
+            Default is True.
+
+        Returns
+        -------
+        Q : FlatArrayCommon or None
+            The isometric factor.
+        s : None
+            Always None.
+        R : FlatArrayCommon or None
+            The upper triangular factor.
+        """
+        if self.ndim != 2:
+            raise ValueError(
+                "QR via Cholesky is only defined for "
+                "2D FlatArrayCommon objects."
+            )
+
+        absorb = Absorb.parse(absorb)
+
+        bq, _, br = _blocklevel_qr_via_cholesky(
+            self._blocks,
+            absorb=absorb,
+            shift=shift,
+            solve_triangular=solve_triangular,
+        )
+
+        ixl, ixr = self.indices
+
+        # Q is (da, db) — carries the original charge of x
+        q = (
+            self.copy_with(
+                blocks=bq,
+                indices=(ixl, ixr),
+            )
+            if bq is not None
+            else None
+        )
+
+        # R is square (db, db), always charge 0 (block diagonal)
+        r = (
+            self.new_with(
+                sectors=self.sectors[:, (1, 1)],
+                blocks=br,
+                indices=(ixr.conj(), ixr),
+            )
+            if br is not None
+            else None
+        )
+
+        if DEBUG:
+            if q is not None:
+                q.check()
+            if r is not None:
+                r.check()
+
+        return q, None, r
 
     def svd_truncated(
         self,
@@ -2104,6 +2258,171 @@ def _blocklevel_svd_via_eig(
             return None, None, sqVH
 
     raise ValueError(f"Invalid absorb mode: {absorb}")
+
+
+def _blocklevel_cholesky_regularized(blocks, upper=False, shift=True):
+    """Cholesky decomposition of batched symmetric positive-definite
+    blocks with optional diagonal regularization.
+
+    Parameters
+    ----------
+    blocks : array_like
+        Batched 2D blocks, shape ``(num_blocks, d, d)``.
+    upper : bool, optional
+        Whether to return the upper triangular Cholesky factor.
+        Default is False, returning the lower triangular factor.
+    shift : float, optional
+        Diagonal regularization shift. If True or negative, auto-compute
+        from dtype machine epsilon. The shift is always applied as a
+        relative shift scaled by the trace of each block. Default is True.
+
+    Returns
+    -------
+    L_or_R : array_like
+        The Cholesky factor, shape ``(num_blocks, d, d)``.
+    """
+    xp = ar.get_namespace(blocks)
+
+    if shift is True:
+        shift = -1.0
+
+    if shift < 0.0:
+        shift = xp.finfo(blocks.dtype).eps
+
+    if shift > 0.0:
+        trace = xp.linalg.trace(blocks)[:, None, None]
+        try:
+            trace = xp.stop_gradient(trace)
+        except (ImportError, AttributeError):
+            pass
+        I = xp.eye(blocks.shape[-1])[None, :, :]
+        blocks = blocks + shift * trace * I
+
+    return xp.linalg.cholesky(blocks, upper=upper)
+
+
+def _blocklevel_lq_via_cholesky(
+    x,
+    absorb=Absorb.Us_VH,
+    shift=True,
+    solve_triangular=True,
+):
+    """LQ decomposition of batched 2D blocks ``x`` via Cholesky
+    factorization of the Gram matrix ``x @ x^H``.
+
+    Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q`` is
+    isometric.
+
+    Parameters
+    ----------
+    x : array_like
+        Batched 2D blocks, shape ``(num_blocks, da, db)``.
+    absorb : int or None, optional
+        Absorption mode code controlling what to return:
+
+        - ``Absorb.Us_VH`` (-1, 'left'): return ``(L, None, Q)``.
+        - ``Absorb.Us`` (-10, 'lfactor'): return ``(L, None, None)``.
+        - ``Absorb.VH`` (-11, 'rorthog'): return ``(None, None, Q)``.
+
+    shift : float, optional
+        Diagonal regularization shift. If True or negative, auto-compute
+        from dtype machine epsilon. The shift is always applied as a
+        relative shift scaled by the trace of each block. Default is True.
+    solve_triangular : bool, optional
+        Whether to use triangular solve (faster) or general solve
+        to compute Q. Default is True.
+
+    Returns
+    -------
+    L : array_like or None
+        The lower triangular factor, shape ``(num_blocks, da, da)``.
+    s : None
+        Always None.
+    Q : array_like or None
+        The isometric factor, shape ``(num_blocks, da, db)``.
+    """
+    xp = ar.get_namespace(x)
+
+    xdag = xp.conj(xp.transpose(x, (0, 2, 1)))
+    xx = x @ xdag
+
+    L = _blocklevel_cholesky_regularized(xx, upper=False, shift=shift)
+
+    if absorb == Absorb.Us:  # 'lfactor'
+        return L, None, None
+
+    if solve_triangular:
+        Q = xp.scipy.linalg.solve_triangular(L, x, lower=True)
+    else:
+        Q = xp.linalg.solve(L, x)
+
+    if absorb == Absorb.VH:  # 'rorthog'
+        return None, None, Q
+
+    # absorb == Absorb.Us_VH ('left') or fallback
+    return L, None, Q
+
+
+def _blocklevel_qr_via_cholesky(
+    x,
+    absorb=Absorb.U_sVH,
+    shift=True,
+    solve_triangular=True,
+):
+    """QR decomposition of batched 2D blocks ``x`` via Cholesky
+    factorization. Implemented by transposing to LQ at the block level.
+
+    Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
+    upper triangular.
+
+    Parameters
+    ----------
+    x : array_like
+        Batched 2D blocks, shape ``(num_blocks, da, db)``.
+    absorb : int or None, optional
+        Absorption mode code controlling what to return:
+
+        - ``Absorb.U_sVH`` (1, 'right'): return ``(Q, None, R)``.
+        - ``Absorb.sVH`` (11, 'rfactor'): return ``(None, None, R)``.
+        - ``Absorb.U`` (10, 'lorthog'): return ``(Q, None, None)``.
+
+    shift : float, optional
+        Diagonal regularization shift. If True or negative, auto-compute
+        from dtype machine epsilon. The shift is always applied as a
+        relative shift scaled by the trace of each block. Default is True.
+    solve_triangular : bool, optional
+        Whether to use triangular solve (faster) or general solve
+        to compute Q. Default is True.
+
+    Returns
+    -------
+    Q : array_like or None
+        The isometric factor, shape ``(num_blocks, da, db)``.
+    s : None
+        Always None.
+    R : array_like or None
+        The upper triangular factor, shape ``(num_blocks, db, db)``.
+    """
+    xp = ar.get_namespace(x)
+
+    # map QR absorb to LQ absorb
+    absorb_t = Absorb.transpose(absorb)
+
+    # plain transpose: (num_blocks, da, db) -> (num_blocks, db, da)
+    xT = xp.transpose(x, (0, 2, 1))
+
+    lt, _, qt = _blocklevel_lq_via_cholesky(
+        xT,
+        absorb=absorb_t,
+        shift=shift,
+        solve_triangular=solve_triangular,
+    )
+
+    # plain transpose results back
+    R = xp.transpose(lt, (0, 2, 1)) if lt is not None else None
+    Q = xp.transpose(qt, (0, 2, 1)) if qt is not None else None
+
+    return Q, None, R
 
 
 # ------------------------ tensordot implementations ------------------------ #

@@ -135,7 +135,7 @@ class FlatCommon:
         self._blocks = fn(self._blocks)
 
     def item(self):
-        """Convert the block array to a scalar if it is a scalar block array."""
+        """Convert block array to a scalar if it is a scalar block array."""
         return self._blocks.item()
 
     def _binary_blockwise_op_abelian(

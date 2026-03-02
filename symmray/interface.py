@@ -131,7 +131,7 @@ def clip(x, a_min, a_max):
 
 
 def squeeze(x, axis=None):
-    """Remove single-dimensional entries from the shape of a `symmray` array."""
+    """Remove single-dimensional entries from shape of a `symmray` array."""
     return x.squeeze(axis)
 
 

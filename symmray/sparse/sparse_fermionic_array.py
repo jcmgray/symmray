@@ -440,7 +440,7 @@ class FermionicArray(
         # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
         r_dummy_parity = sum(m.parity for m in r_dummy_modes) % 2
         if left.parity and r_dummy_parity:
-            # moving right dummy_modes charges over left sectors will generate sign
+            # moving r-dummy_modes charges over l-sectors generates sign
             phase = -1
         else:
             phase = 1

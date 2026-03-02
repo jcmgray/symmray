@@ -339,3 +339,121 @@ def test_cholesky_regularized_flat_ar_dispatch():
     fy = left @ right
     fy.check()
     fy.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_flat_lq_via_cholesky(symmetry, d1, d2, charge, seed):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        charge=charge,
+        seed=seed,
+    )
+    fx = sx.to_flat()
+    fx.check()
+
+    # default absorb: left => (L, None, Q)
+    fL, fs, fQ = fx.lq_via_cholesky()
+    assert fs is None
+    fL.check()
+    fQ.check()
+
+    # roundtrip: L @ Q == x
+    fy = fL @ fQ
+    fy.check()
+    assert fy.charge == fx.charge
+    assert fy.allclose(fx)
+
+    # lfactor absorb: (L, None, None)
+    fL2, _, fQ2 = fx.lq_via_cholesky(absorb="lfactor")
+    assert fQ2 is None
+    fL2.check()
+
+    # rorthog absorb: (None, None, Q)
+    fL3, _, fQ3 = fx.lq_via_cholesky(absorb="rorthog")
+    assert fL3 is None
+    fQ3.check()
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+@pytest.mark.parametrize("charge", [0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_flat_qr_via_cholesky(symmetry, d1, d2, charge, seed):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        charge=charge,
+        seed=seed,
+    )
+    fx = sx.to_flat()
+    fx.check()
+
+    # default absorb: right => (Q, None, R)
+    fQ, fs, fR = fx.qr_via_cholesky()
+    assert fs is None
+    fQ.check()
+    fR.check()
+
+    # roundtrip: Q @ R == x
+    fy = fQ @ fR
+    fy.check()
+    assert fy.charge == fx.charge
+    assert fy.allclose(fx)
+
+    # rfactor absorb: (None, None, R)
+    fQ2, _, fR2 = fx.qr_via_cholesky(absorb="rfactor")
+    assert fQ2 is None
+    fR2.check()
+
+    # lorthog absorb: (Q, None, None)
+    fQ3, _, fR3 = fx.qr_via_cholesky(absorb="lorthog")
+    assert fR3 is None
+    fQ3.check()
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+def test_flat_lq_via_cholesky_ar_dispatch(symmetry, d1, d2, seed=42):
+    """Check that autoray dispatch works for lq_via_cholesky."""
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+
+    left, s, right = ar.do("lq_via_cholesky", fx)
+    assert s is None
+    left.check()
+    right.check()
+    fy = left @ right
+    fy.check()
+    fy.test_allclose(fx)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [6, 8])
+@pytest.mark.parametrize("d2", [6, 8])
+def test_flat_qr_via_cholesky_ar_dispatch(symmetry, d1, d2, seed=42):
+    """Check that autoray dispatch works for qr_via_cholesky."""
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+
+    left, s, right = ar.do("qr_via_cholesky", fx)
+    assert s is None
+    left.check()
+    right.check()
+    fy = left @ right
+    fy.check()
+    fy.test_allclose(fx)

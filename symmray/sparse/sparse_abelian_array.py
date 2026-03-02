@@ -438,7 +438,7 @@ class AbelianArray(
         return self._cholesky_abelian(upper=upper, shift=0)
 
     def cholesky_regularized(
-        self, absorb=0, shift=-1.0
+        self, absorb=0, shift=True
     ) -> tuple["AbelianArray", None, "AbelianArray"]:
         """Cholesky decomposition with optional diagonal regularization,
         returning results in an SVD-like ``(left, None, right)`` format
@@ -454,10 +454,9 @@ class AbelianArray(
             - ``12`` (``'rsqrt'``): return ``(None, None, L^H)``.
 
         shift : float, optional
-            Diagonal regularization shift. If negative, auto-compute
-            proportional to dtype machine epsilon. If positive, take as
-            relative shift to the trace of each block. Default is -1.0
-            (auto-compute).
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
 
         Returns
         -------
@@ -482,6 +481,92 @@ class AbelianArray(
             return l, None, l.H
 
         raise ValueError(f"Invalid absorb option: {absorb}")
+
+    def lq_via_cholesky(
+        self,
+        absorb=Absorb.Us_VH,
+        shift=True,
+        solve_triangular=True,
+    ) -> tuple["AbelianArray", None, "AbelianArray"]:
+        """LQ decomposition via Cholesky factorization of ``x @ x^H``.
+
+        Computes ``x = L @ Q`` where ``L`` is lower triangular and
+        ``Q`` is isometric.
+
+        Parameters
+        ----------
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``-1`` or ``'left'``: return ``(L, None, Q)``.
+            - ``-10`` or ``'lfactor'``: return ``(L, None, None)``.
+            - ``-11`` or ``'rorthog'``: return ``(None, None, Q)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+        solve_triangular : bool, optional
+            Whether to use triangular solve (faster) or general solve
+            to compute Q. Default is True.
+
+        Returns
+        -------
+        L : AbelianArray or None
+            The lower triangular factor.
+        s : None
+            Always None.
+        Q : AbelianArray or None
+            The isometric factor.
+        """
+        return self._lq_via_cholesky_abelian(
+            absorb=absorb,
+            shift=shift,
+            solve_triangular=solve_triangular,
+        )
+
+    def qr_via_cholesky(
+        self,
+        absorb=Absorb.U_sVH,
+        shift=True,
+        solve_triangular=True,
+    ) -> tuple["AbelianArray", None, "AbelianArray"]:
+        """QR decomposition via Cholesky factorization of ``x^H @ x``.
+
+        Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
+        upper triangular.
+
+        Parameters
+        ----------
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``1`` or ``'right'``: return ``(Q, None, R)``.
+            - ``11`` or ``'rfactor'``: return ``(None, None, R)``.
+            - ``10`` or ``'lorthog'``: return ``(Q, None, None)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+        solve_triangular : bool, optional
+            Whether to use triangular solve (faster) or general solve.
+            Default is True.
+
+        Returns
+        -------
+        Q : AbelianArray or None
+            The isometric factor.
+        s : None
+            Always None.
+        R : AbelianArray or None
+            The upper triangular factor.
+        """
+        return self._qr_via_cholesky_abelian(
+            absorb=absorb,
+            shift=shift,
+            solve_triangular=solve_triangular,
+        )
 
     def solve(self, b: "AbelianArray", **kwargs) -> "AbelianArray":
         """Solve the linear system `A @ x == b` for x, where A is this array.

@@ -204,10 +204,9 @@ def cholesky_regularized(x, *args, **kwargs):
         - ``12`` (``'rsqrt'``): return ``(None, None, L^H)``.
 
     shift : float, optional
-        Diagonal regularization shift. If negative, auto-compute
-        proportional to dtype machine epsilon. If positive, take as
-        relative shift to the trace of each block. Default is -1.0
-        (auto-compute).
+        Diagonal regularization shift. If True or negative, auto-compute
+        from dtype machine epsilon. The shift is always applied as a
+        relative shift scaled by the trace of each block. Default is True.
 
     Returns
     -------
@@ -221,9 +220,85 @@ def cholesky_regularized(x, *args, **kwargs):
     return x.cholesky_regularized(*args, **kwargs)
 
 
+def lq_via_cholesky(x, *args, **kwargs):
+    """LQ decomposition via Cholesky factorization of ``x @ x^H``.
+
+    Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q`` is
+    isometric.
+
+    Parameters
+    ----------
+    x : AbelianCommon
+        The 2D block-symmetric array to decompose.
+    absorb : {-1, -10, -11} or str, optional
+        How to return the factors:
+
+        - ``-1`` (``'left'``): return ``(L, None, Q)``.
+        - ``-10`` (``'lfactor'``): return ``(L, None, None)``.
+        - ``-11`` (``'rorthog'``): return ``(None, None, Q)``.
+
+    shift : float, optional
+        Diagonal regularization shift. If True or negative, auto-compute
+        from dtype machine epsilon. The shift is always applied as a
+        relative shift scaled by the trace of each block. Default is True.
+    solve_triangular : bool, optional
+        Whether to use triangular solve (faster) or general solve to
+        compute Q. Default is True.
+
+    Returns
+    -------
+    L : AbelianCommon or None
+        The lower triangular factor.
+    s : None
+        Always None.
+    Q : AbelianCommon or None
+        The isometric factor.
+    """
+    return x.lq_via_cholesky(*args, **kwargs)
+
+
+def qr_via_cholesky(x, *args, **kwargs):
+    """QR decomposition via Cholesky factorization of ``x^H @ x``.
+
+    Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is upper
+    triangular.
+
+    Parameters
+    ----------
+    x : AbelianCommon
+        The 2D block-symmetric array to decompose.
+    absorb : {1, 11, 10} or str, optional
+        How to return the factors:
+
+        - ``1`` (``'right'``): return ``(Q, None, R)``.
+        - ``11`` (``'rfactor'``): return ``(None, None, R)``.
+        - ``10`` (``'lorthog'``): return ``(Q, None, None)``.
+
+    shift : float, optional
+        Diagonal regularization shift. If True or negative, auto-compute
+        from dtype machine epsilon. The shift is always applied as a
+        relative shift scaled by the trace of each block. Default is True.
+    solve_triangular : bool, optional
+        Whether to use triangular solve (faster) or general solve.
+        Default is True.
+
+    Returns
+    -------
+    Q : AbelianCommon or None
+        The isometric factor.
+    s : None
+        Always None.
+    R : AbelianCommon or None
+        The upper triangular factor.
+    """
+    return x.qr_via_cholesky(*args, **kwargs)
+
+
 # used by quimb
 ar.register_function("symmray", "eigh_truncated", eigh_truncated)
 ar.register_function("symmray", "qr_stabilized", qr_stabilized)
 ar.register_function("symmray", "svd_truncated", svd_truncated)
 ar.register_function("symmray", "svd_via_eig_truncated", svd_via_eig_truncated)
 ar.register_function("symmray", "cholesky_regularized", cholesky_regularized)
+ar.register_function("symmray", "lq_via_cholesky", lq_via_cholesky)
+ar.register_function("symmray", "qr_via_cholesky", qr_via_cholesky)

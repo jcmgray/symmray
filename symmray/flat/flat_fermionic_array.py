@@ -632,8 +632,8 @@ class FermionicArrayFlat(
         dummy_modes = [*l_dummy_modes, *r_dummy_modes]
 
         # 1. initially we have:
-        # left dummy modes | left real modes | right dummy modes | right real modes
-        # so we must calc phase from moving right dummy modes past left real modes
+        # l-dummy modes | l-real modes | r-dummy modes | r-real modes
+        # so calc phase from moving r-dummy modes past l-real modes
         r_dummy_parity = sum(m.parity for m in r_dummy_modes) % 2
         phase = (a.parity * r_dummy_parity) * -2 + 1
 

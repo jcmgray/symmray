@@ -13,9 +13,9 @@ from .utils import DEBUG, lazyabstractmethod
 @functools.lru_cache(maxsize=2**15)
 def calc_reshape_args(shape, newshape, subshapes):
     """Given a current block sparse shape ``shape`` a target shape ``newshape``
-    and current sub index sizes ``subshapes`` (i.e. previously fused dimensions)
-    compute the sequence of axes to unfuse, fuse and expand to reshape the
-    array.
+    and current sub index sizes ``subshapes`` (i.e. previously fused
+    dimensions) compute the sequence of axes to unfuse, fuse and expand to
+    reshape the array.
 
     Parameters
     ----------
