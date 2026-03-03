@@ -236,6 +236,125 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
     assert s.size <= 37
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("d0", [3, 4])
+@pytest.mark.parametrize("d1", [2, 5])
+@pytest.mark.parametrize("f0", [False, True])
+@pytest.mark.parametrize("f1", [False, True])
+@pytest.mark.parametrize("c", [0, 1])
+def test_svd_via_eig_basics(symmetry, d0, d1, f0, f1, c):
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        duals=[f0, f1],
+        charge=c,
+        fermionic=True,
+        subsizes="maximal",
+        label="x",
+        seed=42,
+    )
+    x.check()
+    u, s, vh = x.svd_via_eig()
+    u.check()
+    s.check()
+    vh.check()
+    (u @ ar.do("ldmul", s, vh)).test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(10))
+def test_svd_via_eig_roundtrip(symmetry, seed):
+    rng = sr.utils.get_rng(seed)
+
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=[4, 5, 6, 7, 8],
+        fermionic=True,
+        dist="normal",
+        seed=rng,
+    )
+
+    axes = tuple(rng.permutation(x.ndim))
+    nleft = rng.integers(1, x.ndim - 1)
+
+    axes_left = axes[:nleft]
+    axes_right = axes[nleft:]
+    order = (*axes_left, *axes_right)
+    perm_back = invert_permutation(order)
+
+    # fuse into matrix
+    xf = x.fuse(axes_left, axes_right)
+
+    # perform SVD via eig into matrix components
+    u, s, vh = xf.svd_via_eig()
+
+    # reconstruct matrix
+    xfr = u @ ar.do("multiply_diagonal", vh, s, axis=0)
+
+    # unfuse back into transpose tensor
+    xrt = xfr.unfuse_all()
+
+    # permute back to original order
+    xr = xrt.transpose(perm_back)
+
+    x.test_allclose(xr)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("shape", ([4, 6], [6, 6], [6, 4]))
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", range(5))
+def test_svd_via_eig_truncated(symmetry, shape, absorb, seed):
+    rng = sr.utils.get_rng(seed)
+
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        subsizes="maximal",
+    )
+
+    u, s, vh = x.svd_via_eig_truncated(absorb=absorb)
+    u.check()
+    vh.check()
+
+    if absorb is None:
+        s.check()
+        xr = u @ vh.multiply_diagonal(s, axis=0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    xr.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(5))
+def test_svd_via_eig_truncated_max_bond(symmetry, seed):
+    rng = sr.utils.get_rng(seed)
+
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=[10, 10],
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        subsizes="maximal",
+    )
+
+    _, s, _ = ar.do(
+        "svd_via_eig_truncated",
+        x,
+        cutoff=0.0,
+        max_bond=2,
+        absorb=None,
+    )
+    assert s.size <= 2
+
+
 @pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("dtype", ("float64", "complex128"))

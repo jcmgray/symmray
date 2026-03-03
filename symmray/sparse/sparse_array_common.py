@@ -14,7 +14,13 @@ from collections import OrderedDict, defaultdict
 import autoray as ar
 
 from ..abelian_common import maybe_keep_label, parse_tensordot_axes, without
-from ..linalg_common import Absorb
+from ..linalg_common import (
+    Absorb,
+    blocklevel_cholesky_regularized,
+    blocklevel_lq_via_cholesky,
+    blocklevel_qr_via_cholesky,
+    blocklevel_svd_via_eig,
+)
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 from .sparse_index import BlockIndex, SubIndexInfo
 from .sparse_vector import BlockVector
@@ -1911,6 +1917,152 @@ class SparseArrayCommon:
 
         return u, s, v
 
+    def _svd_via_eig_abelian(self):
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "svd_via_eig only implemented for 2D AbelianArrays,"
+                f" got {self.ndim}D. Consider fusing first."
+            )
+
+        xp = ar.get_namespace(self.get_any_array())
+
+        u_blocks = {}
+        s_store = {}
+        v_blocks = {}
+        new_chargemap = {}
+
+        for sector, array in self.get_sector_block_pairs():
+            bu, bs, bvh = blocklevel_svd_via_eig(
+                array,
+                absorb=Absorb.U_s_VH,
+                max_bond=-1,
+                descending=True,
+            )
+            u_blocks[sector] = bu
+            s_charge = sector[1]
+            v_sector = (s_charge, s_charge)
+            s_store[s_charge] = bs
+            v_blocks[v_sector] = bvh
+            new_chargemap[sector[1]] = xp.shape(bu)[1]
+
+        bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
+
+        u = self.copy_with(
+            indices=(self.indices[0], bond_index),
+            blocks=u_blocks,
+        )
+        s = BlockVector(s_store)
+        v = self.new_with(
+            indices=(bond_index.conj(), self.indices[1]),
+            charge=self.symmetry.combine(),
+            blocks=v_blocks,
+        )
+
+        if DEBUG:
+            u.check()
+            s.check()
+            v.check()
+            u.check_with(s, 1)
+            u.check_with(v, (1,), (0,))
+            v.check_with(s, 0)
+
+        return u, s, v
+
+    def _svd_via_eig_truncated_abelian(
+        self,
+        cutoff=-1.0,
+        cutoff_mode=4,
+        max_bond=-1,
+        absorb=0,
+        renorm=0,
+        **kwargs,
+    ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
+        absorb = Absorb.parse(absorb)
+        need_full_spectrum = (cutoff > 0.0) or (renorm > 0) or (max_bond > 0)
+
+        if need_full_spectrum:
+            # 1. compute full svd via eig ...
+            u, s, vh = self._svd_via_eig_abelian()
+
+            # 2. ... then truncate / handle absorb separately
+            return truncate_svd_result_blocksparse(
+                u,
+                s,
+                vh,
+                cutoff,
+                _CUTOFF_MODE_MAP[cutoff_mode],
+                max_bond,
+                absorb,
+                renorm,
+                backend=self.backend,
+            )
+        else:
+            # perform in one step per block, using absorb shortcuts
+            xp = ar.get_namespace(self.get_any_array())
+
+            u_blocks = {}
+            s_store = {}
+            v_blocks = {}
+            new_chargemap = {}
+
+            for sector, array in self.get_sector_block_pairs():
+                bu, bs, bvh = blocklevel_svd_via_eig(
+                    array,
+                    absorb=absorb,
+                    max_bond=-1,
+                    descending=False,
+                )
+
+                s_charge = sector[1]
+                v_sector = (s_charge, s_charge)
+
+                if bu is not None:
+                    u_blocks[sector] = bu
+                if bs is not None:
+                    s_store[s_charge] = bs
+                if bvh is not None:
+                    v_blocks[v_sector] = bvh
+
+                # determine the new bond size from whichever
+                # result is non-None
+                if bu is not None:
+                    new_chargemap[s_charge] = xp.shape(bu)[1]
+                elif bvh is not None:
+                    new_chargemap[s_charge] = xp.shape(bvh)[0]
+                elif bs is not None:
+                    new_chargemap[s_charge] = xp.size(bs)
+
+            bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
+
+            u = (
+                self.copy_with(
+                    indices=(self.indices[0], bond_index),
+                    blocks=u_blocks,
+                )
+                if u_blocks
+                else None
+            )
+            s = BlockVector(s_store) if s_store else None
+            vh = (
+                self.new_with(
+                    indices=(bond_index.conj(), self.indices[1]),
+                    charge=self.symmetry.combine(),
+                    blocks=v_blocks,
+                )
+                if v_blocks
+                else None
+            )
+
+            if DEBUG:
+                if u is not None:
+                    u.check()
+                if s is not None:
+                    s.check()
+                if vh is not None:
+                    vh.check()
+
+            return u, s, vh
+
     def svd_truncated(
         self,
         cutoff=-1.0,
@@ -2039,22 +2191,11 @@ class SparseArrayCommon:
                 "Total charge must be the identity (zero) element."
             )
 
-        xp = ar.get_namespace(self.get_any_array())
-
-        if shift is True:
-            shift = -1.0
-
-        if shift < 0.0:
-            shift = xp.finfo(self.dtype).eps
-
         l_blocks = {}
         for sector, block in self.get_sector_block_pairs():
-            if shift > 0.0:
-                tr = xp.trace(block)
-                eye = xp.eye(block.shape[0])
-                block = block + (shift * tr) * eye
-
-            l_blocks[sector] = xp.linalg.cholesky(block, upper=upper)
+            l_blocks[sector] = blocklevel_cholesky_regularized(
+                block, upper=upper, shift=shift
+            )
 
         l_or_r = self.copy_with(blocks=l_blocks)
 
@@ -2108,27 +2249,20 @@ class SparseArrayCommon:
             )
 
         absorb = Absorb.parse(absorb)
-        xp = ar.get_namespace(self.get_any_array())
-
-        if shift is True:
-            shift = -1.0
-
-        if shift < 0.0:
-            shift = xp.finfo(self.dtype).eps
-
-        need_l = absorb != Absorb.VH
-        need_q = absorb != Absorb.Us
 
         l_blocks = {}
         q_blocks = {}
 
         for sector, block in self.get_sector_block_pairs():
-            bl, bq = _blocklevel_lq_via_cholesky(
-                xp, block, shift, solve_triangular, need_q
+            bl, _, bq = blocklevel_lq_via_cholesky(
+                block,
+                absorb=absorb,
+                shift=shift,
+                solve_triangular=solve_triangular,
             )
-            if need_l:
+            if bl is not None:
                 l_blocks[(sector[0], sector[0])] = bl
-            if need_q:
+            if bq is not None:
                 q_blocks[sector] = bq
 
         ixl = self.indices[0]
@@ -2201,36 +2335,21 @@ class SparseArrayCommon:
             )
 
         absorb = Absorb.parse(absorb)
-        xp = ar.get_namespace(self.get_any_array())
-
-        if shift is True:
-            shift = -1.0
-
-        if shift < 0.0:
-            shift = xp.finfo(self.dtype).eps
-
-        # map QR absorb to LQ absorb
-        absorb_t = Absorb.transpose(absorb)
-
-        need_r = absorb_t != Absorb.VH
-        need_q = absorb_t != Absorb.Us
 
         q_blocks = {}
         r_blocks = {}
 
         for sector, block in self.get_sector_block_pairs():
-            bl, bq = _blocklevel_lq_via_cholesky(
-                xp,
-                xp.transpose(block),
-                shift,
-                solve_triangular,
-                need_q,
+            bq, _, br = blocklevel_qr_via_cholesky(
+                block,
+                absorb=absorb,
+                shift=shift,
+                solve_triangular=solve_triangular,
             )
-            # transpose results back: L^T -> R, Q_lq^T -> Q_qr
-            if need_r:
-                r_blocks[(sector[1], sector[1])] = xp.transpose(bl)
-            if need_q:
-                q_blocks[sector] = xp.transpose(bq)
+            if bq is not None:
+                q_blocks[sector] = bq
+            if br is not None:
+                r_blocks[(sector[1], sector[1])] = br
 
         ixr = self.indices[1]
 
@@ -2399,56 +2518,6 @@ def _get_qr_fn(backend, stabilized=False):
             return q, r
 
     return _qr
-
-
-def _blocklevel_lq_via_cholesky(xp, block, shift, solve_triangular, need_q):
-    """LQ decomposition of a single 2D block via Cholesky factorization.
-
-    Computes ``block = L @ Q`` where ``L`` is lower triangular and
-    ``Q`` is isometric, using the Gram matrix ``block @ block^H``.
-
-    Parameters
-    ----------
-    xp : module
-        Array backend namespace (from autoray).
-    block : array_like
-        A single 2D block, shape ``(da, db)``.
-    shift : float
-        Diagonal regularization shift (already resolved, >= 0).
-    solve_triangular : bool
-        Whether to use triangular solve or general solve for Q.
-    need_q : bool
-        Whether to compute Q.
-
-    Returns
-    -------
-    L : array_like
-        Lower triangular factor, shape ``(da, da)``.
-    Q : array_like or None
-        Isometric factor, shape ``(da, db)``, or None if not needed.
-    """
-    # Gram matrix: x @ x^H
-    xdag = xp.conj(xp.transpose(block))
-    gram = block @ xdag
-
-    # regularize
-    if shift > 0.0:
-        tr = xp.trace(gram)
-        eye = xp.eye(gram.shape[0])
-        gram = gram + (shift * tr) * eye
-
-    L = xp.linalg.cholesky(gram, upper=False)
-
-    if not need_q:
-        return L, None
-
-    # Q = L^{-1} @ block
-    if solve_triangular:
-        Q = xp.scipy.linalg.solve_triangular(L, block, lower=True)
-    else:
-        Q = xp.linalg.solve(L, block)
-
-    return L, Q
 
 
 @functools.cache

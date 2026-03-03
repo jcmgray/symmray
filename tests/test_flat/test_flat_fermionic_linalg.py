@@ -242,6 +242,65 @@ def test_svd_truncated_cutoff_max_bond(symmetry, shape, seed):
     # assert s.size <= 37
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", range(5))
+def test_svd_rand_truncated_fermionic(symmetry, shape, absorb, seed):
+    rng = sr.utils.get_rng(seed)
+
+    sx = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        subsizes="equal",
+    )
+    sx.randomize_phases(seed=rng, inplace=True)
+    x = sx.to_flat()
+
+    u, s, vh = x.svd_rand_truncated(max_bond=8, absorb=absorb)
+    u.check()
+    vh.check()
+
+    if absorb is None:
+        s.check()
+        xr = u @ vh.multiply_diagonal(s, axis=0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    assert xr.shape == x.shape
+    assert xr.charge == x.charge
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))
+@pytest.mark.parametrize("shape", ([24, 36], [36, 36], [36, 24]))
+@pytest.mark.parametrize("seed", range(5))
+def test_svd_rand_truncated_fermionic_ar_dispatch(symmetry, shape, seed):
+    rng = sr.utils.get_rng(seed)
+
+    x = sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=shape,
+        fermionic=True,
+        dist="uniform",
+        seed=rng,
+        flat=True,
+        subsizes="equal",
+    )
+
+    _, s, _ = ar.do(
+        "svd_rand_truncated",
+        x,
+        max_bond=12,
+        absorb=None,
+    )
+    assert s.size <= 12
+
+
 @pytest.mark.parametrize("symm", ("Z2",))
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("dtype", ("float64", "complex128"))

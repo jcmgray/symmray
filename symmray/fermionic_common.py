@@ -634,6 +634,66 @@ class FermionicCommon:
 
         return u, s, vh
 
+    def svd_rand_truncated(
+        self,
+        max_bond,
+        absorb=0,
+        oversample=10,
+        num_iterations=2,
+        seed=None,
+        **kwargs,
+    ):
+        """Truncated singular value decomposition of a fermionic
+        array, using randomized sketching. This is efficient for
+        low-rank approximations when a target ``max_bond`` is
+        known.
+
+        Parameters
+        ----------
+        max_bond : int
+            Target rank / maximum bond dimension.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values.
+
+        oversample : int, optional
+            Extra sketch dimensions for accuracy. Default is 10.
+        num_iterations : int, optional
+            Number of power iterations for accuracy.
+            Default is 2.
+        seed : int, Generator or None, optional
+            Random seed or generator for reproducibility.
+
+        Returns
+        -------
+        u : FermionicCommon or None
+            The fermionic array of left singular vectors.
+        s : VectorCommon or None
+            The singular values, or None if absorbed.
+        vh : FermionicCommon or None
+            The fermionic array of right singular vectors.
+        """
+        x = self.phase_sync()
+
+        u, s, vh = x._svd_rand_truncated_abelian(
+            max_bond=max_bond,
+            absorb=absorb,
+            oversample=oversample,
+            num_iterations=num_iterations,
+            seed=seed,
+            **kwargs,
+        )
+
+        if vh is not None and vh.indices[0].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            vh.phase_flip(0, inplace=True)
+
+        return u, s, vh
+
     def cholesky(self, *, upper=False) -> "FermionicCommon":
         """Cholesky decomposition of a fermionic array.
 

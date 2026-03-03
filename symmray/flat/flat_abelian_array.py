@@ -566,6 +566,57 @@ class AbelianArrayFlat(
         """
         return self._svd_via_eig_abelian()
 
+    def svd_rand_truncated(
+        self,
+        max_bond,
+        absorb=0,
+        oversample=10,
+        num_iterations=2,
+        seed=None,
+        **kwargs,
+    ):
+        """Truncated singular value decomposition of this flat abelian array,
+        using randomized sketching. This is efficient for low-rank
+        approximations when a target ``max_bond`` is known.
+
+        Parameters
+        ----------
+        max_bond : int
+            Target rank / maximum bond dimension.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values.
+
+        oversample : int, optional
+            Extra sketch dimensions for accuracy. Default is 10.
+        num_iterations : int, optional
+            Number of power iterations for accuracy.
+            Default is 2.
+        seed : int, Generator or None, optional
+            Random seed or generator for reproducibility.
+
+        Returns
+        -------
+        u : AbelianCommon or None
+            The array of left singular vectors.
+        s : VectorCommon or None
+            The singular values, or None if absorbed.
+        vh : AbelianCommon or None
+            The array of right singular vectors.
+        """
+        return self._svd_rand_truncated_abelian(
+            max_bond=max_bond,
+            absorb=absorb,
+            oversample=oversample,
+            num_iterations=num_iterations,
+            seed=seed,
+            **kwargs,
+        )
+
     def cholesky(self, *, upper=False) -> "AbelianArrayFlat":
         """Cholesky decomposition of this assumed positive-definite flat
         abelian array.

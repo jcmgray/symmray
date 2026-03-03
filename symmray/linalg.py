@@ -122,6 +122,42 @@ def svd_truncated(x, *args, **kwargs):
     return x.svd_truncated(*args, **kwargs)
 
 
+def svd_rand_truncated(x, *args, **kwargs):
+    """Truncated singular value decomposition of a symmray array,
+    using randomized sketching. This is efficient for low-rank
+    approximations when a target ``max_bond`` is known.
+
+    Parameters
+    ----------
+    max_bond : int
+        Target rank / maximum bond dimension.
+    absorb : {-1, 0, 1, None}
+        How to absorb the singular values.
+
+        - -1 or 'left': absorb into the left factor (U).
+        - 0 or 'both': absorb the square root into both factors.
+        - 1 or 'right': absorb into the right factor (VH).
+        - None: do not absorb, return singular values.
+
+    oversample : int, optional
+        Extra sketch dimensions for accuracy. Default is 10.
+    num_iterations : int, optional
+        Number of power iterations for accuracy. Default is 2.
+    seed : int, Generator or None, optional
+        Random seed or generator for reproducibility.
+
+    Returns
+    -------
+    u : AbelianCommon or None
+        The array of left singular vectors.
+    s : VectorCommon or None
+        The singular values, or None if absorbed.
+    vh : AbelianCommon or None
+        The array of right singular vectors.
+    """
+    return x.svd_rand_truncated(*args, **kwargs)
+
+
 def svd_via_eig_truncated(x, *args, **kwargs):
     """Truncated singular value decomposition of a symmray array, using
     eigen-decomposition of the gram (xdag @ x or x @ xdag) matrix. This can
@@ -298,6 +334,7 @@ def qr_via_cholesky(x, *args, **kwargs):
 ar.register_function("symmray", "eigh_truncated", eigh_truncated)
 ar.register_function("symmray", "qr_stabilized", qr_stabilized)
 ar.register_function("symmray", "svd_truncated", svd_truncated)
+ar.register_function("symmray", "svd_rand_truncated", svd_rand_truncated)
 ar.register_function("symmray", "svd_via_eig_truncated", svd_via_eig_truncated)
 ar.register_function("symmray", "cholesky_regularized", cholesky_regularized)
 ar.register_function("symmray", "lq_via_cholesky", lq_via_cholesky)

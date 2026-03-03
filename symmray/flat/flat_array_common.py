@@ -11,7 +11,15 @@ import autoray as ar
 import cotengra as ctg
 
 from ..abelian_common import maybe_keep_label
-from ..linalg_common import Absorb, absorb_svd_result
+from ..linalg_common import (
+    Absorb,
+    absorb_svd_result,
+    blocklevel_cholesky_regularized,
+    blocklevel_lq_via_cholesky,
+    blocklevel_qr_via_cholesky,
+    blocklevel_svd_rand_truncated,
+    blocklevel_svd_via_eig,
+)
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..sparse.sparse_array_common import (
     calc_fuse_group_info,
@@ -1607,7 +1615,7 @@ class FlatArrayCommon:
                 "for 2D FlatArrayCommon objects."
             )
 
-        l_or_r_blocks = _blocklevel_cholesky_regularized(
+        l_or_r_blocks = blocklevel_cholesky_regularized(
             self._blocks, upper=upper, shift=shift
         )
 
@@ -1660,7 +1668,7 @@ class FlatArrayCommon:
 
         absorb = Absorb.parse(absorb)
 
-        bl, _, bq = _blocklevel_lq_via_cholesky(
+        bl, _, bq = blocklevel_lq_via_cholesky(
             self._blocks,
             absorb=absorb,
             shift=shift,
@@ -1745,7 +1753,7 @@ class FlatArrayCommon:
 
         absorb = Absorb.parse(absorb)
 
-        bq, _, br = _blocklevel_qr_via_cholesky(
+        bq, _, br = blocklevel_qr_via_cholesky(
             self._blocks,
             absorb=absorb,
             shift=shift,
@@ -1856,7 +1864,7 @@ class FlatArrayCommon:
 
         if need_full_spectrum:
             # 1. compute full svd via eig ...
-            bu, bs, bvh = _blocklevel_svd_via_eig(
+            bu, bs, bvh = blocklevel_svd_via_eig(
                 self._blocks,
                 absorb=Absorb.U_s_VH,
                 max_bond=-1,
@@ -1882,7 +1890,7 @@ class FlatArrayCommon:
                 indices=(bond_ind.conj(), ixr),
             )
 
-            # 2. ... then truncate separately
+            # 2. ... then truncate / handle absorb separately
             return truncate_svd_result_flat(
                 u,
                 s,
@@ -1900,7 +1908,7 @@ class FlatArrayCommon:
             else:
                 new_charge_size = rank
 
-            bu, bs, bvh = _blocklevel_svd_via_eig(
+            bu, bs, bvh = blocklevel_svd_via_eig(
                 self._blocks,
                 absorb=absorb,
                 max_bond=new_charge_size,
@@ -1958,6 +1966,79 @@ class FlatArrayCommon:
             max_bond=-1,
             absorb=None,
         )
+
+    def _svd_rand_truncated_abelian(
+        self,
+        max_bond,
+        absorb=0,
+        oversample=10,
+        num_iterations=2,
+        seed=None,
+        **kwargs,
+    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
+        absorb = Absorb.parse(absorb)
+
+        ixl, ixr = self.indices
+        rank = min(ixl.charge_size, ixr.charge_size)
+        num_charges = ixl.num_charges
+
+        if max_bond > 0:
+            new_charge_size = min(max_bond // num_charges, rank)
+        else:
+            new_charge_size = rank
+
+        bu, bs, bvh = blocklevel_svd_rand_truncated(
+            self._blocks,
+            absorb=absorb,
+            max_bond=new_charge_size,
+            oversample=oversample,
+            num_iterations=num_iterations,
+            seed=seed,
+            **kwargs,
+        )
+
+        bond_ind = FlatIndex(
+            num_charges=num_charges,
+            charge_size=new_charge_size,
+            dual=ixr.dual,
+        )
+
+        # wrap non-None results in symmray objects
+        u = (
+            self.copy_with(
+                blocks=bu,
+                indices=(ixl, bond_ind),
+            )
+            if bu is not None
+            else None
+        )
+        vh = (
+            self.new_with(
+                sectors=self.sectors[:, (1, 1)],
+                blocks=bvh,
+                indices=(bond_ind.conj(), ixr),
+            )
+            if bvh is not None
+            else None
+        )
+        s = (
+            FlatVector(
+                sectors=self.sectors[:, -1],
+                blocks=bs,
+            )
+            if bs is not None
+            else None
+        )
+
+        if DEBUG:
+            if u is not None:
+                u.check()
+            if vh is not None:
+                vh.check()
+            if s is not None:
+                s.check()
+
+        return u, s, vh
 
     def _eigh_abelian(self) -> tuple["FlatArrayCommon", FlatVector]:
         if self.ndim != 2:
@@ -2091,338 +2172,6 @@ def truncate_svd_result_flat(
             s.check()
 
     return U, s, VH
-
-
-def _blocklevel_svd_via_eig(
-    x,
-    absorb=Absorb.U_s_VH,
-    max_bond=-1,
-    descending=True,
-    right=None,
-):
-    """SVD of batched 2D blocks ``x`` via eigendecomposition of the Gram
-    matrix, with static truncation and all absorb mode shortcuts.
-
-    Parameters
-    ----------
-    x : array_like
-        Batched 2D blocks, shape ``(num_blocks, da, db)``.
-    absorb : int or None, optional
-        Absorption mode code controlling what to compute / return.
-    max_bond : int, optional
-        Maximum bond dimension per block, use -1 for no truncation.
-    descending : bool, optional
-        Whether to return singular values in descending order.
-    right : bool, optional
-        Whether to eigendecompose ``xdag @ x`` (True) or ``x @ xdag``
-        (False). If None, choose based on shape and absorb mode.
-
-    Returns
-    -------
-    U : array_like or None
-    s : array_like or None
-    VH : array_like or None
-    """
-    xp = ar.get_namespace(x)
-
-    _, da, db = xp.shape(x)
-    xdag = xp.conj(xp.transpose(x, (0, 2, 1)))
-
-    if right is None:
-        if da > db:
-            right = True
-        elif da < db:
-            right = False
-        else:
-            # avoid division if possible
-            right = absorb in (
-                Absorb.VH,
-                Absorb.sVH,
-                Absorb.sqVH,
-                Absorb.Us_VH,
-            )
-
-    if right:
-        # tall: eigendecompose xdag @ x
-        s2, V = xp.linalg.eigh(xdag @ x)
-        if 0 < max_bond < min(da, db):
-            s2 = s2[:, -max_bond:]
-            V = V[:, :, -max_bond:]
-        if descending:
-            s2 = xp.flip(s2, axis=1)
-            V = xp.flip(V, axis=2)
-        s2 = xp.maximum(s2, 0.0)
-
-        if absorb == Absorb.s:  # 'svals'
-            s = xp.sqrt(s2)
-            return None, s, None
-        if absorb == Absorb.VH:  # 'rorthog'
-            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-            return None, None, VH
-        if absorb == Absorb.sVH:  # 'rfactor'
-            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-            s = xp.sqrt(s2)
-            sVH = s[:, :, None] * VH
-            return None, None, sVH
-        if absorb == Absorb.sqVH:  # 'rsqrt'
-            sq = xp.sqrt(xp.sqrt(s2))
-            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-            sqVH = sq[:, :, None] * VH
-            return None, None, sqVH
-
-        Us = x @ V
-        if absorb == Absorb.Us:  # 'lfactor'
-            return Us, None, None
-        if absorb == Absorb.Us_VH:  # 'left'
-            VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-            return Us, None, VH
-
-        # for all other options we need U
-        s = xp.sqrt(s2)
-        eps = xp.finfo(s.dtype).eps
-        cutoff = xp.max(s) * eps * max(da, db)
-        sinv = s / (s**2 + cutoff**2)
-        U = Us * sinv[:, None, :]
-
-        if absorb == Absorb.U:  # 'lorthog'
-            return U, None, None
-        if absorb == Absorb.Usq:  # 'lsqrt'
-            sq = xp.sqrt(s)
-            Usq = U * sq[:, None, :]
-            return Usq, None, None
-
-        # need U and VH for all remaining options
-        VH = xp.conj(xp.transpose(V, (0, 2, 1)))
-        if absorb == Absorb.U_s_VH:  # 'full'
-            return U, s, VH
-        if absorb == Absorb.U_sVH:  # 'right'
-            sVH = s[:, :, None] * VH
-            return U, None, sVH
-        if absorb == Absorb.Usq_sqVH:  # 'both'
-            sq = xp.sqrt(s)
-            Usq = U * sq[:, None, :]
-            sqVH = sq[:, :, None] * VH
-            return Usq, None, sqVH
-
-    else:
-        # wide: eigendecompose x @ xdag
-        s2, U = xp.linalg.eigh(x @ xdag)
-        if 0 < max_bond < min(da, db):
-            s2 = s2[:, -max_bond:]
-            U = U[:, :, -max_bond:]
-        if descending:
-            s2 = xp.flip(s2, axis=1)
-            U = xp.flip(U, axis=2)
-        s2 = xp.maximum(s2, 0.0)
-
-        if absorb == Absorb.s:  # 'svals'
-            s = xp.sqrt(s2)
-            return None, s, None
-        if absorb == Absorb.U:  # 'lorthog'
-            return U, None, None
-        if absorb == Absorb.Us:  # 'lfactor'
-            s = xp.sqrt(s2)
-            Us = U * s[:, None, :]
-            return Us, None, None
-        if absorb == Absorb.Usq:  # 'lsqrt'
-            sq = xp.sqrt(xp.sqrt(s2))
-            Usq = U * sq[:, None, :]
-            return Usq, None, None
-
-        sVH = xp.conj(xp.transpose(U, (0, 2, 1))) @ x
-        if absorb == Absorb.sVH:  # 'rfactor'
-            return None, None, sVH
-        if absorb == Absorb.U_sVH:  # 'right'
-            return U, None, sVH
-
-        # for all other options we need VH
-        s = xp.sqrt(s2)
-        eps = xp.finfo(s.dtype).eps
-        cutoff = xp.max(s) * eps * max(da, db)
-        sinv = s / (s**2 + cutoff**2)
-        VH = sinv[:, :, None] * sVH
-
-        if absorb == Absorb.VH:  # 'rorthog'
-            return None, None, VH
-        if absorb == Absorb.U_s_VH:  # 'full'
-            return U, s, VH
-        if absorb == Absorb.Us_VH:  # 'left'
-            Us = U * s[:, None, :]
-            return Us, None, VH
-        sq = xp.sqrt(s)
-        sqVH = sq[:, :, None] * VH
-        if absorb == Absorb.Usq_sqVH:  # 'both'
-            Usq = U * sq[:, None, :]
-            return Usq, None, sqVH
-        if absorb == Absorb.sqVH:  # 'rsqrt'
-            return None, None, sqVH
-
-    raise ValueError(f"Invalid absorb mode: {absorb}")
-
-
-def _blocklevel_cholesky_regularized(blocks, upper=False, shift=True):
-    """Cholesky decomposition of batched symmetric positive-definite
-    blocks with optional diagonal regularization.
-
-    Parameters
-    ----------
-    blocks : array_like
-        Batched 2D blocks, shape ``(num_blocks, d, d)``.
-    upper : bool, optional
-        Whether to return the upper triangular Cholesky factor.
-        Default is False, returning the lower triangular factor.
-    shift : float, optional
-        Diagonal regularization shift. If True or negative, auto-compute
-        from dtype machine epsilon. The shift is always applied as a
-        relative shift scaled by the trace of each block. Default is True.
-
-    Returns
-    -------
-    L_or_R : array_like
-        The Cholesky factor, shape ``(num_blocks, d, d)``.
-    """
-    xp = ar.get_namespace(blocks)
-
-    if shift is True:
-        shift = -1.0
-
-    if shift < 0.0:
-        shift = xp.finfo(blocks.dtype).eps
-
-    if shift > 0.0:
-        trace = xp.linalg.trace(blocks)[:, None, None]
-        try:
-            trace = xp.stop_gradient(trace)
-        except (ImportError, AttributeError):
-            pass
-        I = xp.eye(blocks.shape[-1])[None, :, :]
-        blocks = blocks + shift * trace * I
-
-    return xp.linalg.cholesky(blocks, upper=upper)
-
-
-def _blocklevel_lq_via_cholesky(
-    x,
-    absorb=Absorb.Us_VH,
-    shift=True,
-    solve_triangular=True,
-):
-    """LQ decomposition of batched 2D blocks ``x`` via Cholesky
-    factorization of the Gram matrix ``x @ x^H``.
-
-    Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q`` is
-    isometric.
-
-    Parameters
-    ----------
-    x : array_like
-        Batched 2D blocks, shape ``(num_blocks, da, db)``.
-    absorb : int or None, optional
-        Absorption mode code controlling what to return:
-
-        - ``Absorb.Us_VH`` (-1, 'left'): return ``(L, None, Q)``.
-        - ``Absorb.Us`` (-10, 'lfactor'): return ``(L, None, None)``.
-        - ``Absorb.VH`` (-11, 'rorthog'): return ``(None, None, Q)``.
-
-    shift : float, optional
-        Diagonal regularization shift. If True or negative, auto-compute
-        from dtype machine epsilon. The shift is always applied as a
-        relative shift scaled by the trace of each block. Default is True.
-    solve_triangular : bool, optional
-        Whether to use triangular solve (faster) or general solve
-        to compute Q. Default is True.
-
-    Returns
-    -------
-    L : array_like or None
-        The lower triangular factor, shape ``(num_blocks, da, da)``.
-    s : None
-        Always None.
-    Q : array_like or None
-        The isometric factor, shape ``(num_blocks, da, db)``.
-    """
-    xp = ar.get_namespace(x)
-
-    xdag = xp.conj(xp.transpose(x, (0, 2, 1)))
-    xx = x @ xdag
-
-    L = _blocklevel_cholesky_regularized(xx, upper=False, shift=shift)
-
-    if absorb == Absorb.Us:  # 'lfactor'
-        return L, None, None
-
-    if solve_triangular:
-        Q = xp.scipy.linalg.solve_triangular(L, x, lower=True)
-    else:
-        Q = xp.linalg.solve(L, x)
-
-    if absorb == Absorb.VH:  # 'rorthog'
-        return None, None, Q
-
-    # absorb == Absorb.Us_VH ('left') or fallback
-    return L, None, Q
-
-
-def _blocklevel_qr_via_cholesky(
-    x,
-    absorb=Absorb.U_sVH,
-    shift=True,
-    solve_triangular=True,
-):
-    """QR decomposition of batched 2D blocks ``x`` via Cholesky
-    factorization. Implemented by transposing to LQ at the block level.
-
-    Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
-    upper triangular.
-
-    Parameters
-    ----------
-    x : array_like
-        Batched 2D blocks, shape ``(num_blocks, da, db)``.
-    absorb : int or None, optional
-        Absorption mode code controlling what to return:
-
-        - ``Absorb.U_sVH`` (1, 'right'): return ``(Q, None, R)``.
-        - ``Absorb.sVH`` (11, 'rfactor'): return ``(None, None, R)``.
-        - ``Absorb.U`` (10, 'lorthog'): return ``(Q, None, None)``.
-
-    shift : float, optional
-        Diagonal regularization shift. If True or negative, auto-compute
-        from dtype machine epsilon. The shift is always applied as a
-        relative shift scaled by the trace of each block. Default is True.
-    solve_triangular : bool, optional
-        Whether to use triangular solve (faster) or general solve
-        to compute Q. Default is True.
-
-    Returns
-    -------
-    Q : array_like or None
-        The isometric factor, shape ``(num_blocks, da, db)``.
-    s : None
-        Always None.
-    R : array_like or None
-        The upper triangular factor, shape ``(num_blocks, db, db)``.
-    """
-    xp = ar.get_namespace(x)
-
-    # map QR absorb to LQ absorb
-    absorb_t = Absorb.transpose(absorb)
-
-    # plain transpose: (num_blocks, da, db) -> (num_blocks, db, da)
-    xT = xp.transpose(x, (0, 2, 1))
-
-    lt, _, qt = _blocklevel_lq_via_cholesky(
-        xT,
-        absorb=absorb_t,
-        shift=shift,
-        solve_triangular=solve_triangular,
-    )
-
-    # plain transpose results back
-    R = xp.transpose(lt, (0, 2, 1)) if lt is not None else None
-    Q = xp.transpose(qt, (0, 2, 1)) if qt is not None else None
-
-    return Q, None, R
 
 
 # ------------------------ tensordot implementations ------------------------ #

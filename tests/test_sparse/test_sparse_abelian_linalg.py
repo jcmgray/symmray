@@ -64,6 +64,103 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
     assert usvh.allclose(x)
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("d0", [3, 4])
+@pytest.mark.parametrize("d1", [2, 5])
+@pytest.mark.parametrize("f0", [False, True])
+@pytest.mark.parametrize("f1", [False, True])
+@pytest.mark.parametrize("c", [0, 1])
+def test_svd_via_eig_basics(symmetry, d0, d1, f0, f1, c):
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        duals=[f0, f1],
+        charge=c,
+        subsizes="maximal",
+    )
+    x.check()
+    u, s, vh = x.svd_via_eig()
+    u.check()
+    s.check()
+    vh.check()
+    us = ar.do("multiply_diagonal", u, s, axis=1)
+    usvh = sr.tensordot(us, vh, 1)
+    usvh.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("d0", [3, 4])
+@pytest.mark.parametrize("d1", [2, 5])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+def test_svd_via_eig_truncated(symmetry, d0, d1, absorb):
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        subsizes="maximal",
+    )
+    x.check()
+
+    u, s, vh = x.svd_via_eig_truncated(absorb=absorb)
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+
+    if absorb is None:
+        s.check()
+        us = ar.do("multiply_diagonal", u, s, axis=1)
+        xr = sr.tensordot(us, vh, 1)
+    else:
+        assert s is None
+        xr = sr.tensordot(u, vh, 1)
+
+    xr.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d0", [4, 5])
+@pytest.mark.parametrize("d1", [4, 5])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42])
+def test_svd_via_eig_truncated_max_bond(symmetry, d0, d1, absorb, seed):
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        subsizes="maximal",
+        seed=seed,
+    )
+    x.check()
+
+    u, s, vh = x.svd_via_eig_truncated(max_bond=2, absorb=absorb)
+
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+    if s is not None:
+        s.check()
+        assert s.size <= 2
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("d0", [4, 5])
+@pytest.mark.parametrize("d1", [4, 5])
+def test_svd_via_eig_truncated_ar_dispatch(symmetry, d0, d1, seed=42):
+    """Check that autoray dispatch works for svd_via_eig_truncated."""
+    x = sr.utils.get_rand(
+        symmetry,
+        (d0, d1),
+        subsizes="maximal",
+        seed=seed,
+    )
+
+    u, s, vh = ar.do("svd_via_eig_truncated", x, max_bond=2, absorb=None)
+    u.check()
+    vh.check()
+    s.check()
+    assert s.size <= 2
+
+
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 @pytest.mark.parametrize("seed", range(1))

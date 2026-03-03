@@ -235,6 +235,62 @@ def test_flat_svd_via_eig_truncated_ar_dispatch(symmetry, d1, d2, seed=42):
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [16, 20])
+@pytest.mark.parametrize("d2", [16, 20])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_flat_svd_rand_truncated(symmetry, d1, d2, absorb, seed):
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+    fx.check()
+
+    # Randomized SVD with a bond dimension smaller than full
+    u, s, vh = fx.svd_rand_truncated(max_bond=8, absorb=absorb)
+    u.check()
+    vh.check()
+
+    if absorb is None:
+        s.check()
+        assert s.size <= 8
+        xr = u @ vh.multiply_diagonal(s, 0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    # Randomized SVD is an approximation, so we check that it captures
+    # the most significant subspace, but full equality is not expected
+    # unless max_bond is large enough.
+    # We can at least check that the factors multiply to something
+    # with the correct charge and shape.
+    assert xr.shape == fx.shape
+    assert xr.charge == fx.charge
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d1", [16, 20])
+@pytest.mark.parametrize("d2", [16, 20])
+def test_flat_svd_rand_truncated_ar_dispatch(symmetry, d1, d2, seed=42):
+    """Check that autoray dispatch works for svd_rand_truncated."""
+    sx = get_zn_blocksparse_flat_compat(
+        symmetry,
+        shape=[d1, d2],
+        seed=seed,
+    )
+    fx = sx.to_flat()
+
+    u, s, vh = ar.do("svd_rand_truncated", fx, max_bond=8, absorb=None)
+    u.check()
+    vh.check()
+    s.check()
+    assert s.size <= 8
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("d", [2, 3])
 @pytest.mark.parametrize("dtype", ["float64", "complex128", "complex64"])
 @pytest.mark.parametrize("seed", range(1))
