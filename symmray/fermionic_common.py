@@ -497,43 +497,29 @@ class FermionicCommon:
 
     # --------------------------- linalg methods ---------------------------- #
 
-    def qr(
+    def _split(
         self,
-        stabilized=False,
-        absorb=Absorb.U_sVH,
+        *args,
+        left_carries_charge=True,
         **kwargs,
-    ) -> tuple["FermionicCommon", "FermionicCommon"]:
-        """QR decomposition of a fermionic array.
-
-        Parameters
-        ----------
-        stabilized : bool, optional
-            Whether to use a stabilized QR decomposition, that is, with
-            positive diagonal elements in the R factor. Default is False.
-
-        absorb : str or int, optional
-            Which factors to return in the output, by default 'U_sVH' (both).
-            Options are:
-
-            - "right" or "U_sVH": return (Q, R)
-            - "rfactor" or "sVH": return (None, R)
-            - "lorthog" or "U": return (Q, None)
-
-        Returns
-        -------
-        q : FermionicCommon
-            The orthogonal matrix.
-        r : FermionicCommon
-            The upper triangular matrix.
+    ):
+        """Fermionic array splitting, involving a phase sync, the abelian split
+        which is handled by the backend, and then a possible phase flip
+        depending of the dualness of the inner bond.
         """
         x = self.phase_sync()
-        q, r = x._qr_abelian(stabilized=stabilized, absorb=absorb, **kwargs)
 
-        if r is not None and r.indices[0].dual:
-            # inner index is like |x><x| so introduce a phase flip
-            r.phase_flip(0, inplace=True)
+        left, s, right = x._split_abelian(*args, **kwargs)
 
-        return q, r
+        # check if inner index is like |x><x| and needs a phase flip
+        if left_carries_charge:
+            if right is not None and right.indices[0].dual:
+                right.phase_flip(0, inplace=True)
+        else:
+            if left is not None and not left.indices[-1].dual:
+                left.phase_flip(-1, inplace=True)
+
+        return left, s, right
 
     def lq(
         self,

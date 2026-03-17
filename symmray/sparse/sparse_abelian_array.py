@@ -1,6 +1,7 @@
 """Abelian symmetric arrays with block sparse backend."""
 
 from ..array_common import ArrayCommon
+from ..bosonic_common import BosonicCommon
 from ..common import SymmrayCommon
 from ..linalg_common import Absorb
 from ..symmetries import get_symmetry
@@ -14,6 +15,7 @@ from .sparse_vector import BlockVector
 class AbelianArray(
     SparseArrayCommon,
     BlockCommon,
+    BosonicCommon,
     ArrayCommon,
     SymmrayCommon,
 ):
@@ -300,30 +302,6 @@ class AbelianArray(
         return self._test_allclose_abelian(other, **allclose_opts)
 
     # --------------------------- linalg methods ---------------------------- #
-
-    def qr(
-        self,
-        stabilized=False,
-        **kwargs,
-    ) -> tuple["AbelianArray", "AbelianArray"]:
-        """QR decomposition of an AbelianArray.
-
-        Parameters
-        ----------
-        x : AbelianArray
-            The block symmetric array to decompose.
-        stabilized : bool, optional
-            Whether to use a stabilized QR decomposition, that is, ensure
-            positive diagonal elements in the R factor. Default is False.
-
-        Returns
-        -------
-        q : AbelianArray
-            The orthogonal matrix.
-        r : AbelianArray
-            The upper triangular matrix.
-        """
-        return self._qr_abelian(stabilized=stabilized, **kwargs)
 
     def svd(
         self, **kwargs

@@ -541,11 +541,31 @@ class ArrayCommon:
         kwargs.setdefault("cutoff", 0.0)
         return self._split_abelian(**kwargs)
 
-    def _qr_abelian(self, **kwargs) -> tuple["ArrayCommon", "ArrayCommon"]:
-        """Regular Abelian QR decomposition."""
+    def qr(
+        self,
+        stabilized=False,
+        **kwargs,
+    ) -> tuple["ArrayCommon", "ArrayCommon"]:
+        """QR decomposition.
+
+        Parameters
+        ----------
+        x : ArrayCommon
+            The array to decompose.
+        stabilized : bool, optional
+            Whether to use a stabilized QR decomposition, that is, ensure
+            positive diagonal elements in the R factor. Default is False.
+
+        Returns
+        -------
+        q : ArrayCommon
+            The orthogonal matrix.
+        r : ArrayCommon
+            The right factor matrix.
+        """
         kwargs.setdefault("method", "qr")
-        kwargs.setdefault("stabilized", False)
-        q, _, r = self._split_abelian(**kwargs)
+        kwargs.setdefault("stabilized", stabilized)
+        q, _, r = self._split(**kwargs)
         return q, r
 
     def _qr_via_cholesky_abelian(

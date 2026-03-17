@@ -1508,6 +1508,16 @@ class FlatArrayCommon:
                 "split only implemented for 2D FlatArrayCommon,"
                 f" got {self.ndim}D. Consider fusing first."
             )
+        if kwargs.get("cutoff", 0.0) > 0.0:
+            raise NotImplementedError(
+                "Dynamic cutoff-based splitting not "
+                "implemented yet for flat backend."
+            )
+        if kwargs.get("renorm", False):
+            raise NotImplementedError(
+                "Dynamic renormalization-based splitting "
+                "not implemented yet for flat backend."
+            )
 
         ixl, ixr = self.indices
 
@@ -1669,13 +1679,6 @@ class FlatArrayCommon:
             Whether to renormalize the singular values (depends on
             `cutoff_mode`).
         """
-        need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
-        if need_full_spectrum:
-            raise NotImplementedError(
-                "Dynamic truncation not supported in "
-                "flat svd_via_eig_truncated yet."
-            )
-
         # perform in one step per block, using absorb shortcuts
         kwargs.setdefault("method", "svd")
         return self._split_abelian(
@@ -1686,25 +1689,21 @@ class FlatArrayCommon:
 
     def _svd_via_eig_truncated_abelian(
         self,
+        max_bond=None,
         cutoff=0.0,
         cutoff_mode="rsum2",
-        max_bond=None,
         absorb="both",
         renorm=False,
         **kwargs,
     ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
-        if need_full_spectrum:
-            raise NotImplementedError(
-                "Dynamic truncation not supported in "
-                "flat svd_via_eig_truncated yet."
-            )
-
         # perform in one step per block, using absorb shortcuts
         kwargs.setdefault("method", "svd:eig")
         return self._split_abelian(
             absorb=absorb,
             max_bond=max_bond,
+            cutoff=cutoff,
+            cutoff_mode=cutoff_mode,
+            renorm=renorm,
             **kwargs,
         )
 
@@ -1734,15 +1733,16 @@ class FlatArrayCommon:
                 "for 2D FlatArrayCommon objects."
             )
 
-        eval_blocks, evec_blocks = ar.do(
+        eigenvalue_blocks, eigenvector_blocks = ar.do(
             "linalg.eigh",
             self._blocks,
             like=self.backend,
         )
 
-        eigenvectors = self.copy_with(blocks=evec_blocks)
+        eigenvectors = self.copy_with(blocks=eigenvector_blocks)
         eigenvalues = FlatVector(
-            sectors=self.sectors[:, -1], blocks=eval_blocks
+            sectors=self.sectors[:, -1],
+            blocks=eigenvalue_blocks,
         )
 
         if DEBUG:
@@ -1761,10 +1761,6 @@ class FlatArrayCommon:
         positive=0,
         **kwargs,
     ):
-        if cutoff > 0.0 or renorm > 0:
-            raise NotImplementedError(
-                "Dynamic truncation not supported in flat eigh_truncated yet."
-            )
         kwargs.setdefault("method", "eigh")
         return self._split_abelian(
             absorb=absorb,

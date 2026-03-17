@@ -1841,11 +1841,11 @@ class SparseArrayCommon:
         right_blocks = {}
         new_chargemap = {}
 
+        if fn is None:
+            fn = array_split
+
         for sector, array in self.get_sector_block_pairs():
-            if fn is None:
-                left, s, right = array_split(array, **kwargs)
-            else:
-                left, s, right = fn(array, **kwargs)
+            left, s, right = fn(array, **kwargs)
 
             bond_charge = sector[1] if left_carries_charge else sector[0]
             bond_charge_size = None
@@ -1884,7 +1884,17 @@ class SparseArrayCommon:
             bond_dual = not ixl.dual
         ixb = BlockIndex(new_chargemap, dual=bond_dual)
 
-        if left_blocks:
+        if not self.blocks:
+            # empty input array -> won't have left or right blocks,
+            # but we still need to return empty array objects
+            # XXX: for full consistency we should check which of
+            # these should be None based on the value of `absorb`
+            create_left = create_right = True
+        else:
+            create_left = bool(left_blocks)
+            create_right = bool(right_blocks)
+
+        if create_left:
             lopts = {"indices": (ixl, ixb), "blocks": left_blocks}
             if left_carries_charge:
                 left = self.copy_with(**lopts)
@@ -1899,7 +1909,7 @@ class SparseArrayCommon:
         else:
             s = None
 
-        if right_blocks:
+        if create_right:
             ropts = {"indices": (ixb.conj(), ixr), "blocks": right_blocks}
             if left_carries_charge:
                 zero_charge = self.symmetry.combine()
@@ -1935,6 +1945,9 @@ class SparseArrayCommon:
         **kwargs,
     ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
         absorb = Absorb.parse(absorb)
+
+        if max_bond is None:
+            max_bond = -1
 
         # XXX: currently need full spectrum even for fixed max_bond as it
         # may not be evenly distributed across blocks

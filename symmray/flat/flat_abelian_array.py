@@ -3,6 +3,7 @@
 import autoray as ar
 
 from ..array_common import ArrayCommon
+from ..bosonic_common import BosonicCommon
 from ..common import SymmrayCommon
 from ..linalg_common import Absorb
 from ..sparse.sparse_abelian_array import AbelianArray
@@ -17,6 +18,7 @@ from .flat_vector import FlatVector
 class AbelianArrayFlat(
     FlatArrayCommon,
     FlatCommon,
+    BosonicCommon,
     ArrayCommon,
     SymmrayCommon,
 ):
@@ -453,31 +455,6 @@ class AbelianArrayFlat(
         return self._test_allclose_abelian(other, **allclose_opts)
 
     # --------------------------- linalg methods ---------------------------- #
-
-    def qr(
-        self,
-        stabilized=False,
-        absorb=Absorb.U_sVH,
-        **kwargs,
-    ) -> tuple["AbelianArrayFlat", "AbelianArrayFlat"]:
-        """QR decomposition of this flat abelian array.
-
-        Parameters
-        ----------
-        x : AbelianArrayFlat
-            The flat symmetric array to decompose.
-        stabilized : bool, optional
-            Whether to use a stabilized QR decomposition, that is, with
-            positive diagonal elements in the R factor. Default is False.
-
-        Returns
-        -------
-        q : AbelianArrayFlat
-            The orthogonal matrix.
-        r : AbelianArrayFlat
-            The upper triangular matrix.
-        """
-        return self._qr_abelian(stabilized=stabilized, absorb=absorb, **kwargs)
 
     def svd(
         self, **kwargs
