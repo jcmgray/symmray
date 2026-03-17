@@ -29,12 +29,7 @@ def test_qr_with_expand_dims(symmetry, seed):
         subsizes="maximal",
         seed=seed,
     )
-    y = x.reshape(
-        (
-            1,
-            4 * 5 * 6,
-        )
-    )
+    y = x.reshape((1, 4 * 5 * 6))
     q, r = sr.linalg.qr(y)
     z = (q @ r).reshape((4, 5, 6))
     assert z.allclose(x)

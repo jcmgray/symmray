@@ -64,12 +64,35 @@ def norm(x, *args, **kwargs):
 
 
 def qr(x, *args, **kwargs):
+    """QR decomposition of a symmray array."""
+    kwargs.setdefault("stabilized", False)
     return x.qr(*args, **kwargs)
 
 
 def qr_stabilized(x, *args, **kwargs):
-    q, r = x.qr(*args, stabilized=True, **kwargs)
+    """Stabilized QR decomposition of a symmray array, returning results in an
+    SVD-like ``(Q, None, R)`` format for compatibility with tensor network
+    split drivers.
+    """
+    kwargs.setdefault("stabilized", True)
+    q, r = x.qr(*args, **kwargs)
     return q, None, r
+
+
+def lq(x, *args, **kwargs):
+    """LQ decomposition of a symmray array."""
+    kwargs.setdefault("stabilized", False)
+    return x.lq(*args, **kwargs)
+
+
+def lq_stabilized(x, *args, **kwargs):
+    """Stabilized LQ decomposition of a symmray array, returning results in an
+    SVD-like ``(L, None, Q)`` format for compatibility with tensor network
+    split drivers.
+    """
+    kwargs.setdefault("stabilized", True)
+    l, q = x.lq(*args, **kwargs)
+    return l, None, q
 
 
 def solve(x, *args, **kwargs):
@@ -333,6 +356,7 @@ def qr_via_cholesky(x, *args, **kwargs):
 # used by quimb
 ar.register_function("symmray", "eigh_truncated", eigh_truncated)
 ar.register_function("symmray", "qr_stabilized", qr_stabilized)
+ar.register_function("symmray", "lq_stabilized", lq_stabilized)
 ar.register_function("symmray", "svd_truncated", svd_truncated)
 ar.register_function("symmray", "svd_rand_truncated", svd_rand_truncated)
 ar.register_function("symmray", "svd_via_eig_truncated", svd_via_eig_truncated)

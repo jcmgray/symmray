@@ -2,7 +2,7 @@
 
 import autoray as ar
 
-from ..abelian_common import AbelianCommon
+from ..array_common import ArrayCommon
 from ..common import SymmrayCommon
 from ..linalg_common import Absorb
 from ..sparse.sparse_abelian_array import AbelianArray
@@ -17,7 +17,7 @@ from .flat_vector import FlatVector
 class AbelianArrayFlat(
     FlatArrayCommon,
     FlatCommon,
-    AbelianCommon,
+    ArrayCommon,
     SymmrayCommon,
 ):
     """Base class for abelian arrays with flat storage and cyclic symmetry.
@@ -457,6 +457,8 @@ class AbelianArrayFlat(
     def qr(
         self,
         stabilized=False,
+        absorb=Absorb.U_sVH,
+        **kwargs,
     ) -> tuple["AbelianArrayFlat", "AbelianArrayFlat"]:
         """QR decomposition of this flat abelian array.
 
@@ -475,9 +477,11 @@ class AbelianArrayFlat(
         r : AbelianArrayFlat
             The upper triangular matrix.
         """
-        return self._qr_abelian(stabilized=stabilized)
+        return self._qr_abelian(stabilized=stabilized, absorb=absorb, **kwargs)
 
-    def svd(self) -> tuple["AbelianArrayFlat", FlatVector, "AbelianArrayFlat"]:
+    def svd(
+        self, **kwargs
+    ) -> tuple["AbelianArrayFlat", FlatVector, "AbelianArrayFlat"]:
         """Singular value decomposition of this flat abelian array.
 
         Returns
@@ -489,15 +493,15 @@ class AbelianArrayFlat(
         vh : AbelianArrayFlat
             The right singular vectors (hermitian transposed).
         """
-        return self._svd_abelian()
+        return self._svd_abelian(**kwargs)
 
     def svd_via_eig_truncated(
         self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
         **kwargs,
     ):
         """Truncated singular value decomposition of this flat abelian array,

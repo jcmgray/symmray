@@ -2,7 +2,7 @@
 
 import autoray as ar
 
-from .abelian_common import parse_tensordot_axes
+from .array_common import parse_tensordot_axes
 from .fermionic_local_operators import FermionicOperator
 from .linalg_common import Absorb
 
@@ -498,7 +498,10 @@ class FermionicCommon:
     # --------------------------- linalg methods ---------------------------- #
 
     def qr(
-        self, stabilized=False
+        self,
+        stabilized=False,
+        absorb=Absorb.U_sVH,
+        **kwargs,
     ) -> tuple["FermionicCommon", "FermionicCommon"]:
         """QR decomposition of a fermionic array.
 
@@ -508,6 +511,14 @@ class FermionicCommon:
             Whether to use a stabilized QR decomposition, that is, with
             positive diagonal elements in the R factor. Default is False.
 
+        absorb : str or int, optional
+            Which factors to return in the output, by default 'U_sVH' (both).
+            Options are:
+
+            - "right" or "U_sVH": return (Q, R)
+            - "rfactor" or "sVH": return (None, R)
+            - "lorthog" or "U": return (Q, None)
+
         Returns
         -------
         q : FermionicCommon
@@ -516,13 +527,51 @@ class FermionicCommon:
             The upper triangular matrix.
         """
         x = self.phase_sync()
-        q, r = x._qr_abelian(stabilized=stabilized)
+        q, r = x._qr_abelian(stabilized=stabilized, absorb=absorb, **kwargs)
 
-        if r.indices[0].dual:
+        if r is not None and r.indices[0].dual:
             # inner index is like |x><x| so introduce a phase flip
             r.phase_flip(0, inplace=True)
 
         return q, r
+
+    def lq(
+        self,
+        stabilized=False,
+        absorb=Absorb.Us_VH,
+        **kwargs,
+    ) -> tuple["FermionicCommon", "FermionicCommon"]:
+        """LQ decomposition of a fermionic array.
+
+        Parameters
+        ----------
+        stabilized : bool, optional
+            Whether to use a stabilized LQ decomposition, that is, with
+            positive diagonal elements in the L factor. Default is False.
+
+        absorb : str or int, optional
+            Which factors to return in the output, by default 'Us_VH' (both).
+            Options are:
+
+            - "left" or "Us_VH": return (L, Q)
+            - "lfactor" or "Us": return (L, None)
+            - "rorthog" or "VH": return (None, Q)
+
+        Returns
+        -------
+        l : FermionicCommon
+            The lower triangular matrix.
+        q : FermionicCommon
+            The orthogonal matrix.
+        """
+        x = self.phase_sync()
+        l, q = x._lq_abelian(stabilized=stabilized, absorb=absorb, **kwargs)
+
+        if l is not None and not l.indices[1].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            l.phase_flip(1, inplace=True)
+
+        return l, q
 
     def svd(self):
         """Singular Value Decomposition of a fermionic array.
@@ -570,11 +619,11 @@ class FermionicCommon:
 
     def svd_via_eig_truncated(
         self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
         **kwargs,
     ):
         """Truncated singular value decomposition of a fermionic array, using
@@ -772,8 +821,8 @@ class FermionicCommon:
         shift=True,
         solve_triangular=True,
     ):
-        """LQ decomposition of a fermionic array via Cholesky
-        factorization of ``x @ x^H``.
+        """LQ decomposition of a fermionic array via Cholesky factorization of
+        ``x @ x^H``.
 
         Parameters
         ----------
@@ -807,8 +856,9 @@ class FermionicCommon:
             solve_triangular=solve_triangular,
         )
 
-        if q is not None and q.indices[0].dual:
-            q.phase_flip(0, inplace=True)
+        if l is not None and not l.indices[1].dual:
+            # inner index is like |x><x| so introduce a phase flip
+            l.phase_flip(1, inplace=True)
 
         return l, None, q
 
@@ -818,8 +868,8 @@ class FermionicCommon:
         shift=True,
         solve_triangular=True,
     ):
-        """QR decomposition of a fermionic array via Cholesky
-        factorization of ``x^H @ x``.
+        """QR decomposition of a fermionic array via Cholesky factorization of
+        ``x^H @ x``.
 
         Parameters
         ----------

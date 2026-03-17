@@ -13,13 +13,10 @@ from collections import OrderedDict, defaultdict
 
 import autoray as ar
 
-from ..abelian_common import maybe_keep_label, parse_tensordot_axes, without
+from ..array_common import maybe_keep_label, parse_tensordot_axes, without
 from ..linalg_common import (
     Absorb,
-    blocklevel_cholesky_regularized,
-    blocklevel_lq_via_cholesky,
-    blocklevel_qr_via_cholesky,
-    blocklevel_svd_via_eig,
+    array_split,
 )
 from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
 from .sparse_index import BlockIndex, SubIndexInfo
@@ -1824,160 +1821,123 @@ class SparseArrayCommon:
 
     # --------------------------- linalg methods ---------------------------- #
 
-    def _qr_abelian(
-        self, stabilized=False
-    ) -> tuple["SparseArrayCommon", "SparseArrayCommon"]:
+    def _split_abelian(
+        self,
+        *,
+        fn=None,
+        left_carries_charge=True,
+        **kwargs,
+    ):
         if self.ndim != 2:
             raise NotImplementedError(
-                "qr only implemented for 2D AbelianArrays,"
+                "split only implemented for 2D AbelianArrays,"
                 f" got {self.ndim}D. Consider fusing first."
             )
 
-        # get the 'lower' qr function that acts on the blocks
-        _qr = _get_qr_fn(self.backend, stabilized=stabilized)
+        xp = self.get_namespace()
 
-        q_blocks = {}
-        r_blocks = {}
+        left_blocks = {}
+        s_store = {}
+        right_blocks = {}
         new_chargemap = {}
 
         for sector, array in self.get_sector_block_pairs():
-            q, r = _qr(array)
-            q_blocks[sector] = q
-            new_chargemap[sector[1]] = ar.shape(q)[1]
-            # on r charge is 0, and dualnesses always opposite
-            r_sector = (sector[1], sector[1])
-            r_blocks[r_sector] = r
+            if fn is None:
+                left, s, right = array_split(array, **kwargs)
+            else:
+                left, s, right = fn(array, **kwargs)
 
-        bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
+            bond_charge = sector[1] if left_carries_charge else sector[0]
+            bond_charge_size = None
 
-        q = self.copy_with(
-            indices=(self.indices[0], bond_index),
-            blocks=q_blocks,
-        )
-        r = self.new_with(
-            indices=(bond_index.conj(), self.indices[1]),
-            charge=self.symmetry.combine(),
-            blocks=r_blocks,
-        )
+            if left is not None:
+                if left_carries_charge:
+                    l_sector = sector
+                else:
+                    l_sector = (bond_charge, bond_charge)
+                left_blocks[l_sector] = left
+                bond_charge_size = xp.shape(left)[-1]
 
-        if DEBUG:
-            q.check()
-            r.check()
-            q.check_with(r, (1,), (0,))
+            if right is not None:
+                if left_carries_charge:
+                    r_sector = (bond_charge, bond_charge)
+                else:
+                    r_sector = sector
 
-        return q, r
+                right_blocks[r_sector] = right
+                if bond_charge_size is None:
+                    bond_charge_size = xp.shape(right)[-2]
 
-    def _svd_abelian(self):
-        if self.ndim != 2:
-            raise NotImplementedError(
-                "svd only implemented for 2D AbelianArrays,"
-                f" got {self.ndim}D. Consider fusing first."
-            )
+            if s is not None:
+                s_store[bond_charge] = s
+                if bond_charge_size is None:
+                    bond_charge_size = xp.shape(s)[-1]
 
-        if self.backend == "numpy":
-            _svd = get_numpy_svd_with_fallback()
+            new_chargemap[bond_charge] = bond_charge_size
+
+        ixl, ixr = self.indices
+
+        # now we wrap blocks into SparseArray objects
+        if left_carries_charge:
+            bond_dual = ixr.dual
         else:
-            _svd = ar.get_lib_fn(self.backend, "linalg.svd")
+            bond_dual = not ixl.dual
+        ixb = BlockIndex(new_chargemap, dual=bond_dual)
 
-        u_blocks = {}
-        s_store = {}
-        v_blocks = {}
-        new_chargemap = {}
+        if left_blocks:
+            lopts = {"indices": (ixl, ixb), "blocks": left_blocks}
+            if left_carries_charge:
+                left = self.copy_with(**lopts)
+            else:
+                zero_charge = self.symmetry.combine()
+                left = self.new_with(charge=zero_charge, **lopts)
+        else:
+            left = None
 
-        for sector, array in self.get_sector_block_pairs():
-            u, s, v = _svd(array)
-            u_blocks[sector] = u
-            # v charge is 0, and dualnesses always opposite
-            s_charge = sector[1]
-            v_sector = (s_charge, s_charge)
-            s_store[s_charge] = s
-            v_blocks[v_sector] = v
-            new_chargemap[sector[1]] = ar.shape(u)[1]
+        if s_store:
+            s = BlockVector(s_store)
+        else:
+            s = None
 
-        bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
-
-        u = self.copy_with(
-            indices=(self.indices[0], bond_index),
-            blocks=u_blocks,
-        )
-        s = BlockVector(s_store)
-        v = self.new_with(
-            indices=(bond_index.conj(), self.indices[1]),
-            charge=self.symmetry.combine(),
-            blocks=v_blocks,
-        )
+        if right_blocks:
+            ropts = {"indices": (ixb.conj(), ixr), "blocks": right_blocks}
+            if left_carries_charge:
+                zero_charge = self.symmetry.combine()
+                right = self.new_with(charge=zero_charge, **ropts)
+            else:
+                right = self.copy_with(**ropts)
+        else:
+            right = None
 
         if DEBUG:
-            u.check()
-            s.check()
-            v.check()
-            u.check_with(s, 1)
-            u.check_with(v, (1,), (0,))
-            v.check_with(s, 0)
+            if left is not None:
+                left.check()
+            if s is not None:
+                s.check()
+            if right is not None:
+                right.check()
+            if left is not None and s is not None:
+                left.check_with(s, 1)
+            if left is not None and right is not None:
+                left.check_with(right, (1,), (0,))
+            if right is not None and s is not None:
+                right.check_with(s, 0)
 
-        return u, s, v
-
-    def _svd_via_eig_abelian(self):
-        if self.ndim != 2:
-            raise NotImplementedError(
-                "svd_via_eig only implemented for 2D AbelianArrays,"
-                f" got {self.ndim}D. Consider fusing first."
-            )
-
-        xp = ar.get_namespace(self.get_any_array())
-
-        u_blocks = {}
-        s_store = {}
-        v_blocks = {}
-        new_chargemap = {}
-
-        for sector, array in self.get_sector_block_pairs():
-            bu, bs, bvh = blocklevel_svd_via_eig(
-                array,
-                absorb=Absorb.U_s_VH,
-                max_bond=-1,
-                descending=True,
-            )
-            u_blocks[sector] = bu
-            s_charge = sector[1]
-            v_sector = (s_charge, s_charge)
-            s_store[s_charge] = bs
-            v_blocks[v_sector] = bvh
-            new_chargemap[sector[1]] = xp.shape(bu)[1]
-
-        bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
-
-        u = self.copy_with(
-            indices=(self.indices[0], bond_index),
-            blocks=u_blocks,
-        )
-        s = BlockVector(s_store)
-        v = self.new_with(
-            indices=(bond_index.conj(), self.indices[1]),
-            charge=self.symmetry.combine(),
-            blocks=v_blocks,
-        )
-
-        if DEBUG:
-            u.check()
-            s.check()
-            v.check()
-            u.check_with(s, 1)
-            u.check_with(v, (1,), (0,))
-            v.check_with(s, 0)
-
-        return u, s, v
+        return left, s, right
 
     def _svd_via_eig_truncated_abelian(
         self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
         **kwargs,
     ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
         absorb = Absorb.parse(absorb)
+
+        # XXX: currently need full spectrum even for fixed max_bond as it
+        # may not be evenly distributed across blocks
         need_full_spectrum = (cutoff > 0.0) or (renorm > 0) or (max_bond > 0)
 
         if need_full_spectrum:
@@ -1998,70 +1958,12 @@ class SparseArrayCommon:
             )
         else:
             # perform in one step per block, using absorb shortcuts
-            xp = ar.get_namespace(self.get_any_array())
-
-            u_blocks = {}
-            s_store = {}
-            v_blocks = {}
-            new_chargemap = {}
-
-            for sector, array in self.get_sector_block_pairs():
-                bu, bs, bvh = blocklevel_svd_via_eig(
-                    array,
-                    absorb=absorb,
-                    max_bond=-1,
-                    descending=False,
-                )
-
-                s_charge = sector[1]
-                v_sector = (s_charge, s_charge)
-
-                if bu is not None:
-                    u_blocks[sector] = bu
-                if bs is not None:
-                    s_store[s_charge] = bs
-                if bvh is not None:
-                    v_blocks[v_sector] = bvh
-
-                # determine the new bond size from whichever
-                # result is non-None
-                if bu is not None:
-                    new_chargemap[s_charge] = xp.shape(bu)[1]
-                elif bvh is not None:
-                    new_chargemap[s_charge] = xp.shape(bvh)[0]
-                elif bs is not None:
-                    new_chargemap[s_charge] = xp.size(bs)
-
-            bond_index = BlockIndex(new_chargemap, dual=self.indices[1].dual)
-
-            u = (
-                self.copy_with(
-                    indices=(self.indices[0], bond_index),
-                    blocks=u_blocks,
-                )
-                if u_blocks
-                else None
+            kwargs.setdefault("method", "svd:eig")
+            return self._split_abelian(
+                absorb=absorb,
+                max_bond=-1,
+                **kwargs,
             )
-            s = BlockVector(s_store) if s_store else None
-            vh = (
-                self.new_with(
-                    indices=(bond_index.conj(), self.indices[1]),
-                    charge=self.symmetry.combine(),
-                    blocks=v_blocks,
-                )
-                if v_blocks
-                else None
-            )
-
-            if DEBUG:
-                if u is not None:
-                    u.check()
-                if s is not None:
-                    s.check()
-                if vh is not None:
-                    vh.check()
-
-            return u, s, vh
 
     def svd_truncated(
         self,
@@ -2159,222 +2061,6 @@ class SparseArrayCommon:
 
         return eigenvalues, eigenvectors
 
-    def _cholesky_abelian(
-        self,
-        upper=False,
-        shift=True,
-    ) -> "SparseArrayCommon":
-        """Cholesky decomposition of a 2D block-sparse abelian array.
-
-        Parameters
-        ----------
-        upper : bool, optional
-            Whether to return the upper triangular Cholesky factor.
-            Default is False, returning the lower triangular factor.
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-
-        Returns
-        -------
-        l_or_r : SparseArrayCommon
-            The Cholesky factor.
-        """
-        if self.ndim != 2:
-            raise NotImplementedError(
-                "Cholesky decomposition only implemented for 2D "
-                f"AbelianArrays, got {self.ndim}D. Consider fusing first."
-            )
-        if self.charge != self.symmetry.combine():
-            raise ValueError(
-                "Total charge must be the identity (zero) element."
-            )
-
-        l_blocks = {}
-        for sector, block in self.get_sector_block_pairs():
-            l_blocks[sector] = blocklevel_cholesky_regularized(
-                block, upper=upper, shift=shift
-            )
-
-        l_or_r = self.copy_with(blocks=l_blocks)
-
-        if DEBUG:
-            l_or_r.check()
-
-        return l_or_r
-
-    def _lq_via_cholesky_abelian(
-        self,
-        absorb=Absorb.Us_VH,
-        shift=True,
-        solve_triangular=True,
-    ):
-        """LQ decomposition of a 2D block-sparse abelian array via
-        Cholesky factorization of the Gram matrix ``x @ x^H``.
-
-        Computes ``x = L @ Q`` where ``L`` is lower triangular and
-        ``Q`` is isometric.
-
-        Parameters
-        ----------
-        absorb : int or str, optional
-            Absorption mode:
-
-            - ``-1`` ('left'): return ``(L, None, Q)``.
-            - ``-10`` ('lfactor'): return ``(L, None, None)``.
-            - ``-11`` ('rorthog'): return ``(None, None, Q)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-        solve_triangular : bool, optional
-            Whether to use triangular solve (faster) or general solve
-            to compute Q. Default is True.
-
-        Returns
-        -------
-        L : SparseArrayCommon or None
-            The lower triangular factor.
-        s : None
-            Always None.
-        Q : SparseArrayCommon or None
-            The isometric factor.
-        """
-        if self.ndim != 2:
-            raise ValueError(
-                "LQ via Cholesky is only defined for "
-                "2D SparseArrayCommon objects."
-            )
-
-        absorb = Absorb.parse(absorb)
-
-        l_blocks = {}
-        q_blocks = {}
-
-        for sector, block in self.get_sector_block_pairs():
-            bl, _, bq = blocklevel_lq_via_cholesky(
-                block,
-                absorb=absorb,
-                shift=shift,
-                solve_triangular=solve_triangular,
-            )
-            if bl is not None:
-                l_blocks[(sector[0], sector[0])] = bl
-            if bq is not None:
-                q_blocks[sector] = bq
-
-        ixl = self.indices[0]
-
-        # L is square (da, da), charge 0
-        l = (
-            self.new_with(
-                indices=(ixl, ixl.conj()),
-                charge=self.symmetry.combine(),
-                blocks=l_blocks,
-            )
-            if l_blocks
-            else None
-        )
-
-        # Q carries original charge
-        q = self.copy_with(blocks=q_blocks) if q_blocks else None
-
-        if DEBUG:
-            if l is not None:
-                l.check()
-            if q is not None:
-                q.check()
-
-        return l, None, q
-
-    def _qr_via_cholesky_abelian(
-        self,
-        absorb=Absorb.U_sVH,
-        shift=True,
-        solve_triangular=True,
-    ):
-        """QR decomposition of a 2D block-sparse abelian array via
-        Cholesky factorization. Implemented by transposing to LQ at
-        the block level.
-
-        Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
-        upper triangular.
-
-        Parameters
-        ----------
-        absorb : int or str, optional
-            Absorption mode:
-
-            - ``1`` ('right'): return ``(Q, None, R)``.
-            - ``11`` ('rfactor'): return ``(None, None, R)``.
-            - ``10`` ('lorthog'): return ``(Q, None, None)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-        solve_triangular : bool, optional
-            Whether to use triangular solve (faster) or general solve.
-            Default is True.
-
-        Returns
-        -------
-        Q : SparseArrayCommon or None
-            The isometric factor.
-        s : None
-            Always None.
-        R : SparseArrayCommon or None
-            The upper triangular factor.
-        """
-        if self.ndim != 2:
-            raise ValueError(
-                "QR via Cholesky is only defined for "
-                "2D SparseArrayCommon objects."
-            )
-
-        absorb = Absorb.parse(absorb)
-
-        q_blocks = {}
-        r_blocks = {}
-
-        for sector, block in self.get_sector_block_pairs():
-            bq, _, br = blocklevel_qr_via_cholesky(
-                block,
-                absorb=absorb,
-                shift=shift,
-                solve_triangular=solve_triangular,
-            )
-            if bq is not None:
-                q_blocks[sector] = bq
-            if br is not None:
-                r_blocks[(sector[1], sector[1])] = br
-
-        ixr = self.indices[1]
-
-        # Q carries original charge
-        q = self.copy_with(blocks=q_blocks) if q_blocks else None
-
-        # R is square (db, db), charge 0
-        r = (
-            self.new_with(
-                indices=(ixr.conj(), ixr),
-                charge=self.symmetry.combine(),
-                blocks=r_blocks,
-            )
-            if r_blocks
-            else None
-        )
-
-        if DEBUG:
-            if q is not None:
-                q.check()
-            if r is not None:
-                r.check()
-
-        return q, None, r
-
     def _eigh_truncated_abelian(
         self,
         cutoff=-1.0,
@@ -2432,6 +2118,54 @@ class SparseArrayCommon:
             use_abs=True,
         )
 
+    def _cholesky_abelian(
+        self, upper=False, shift=True, **kwargs
+    ) -> "SparseArrayCommon":
+        """Cholesky decomposition of a 2D block-sparse abelian array.
+
+        Parameters
+        ----------
+        upper : bool, optional
+            Whether to return the upper triangular Cholesky factor.
+            Default is False, returning the lower triangular factor.
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+
+        Returns
+        -------
+        l_or_r : SparseArrayCommon
+            The Cholesky factor.
+        """
+        if self.ndim != 2:
+            raise NotImplementedError(
+                "Cholesky decomposition only implemented for 2D "
+                f"AbelianArrays, got {self.ndim}D. Consider fusing first."
+            )
+        if self.charge != self.symmetry.combine():
+            raise ValueError(
+                "Total charge must be the identity (zero) element."
+            )
+
+        new_blocks = {}
+        for sector, block in self.get_sector_block_pairs():
+            left, _, right = array_split(
+                block,
+                absorb="rsqrt" if upper else "lsqrt",
+                shift=shift,
+                method="cholesky",
+                **kwargs,
+            )
+            new_blocks[sector] = left if right is None else right
+
+        new = self.copy_with(blocks=new_blocks)
+
+        if DEBUG:
+            new.check()
+
+        return new
+
     def _solve_abelian(self, b: "SparseArrayCommon") -> "SparseArrayCommon":
         _solve = ar.get_lib_fn(self.backend, "linalg.solve")
 
@@ -2483,56 +2217,6 @@ class SparseArrayCommon:
             self.check_with(x, (1,), (0,))
 
         return x
-
-
-@functools.cache
-def _get_qr_fn(backend, stabilized=False):
-    """The lower level qr_stabilized is not necessarily already defined."""
-    _qr = ar.get_lib_fn(backend, "linalg.qr")
-
-    if not stabilized:
-        return _qr
-
-    try:
-        _qr_stab = ar.get_lib_fn(backend, "qr_stabilized")
-
-        def _qr(x):
-            q, _, r = _qr_stab(x)
-            return q, r
-
-    except ImportError:
-        _qr_ubstab = _qr
-        _diag = ar.get_lib_fn(backend, "diag")
-        _reshape = ar.get_lib_fn(backend, "reshape")
-        _abs = ar.get_lib_fn(backend, "abs")
-
-        def _sgn(x):
-            x0 = x == 0.0
-            return (x + x0) / (_abs(x) + x0)
-
-        def _qr(x):
-            q, r = _qr_ubstab(x)
-            s = _sgn(_diag(r))
-            q = q * _reshape(s, (1, -1))
-            r = r * _reshape(s, (-1, 1))
-            return q, r
-
-    return _qr
-
-
-@functools.cache
-def get_numpy_svd_with_fallback():
-    import numpy as np
-
-    def svd_with_fallback(x):
-        try:
-            return np.linalg.svd(x, full_matrices=False)
-        except np.linalg.LinAlgError:
-            import scipy.linalg as sla
-
-            return sla.svd(x, full_matrices=False, lapack_driver="gesvd")
-
-    return svd_with_fallback
 
 
 def argsort(seq):

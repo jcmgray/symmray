@@ -4,7 +4,7 @@ import functools
 
 import autoray as ar
 
-from ..abelian_common import AbelianCommon
+from ..array_common import ArrayCommon
 from ..common import SymmrayCommon
 from ..fermionic_common import FermionicCommon, parse_dummy_modes
 from ..fermionic_local_operators import FermionicOperator
@@ -62,7 +62,7 @@ class FermionicArrayFlat(
     FermionicCommon,
     FlatArrayCommon,
     FlatCommon,
-    AbelianCommon,
+    ArrayCommon,
     SymmrayCommon,
 ):
     """Fermionic abelian symmetric array with flat backend.

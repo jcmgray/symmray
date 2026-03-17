@@ -205,8 +205,10 @@ def calc_reshape_args(shape, newshape, subshapes):
     return tuple(axs_unfuse), tuple(axs_fuse), tuple(axs_expand)
 
 
-class AbelianCommon:
-    """Common base class for arrays with Abelian symmetry."""
+class ArrayCommon:
+    """Common base class for all abelian arrays with symmetry, fermionic or
+    not, sparse or flat etc.
+    """
 
     @property
     def symmetry(self) -> Symmetry:
@@ -302,26 +304,26 @@ class AbelianCommon:
         return self.__truediv__(other, inplace=True)
 
     @lazyabstractmethod
-    def transpose(self, axes=None, inplace=False) -> "AbelianCommon":
+    def transpose(self, axes=None, inplace=False) -> "ArrayCommon":
         pass
 
     @property
-    def T(self) -> "AbelianCommon":
+    def T(self) -> "ArrayCommon":
         """The transpose of the block array."""
         return self.transpose()
 
     @lazyabstractmethod
-    def conj(self, inplace=False) -> "AbelianCommon":
+    def conj(self, inplace=False) -> "ArrayCommon":
         pass
 
-    def _dagger_abelian(self, inplace=False) -> "AbelianCommon":
+    def _dagger_abelian(self, inplace=False) -> "ArrayCommon":
         """Conjugate transpose or adjoint, implements the .H property."""
         new = self._transpose_abelian(inplace=inplace)
         new._conj_abelian(inplace=True)
         return new
 
     @property
-    def H(self) -> "AbelianCommon":
+    def H(self) -> "ArrayCommon":
         return self.dagger()
 
     @lazyabstractmethod
@@ -329,7 +331,7 @@ class AbelianCommon:
         pass
 
     @lazyabstractmethod
-    def expand_dims(self, ax, inplace=False) -> "AbelianCommon":
+    def expand_dims(self, ax, inplace=False) -> "ArrayCommon":
         pass
 
     def fuse(
@@ -338,7 +340,7 @@ class AbelianCommon:
         expand_empty=True,
         inplace=False,
         **kwargs,
-    ) -> "AbelianCommon":
+    ) -> "ArrayCommon":
         """Fuse the given group or groups of axes. The new fused axes will be
         inserted at the minimum index of any fused axis (even if it is not in
         the first group). For example, ``x.fuse([5, 3], [7, 2, 6])`` will
@@ -400,10 +402,10 @@ class AbelianCommon:
         return xf
 
     @lazyabstractmethod
-    def unfuse(self, ax, inplace=False) -> "AbelianCommon":
+    def unfuse(self, ax, inplace=False) -> "ArrayCommon":
         pass
 
-    def unfuse_all(self, inplace=False) -> "AbelianCommon":
+    def unfuse_all(self, inplace=False) -> "ArrayCommon":
         """Unfuse all indices that carry subindex information, likely from a
         fusing operation.
 
@@ -422,7 +424,7 @@ class AbelianCommon:
                 new.unfuse(ax, inplace=True)
         return new
 
-    def reshape(self, newshape, inplace=False) -> "AbelianCommon":
+    def reshape(self, newshape, inplace=False) -> "ArrayCommon":
         """Reshape this abelian array to ``newshape``, assuming it can be done
         by any mix of fusing, unfusing, and expanding new axes.
 
@@ -492,25 +494,6 @@ class AbelianCommon:
 
         return x
 
-    def __str__(self):
-        lines = [
-            (
-                f"{self.__class__.__name__}(ndim={self.ndim}, "
-                f"charge={self.charge}, indices=["
-            )
-        ]
-        for i in range(self.ndim):
-            lines.extend(
-                f"    {line}" for line in str(self.indices[i]).split("\n")
-            )
-        lines.append(
-            (
-                f"], num_blocks={self.num_blocks}, backend={self.backend}, "
-                f"dtype={self.dtype})"
-            )
-        )
-        return "\n".join(lines)
-
     @lazyabstractmethod
     def get_any_array(self):
         pass
@@ -543,6 +526,142 @@ class AbelianCommon:
         if ar.is_scalar(indices):
             return self.isel(axis, indices, inplace=inplace)
         raise NotImplementedError("Only single index selection is supported.")
+
+    def _svd_abelian(self, **kwargs):
+        kwargs.setdefault("method", "svd")
+        kwargs.setdefault("absorb", None)
+        kwargs.setdefault("max_bond", None)
+        kwargs.setdefault("cutoff", 0.0)
+        return self._split_abelian(**kwargs)
+
+    def _svd_via_eig_abelian(self, **kwargs):
+        kwargs.setdefault("method", "svd:eig")
+        kwargs.setdefault("absorb", None)
+        kwargs.setdefault("max_bond", None)
+        kwargs.setdefault("cutoff", 0.0)
+        return self._split_abelian(**kwargs)
+
+    def _qr_abelian(self, **kwargs) -> tuple["ArrayCommon", "ArrayCommon"]:
+        """Regular Abelian QR decomposition."""
+        kwargs.setdefault("method", "qr")
+        kwargs.setdefault("stabilized", False)
+        q, _, r = self._split_abelian(**kwargs)
+        return q, r
+
+    def _qr_via_cholesky_abelian(
+        self,
+        shift=True,
+        solve_triangular=True,
+        **kwargs,
+    ) -> tuple["ArrayCommon", None, "ArrayCommon"]:
+        """QR decomposition of a 2D flat abelian array via Cholesky
+        factorization. Implemented by transposing to LQ at the block
+        level.
+
+        Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
+        upper triangular.
+
+        Parameters
+        ----------
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``Absorb.U_sVH`` (1, 'right'): return ``(Q, None, R)``.
+            - ``Absorb.sVH`` (11, 'rfactor'): return ``(None, None, R)``.
+            - ``Absorb.U`` (10, 'lorthog'): return ``(Q, None, None)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+        solve_triangular : bool, optional
+            Whether to use triangular solve (faster) or general solve.
+            Default is True.
+
+        Returns
+        -------
+        Q : AbelianCommon or None
+            The isometric factor.
+        s : None
+            Always None.
+        R : AbelianCommon or None
+            The upper triangular factor.
+        """
+        kwargs.setdefault("method", "qr:cholesky")
+        kwargs.setdefault("shift", shift)
+        kwargs.setdefault("solve_triangular", solve_triangular)
+        return self._split_abelian(**kwargs)
+
+    def _lq_abelian(self, **kwargs) -> tuple["ArrayCommon", "ArrayCommon"]:
+        """Regular Abelian LQ decomposition."""
+        kwargs.setdefault("method", "lq")
+        kwargs.setdefault("stabilized", False)
+        kwargs.setdefault("left_carries_charge", False)
+        l, _, q = self._split_abelian(**kwargs)
+        return l, q
+
+    def _lq_via_cholesky_abelian(
+        self,
+        shift=True,
+        solve_triangular=True,
+        **kwargs,
+    ) -> tuple["ArrayCommon", None, "ArrayCommon"]:
+        """LQ decomposition of a 2D flat abelian array via Cholesky
+        factorization of the Gram matrix ``x @ x^H``.
+
+        Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q``
+        is isometric.
+
+        Parameters
+        ----------
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``Absorb.Us_VH`` (-1, 'left'): return ``(L, None, Q)``.
+            - ``Absorb.Us`` (-10, 'lfactor'): return ``(L, None, None)``.
+            - ``Absorb.VH`` (-11, 'rorthog'): return ``(None, None, Q)``.
+
+        shift : float, optional
+            Diagonal regularization shift. If True or negative, auto-compute
+            from dtype machine epsilon. The shift is always applied as a
+            relative shift scaled by the trace of each block. Default is True.
+        solve_triangular : bool, optional
+            Whether to use triangular solve (faster) or general solve
+            to compute Q. Default is True.
+
+        Returns
+        -------
+        L : AbelianCommon or None
+            The lower triangular factor.
+        s : None
+            Always None.
+        Q : AbelianCommon or None
+            The isometric factor.
+        """
+        kwargs.setdefault("method", "lq:cholesky")
+        kwargs.setdefault("shift", shift)
+        kwargs.setdefault("solve_triangular", solve_triangular)
+        kwargs.setdefault("left_carries_charge", False)
+        return self._split_abelian(**kwargs)
+
+    def __str__(self):
+        lines = [
+            (
+                f"{self.__class__.__name__}(ndim={self.ndim}, "
+                f"charge={self.charge}, indices=["
+            )
+        ]
+        for i in range(self.ndim):
+            lines.extend(
+                f"    {line}" for line in str(self.indices[i]).split("\n")
+            )
+        lines.append(
+            (
+                f"], num_blocks={self.num_blocks}, backend={self.backend}, "
+                f"dtype={self.dtype})"
+            )
+        )
+        return "\n".join(lines)
 
     def __repr__(self):
         if self.static_symmetry is not None:

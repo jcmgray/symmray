@@ -1,6 +1,6 @@
 """Abelian symmetric arrays with block sparse backend."""
 
-from ..abelian_common import AbelianCommon
+from ..array_common import ArrayCommon
 from ..common import SymmrayCommon
 from ..linalg_common import Absorb
 from ..symmetries import get_symmetry
@@ -14,7 +14,7 @@ from .sparse_vector import BlockVector
 class AbelianArray(
     SparseArrayCommon,
     BlockCommon,
-    AbelianCommon,
+    ArrayCommon,
     SymmrayCommon,
 ):
     """A block sparse array with symmetry constraints.
@@ -302,7 +302,9 @@ class AbelianArray(
     # --------------------------- linalg methods ---------------------------- #
 
     def qr(
-        self, stabilized=False, **kwargs
+        self,
+        stabilized=False,
+        **kwargs,
     ) -> tuple["AbelianArray", "AbelianArray"]:
         """QR decomposition of an AbelianArray.
 
@@ -311,7 +313,7 @@ class AbelianArray(
         x : AbelianArray
             The block symmetric array to decompose.
         stabilized : bool, optional
-            Whether to use a stabilized QR decomposition, that is, with
+            Whether to use a stabilized QR decomposition, that is, ensure
             positive diagonal elements in the R factor. Default is False.
 
         Returns
@@ -363,11 +365,11 @@ class AbelianArray(
 
     def svd_via_eig_truncated(
         self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
         **kwargs,
     ):
         """Truncated singular value decomposition of this sparse

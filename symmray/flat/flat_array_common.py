@@ -10,15 +10,11 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
-from ..abelian_common import maybe_keep_label
+from ..array_common import maybe_keep_label
 from ..linalg_common import (
     Absorb,
     absorb_svd_result,
-    blocklevel_cholesky_regularized,
-    blocklevel_lq_via_cholesky,
-    blocklevel_qr_via_cholesky,
-    blocklevel_svd_rand_truncated,
-    blocklevel_svd_via_eig,
+    array_split,
 )
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..sparse.sparse_array_common import (
@@ -1500,98 +1496,105 @@ class FlatArrayCommon:
 
     # --------------------------- linalg methods ---------------------------- #
 
-    def _qr_abelian(
+    def _split_abelian(
         self,
-        stabilized=False,
-    ) -> tuple["FlatArrayCommon", "FlatArrayCommon"]:
+        *,
+        fn=None,
+        left_carries_charge=True,
+        **kwargs,
+    ):
         if self.ndim != 2:
-            raise ValueError(
-                "QR is only defined for 2D AbelianArrayFlat objects."
+            raise NotImplementedError(
+                "split only implemented for 2D FlatArrayCommon,"
+                f" got {self.ndim}D. Consider fusing first."
             )
-
-        qb, rb = ar.do("linalg.qr", self._blocks, like=self.backend)
-
-        if stabilized:
-            # make each r-factor have positive diagonal
-            rbd = ar.do("diagonal", rb, axis1=1, axis2=2, like=self.backend)
-            r0 = rbd == 0
-            s = (rbd + r0) / (ar.do("abs", rbd, like=self.backend) + r0)
-
-            qb = qb * s[:, None, :]
-            rb = rb * s[:, :, None]
 
         ixl, ixr = self.indices
 
-        # drop fusing info from bond
-        bond_ind = FlatIndex(
-            num_charges=ixr.num_charges,
-            charge_size=min(ixl.charge_size, ixr.charge_size),
-            dual=ixr.dual,
+        if "max_bond" in kwargs:
+            rank = min(ixl.charge_size, ixr.charge_size)
+            num_charges = ixl.num_charges
+            max_bond = kwargs.pop("max_bond")
+
+            if max_bond is None or max_bond < 0:
+                # no truncation
+                max_bond = rank
+            else:
+                max_bond = min(max_bond // num_charges, rank)
+
+            kwargs["max_bond"] = max_bond
+        else:
+            max_bond = None
+
+        xp = self.get_namespace()
+
+        if fn is None:
+            left_b, s_b, right_b = array_split(self._blocks, **kwargs)
+        else:
+            left_b, s_b, right_b = fn(self._blocks, **kwargs)
+
+        if max_bond is None:
+            # determine bond charge_size from output shapes
+            if left_b is not None:
+                max_bond = xp.shape(left_b)[-1]
+            elif right_b is not None:
+                max_bond = xp.shape(right_b)[-2]
+            else:
+                max_bond = xp.shape(s_b)[-1]
+
+        # now we wrap blocks into FlatArray objects
+        if left_carries_charge:
+            bond_dual = ixr.dual
+        else:
+            bond_dual = not ixl.dual
+        ixb = FlatIndex(
+            num_charges=ixl.num_charges,
+            charge_size=max_bond,
+            dual=bond_dual,
         )
 
-        q = self.copy_with(
-            blocks=qb,
-            indices=(ixl, bond_ind),
-        )
+        if left_b is not None:
+            lopts = {"indices": (ixl, ixb), "blocks": left_b}
+            if left_carries_charge:
+                left = self.copy_with(**lopts)
+            else:
+                left = self.new_with(sectors=self.sectors[:, (0, 0)], **lopts)
+        else:
+            left = None
 
-        # R is always charge 0 and thus block diagonal
-        # NOTE: we don't `copy_with` as we need to drop phases/dummy_modes ...
-        r = self.new_with(
-            sectors=self.sectors[:, (1, 1)],
-            blocks=rb,
-            indices=(bond_ind.conj(), ixr),
-        )
-
-        return q, r
-
-    def _svd_abelian(
-        self,
-    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        if self.ndim != 2:
-            raise ValueError(
-                "SVD is only defined for 2D FlatArrayCommon objects."
+        if s_b is not None:
+            s = FlatVector(
+                sectors=self.sectors[:, -1],
+                blocks=s_b,
             )
+        else:
+            s = None
 
-        bu, bs, bvh = ar.do(
-            "linalg.svd",
-            self._blocks,
-            like=self.backend,
-        )
-
-        ixl, ixr = self.indices
-
-        # drop fusing info from bond
-        bond_ind = FlatIndex(
-            num_charges=ixr.num_charges,
-            charge_size=min(ixl.charge_size, ixr.charge_size),
-            dual=ixr.dual,
-        )
-
-        u = self.copy_with(
-            blocks=bu,
-            indices=(ixl, bond_ind),
-        )
-
-        s = FlatVector(
-            sectors=self.sectors[:, -1],
-            blocks=bs,
-        )
-
-        # VH is always charge 0 and thus block diagonal
-        # NOTE: we can't `copy_with` as we need to drop phases/dummy_modes ...
-        vh = self.new_with(
-            sectors=self.sectors[:, (1, 1)],
-            blocks=bvh,
-            indices=(bond_ind.conj(), ixr),
-        )
+        if right_b is not None:
+            ropts = {"indices": (ixb.conj(), ixr), "blocks": right_b}
+            if left_carries_charge:
+                right = self.new_with(sectors=self.sectors[:, (1, 1)], **ropts)
+            else:
+                right = self.copy_with(**ropts)
+        else:
+            right = None
 
         if DEBUG:
-            # u and vh checked in copy_with
-            s.check()
+            if left is not None:
+                left.check()
+            if s is not None:
+                s.check()
+            if right is not None:
+                right.check()
 
-        return u, s, vh
+        return left, s, right
 
-    def _cholesky_abelian(self, upper=False, shift=True) -> "FlatArrayCommon":
+    def _cholesky_abelian(
+        self,
+        upper=False,
+        shift=True,
+        **kwargs,
+    ) -> "FlatArrayCommon":
         """Cholesky decomposition of a 2D flat abelian array.
 
         Parameters
@@ -1615,181 +1618,16 @@ class FlatArrayCommon:
                 "for 2D FlatArrayCommon objects."
             )
 
-        l_or_r_blocks = blocklevel_cholesky_regularized(
-            self._blocks, upper=upper, shift=shift
+        left, _, right = array_split(
+            self._blocks,
+            absorb="rsqrt" if upper else "lsqrt",
+            shift=shift,
+            method="cholesky",
+            **kwargs,
         )
 
-        l_or_r = self.copy_with(blocks=l_or_r_blocks)
+        l_or_r = self.copy_with(blocks=left if right is None else right)
         return l_or_r
-
-    def _lq_via_cholesky_abelian(
-        self,
-        absorb=Absorb.Us_VH,
-        shift=True,
-        solve_triangular=True,
-    ) -> tuple["FlatArrayCommon", None, "FlatArrayCommon"]:
-        """LQ decomposition of a 2D flat abelian array via Cholesky
-        factorization of the Gram matrix ``x @ x^H``.
-
-        Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q``
-        is isometric.
-
-        Parameters
-        ----------
-        absorb : int or str, optional
-            Absorption mode:
-
-            - ``Absorb.Us_VH`` (-1, 'left'): return ``(L, None, Q)``.
-            - ``Absorb.Us`` (-10, 'lfactor'): return ``(L, None, None)``.
-            - ``Absorb.VH`` (-11, 'rorthog'): return ``(None, None, Q)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-        solve_triangular : bool, optional
-            Whether to use triangular solve (faster) or general solve
-            to compute Q. Default is True.
-
-        Returns
-        -------
-        L : FlatArrayCommon or None
-            The lower triangular factor.
-        s : None
-            Always None.
-        Q : FlatArrayCommon or None
-            The isometric factor.
-        """
-        if self.ndim != 2:
-            raise ValueError(
-                "LQ via Cholesky is only defined for "
-                "2D FlatArrayCommon objects."
-            )
-
-        absorb = Absorb.parse(absorb)
-
-        bl, _, bq = blocklevel_lq_via_cholesky(
-            self._blocks,
-            absorb=absorb,
-            shift=shift,
-            solve_triangular=solve_triangular,
-        )
-
-        ixl, ixr = self.indices
-
-        # L is square (da, da), always charge 0 (block diagonal)
-        l = (
-            self.new_with(
-                sectors=self.sectors[:, (0, 0)],
-                blocks=bl,
-                indices=(ixl, ixl.conj()),
-            )
-            if bl is not None
-            else None
-        )
-
-        # Q is (da, db) — carries the original charge of x
-        q = (
-            self.copy_with(
-                blocks=bq,
-                indices=(ixl, ixr),
-            )
-            if bq is not None
-            else None
-        )
-
-        if DEBUG:
-            if l is not None:
-                l.check()
-            if q is not None:
-                q.check()
-
-        return l, None, q
-
-    def _qr_via_cholesky_abelian(
-        self,
-        absorb=Absorb.U_sVH,
-        shift=True,
-        solve_triangular=True,
-    ) -> tuple["FlatArrayCommon", None, "FlatArrayCommon"]:
-        """QR decomposition of a 2D flat abelian array via Cholesky
-        factorization. Implemented by transposing to LQ at the block
-        level.
-
-        Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
-        upper triangular.
-
-        Parameters
-        ----------
-        absorb : int or str, optional
-            Absorption mode:
-
-            - ``Absorb.U_sVH`` (1, 'right'): return ``(Q, None, R)``.
-            - ``Absorb.sVH`` (11, 'rfactor'): return ``(None, None, R)``.
-            - ``Absorb.U`` (10, 'lorthog'): return ``(Q, None, None)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-        solve_triangular : bool, optional
-            Whether to use triangular solve (faster) or general solve.
-            Default is True.
-
-        Returns
-        -------
-        Q : FlatArrayCommon or None
-            The isometric factor.
-        s : None
-            Always None.
-        R : FlatArrayCommon or None
-            The upper triangular factor.
-        """
-        if self.ndim != 2:
-            raise ValueError(
-                "QR via Cholesky is only defined for "
-                "2D FlatArrayCommon objects."
-            )
-
-        absorb = Absorb.parse(absorb)
-
-        bq, _, br = blocklevel_qr_via_cholesky(
-            self._blocks,
-            absorb=absorb,
-            shift=shift,
-            solve_triangular=solve_triangular,
-        )
-
-        ixl, ixr = self.indices
-
-        # Q is (da, db) — carries the original charge of x
-        q = (
-            self.copy_with(
-                blocks=bq,
-                indices=(ixl, ixr),
-            )
-            if bq is not None
-            else None
-        )
-
-        # R is square (db, db), always charge 0 (block diagonal)
-        r = (
-            self.new_with(
-                sectors=self.sectors[:, (1, 1)],
-                blocks=br,
-                indices=(ixr.conj(), ixr),
-            )
-            if br is not None
-            else None
-        )
-
-        if DEBUG:
-            if q is not None:
-                q.check()
-            if r is not None:
-                r.check()
-
-        return q, None, r
 
     def svd_truncated(
         self,
@@ -1831,140 +1669,43 @@ class FlatArrayCommon:
             Whether to renormalize the singular values (depends on
             `cutoff_mode`).
         """
-        if kwargs:
-            import warnings
-
-            warnings.warn(
-                f"Got unexpected kwargs {kwargs} in svd_truncated "
-                f"for {self.__class__}. Ignoring them.",
-                UserWarning,
+        need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
+        if need_full_spectrum:
+            raise NotImplementedError(
+                "Dynamic truncation not supported in "
+                "flat svd_via_eig_truncated yet."
             )
 
-        # raw abelian or fermionic svd
-        u, s, vh = self.svd()
-        return truncate_svd_result_flat(
-            u, s, vh, cutoff, cutoff_mode, max_bond, absorb, renorm
+        # perform in one step per block, using absorb shortcuts
+        kwargs.setdefault("method", "svd")
+        return self._split_abelian(
+            absorb=absorb,
+            max_bond=max_bond,
+            **kwargs,
         )
 
     def _svd_via_eig_truncated_abelian(
         self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
         **kwargs,
     ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        absorb = Absorb.parse(absorb)
         need_full_spectrum = (cutoff > 0.0) or (renorm > 0)
-
-        ixl, ixr = self.indices
-        rank = min(ixl.charge_size, ixr.charge_size)
-        num_charges = ixl.num_charges
-
         if need_full_spectrum:
-            # 1. compute full svd via eig ...
-            bu, bs, bvh = blocklevel_svd_via_eig(
-                self._blocks,
-                absorb=Absorb.U_s_VH,
-                max_bond=-1,
-                descending=True,
+            raise NotImplementedError(
+                "Dynamic truncation not supported in "
+                "flat svd_via_eig_truncated yet."
             )
 
-            bond_ind = FlatIndex(
-                num_charges=num_charges,
-                charge_size=rank,
-                dual=ixr.dual,
-            )
-            u = self.copy_with(
-                blocks=bu,
-                indices=(ixl, bond_ind),
-            )
-            s = FlatVector(
-                sectors=self.sectors[:, -1],
-                blocks=bs,
-            )
-            vh = self.new_with(
-                sectors=self.sectors[:, (1, 1)],
-                blocks=bvh,
-                indices=(bond_ind.conj(), ixr),
-            )
-
-            # 2. ... then truncate / handle absorb separately
-            return truncate_svd_result_flat(
-                u,
-                s,
-                vh,
-                cutoff,
-                cutoff_mode,
-                max_bond,
-                absorb,
-                renorm,
-            )
-        else:
-            # perform in one step, taking advantage of shortcuts
-            if max_bond > 0:
-                new_charge_size = min(max_bond // num_charges, rank)
-            else:
-                new_charge_size = rank
-
-            bu, bs, bvh = blocklevel_svd_via_eig(
-                self._blocks,
-                absorb=absorb,
-                max_bond=new_charge_size,
-                descending=False,
-            )
-
-            bond_ind = FlatIndex(
-                num_charges=num_charges,
-                charge_size=new_charge_size,
-                dual=ixr.dual,
-            )
-
-            # wrap non-None results in symmray objects
-            u = (
-                self.copy_with(
-                    blocks=bu,
-                    indices=(ixl, bond_ind),
-                )
-                if bu is not None
-                else None
-            )
-            vh = (
-                self.new_with(
-                    sectors=self.sectors[:, (1, 1)],
-                    blocks=bvh,
-                    indices=(bond_ind.conj(), ixr),
-                )
-                if bvh is not None
-                else None
-            )
-            s = (
-                FlatVector(
-                    sectors=self.sectors[:, -1],
-                    blocks=bs,
-                )
-                if bs is not None
-                else None
-            )
-
-            if DEBUG:
-                if u is not None:
-                    u.check()
-                if vh is not None:
-                    vh.check()
-                if s is not None:
-                    s.check()
-
-            return u, s, vh
-
-    def _svd_via_eig_abelian(
-        self,
-    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        return self._svd_via_eig_truncated_abelian(
-            cutoff=0.0,
-            max_bond=-1,
-            absorb=None,
+        # perform in one step per block, using absorb shortcuts
+        kwargs.setdefault("method", "svd:eig")
+        return self._split_abelian(
+            absorb=absorb,
+            max_bond=max_bond,
+            **kwargs,
         )
 
     def _svd_rand_truncated_abelian(
@@ -1976,69 +1717,15 @@ class FlatArrayCommon:
         seed=None,
         **kwargs,
     ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        absorb = Absorb.parse(absorb)
-
-        ixl, ixr = self.indices
-        rank = min(ixl.charge_size, ixr.charge_size)
-        num_charges = ixl.num_charges
-
-        if max_bond > 0:
-            new_charge_size = min(max_bond // num_charges, rank)
-        else:
-            new_charge_size = rank
-
-        bu, bs, bvh = blocklevel_svd_rand_truncated(
-            self._blocks,
+        kwargs.setdefault("method", "svd:rand")
+        return self._split_abelian(
             absorb=absorb,
-            max_bond=new_charge_size,
+            max_bond=max_bond,
             oversample=oversample,
             num_iterations=num_iterations,
             seed=seed,
             **kwargs,
         )
-
-        bond_ind = FlatIndex(
-            num_charges=num_charges,
-            charge_size=new_charge_size,
-            dual=ixr.dual,
-        )
-
-        # wrap non-None results in symmray objects
-        u = (
-            self.copy_with(
-                blocks=bu,
-                indices=(ixl, bond_ind),
-            )
-            if bu is not None
-            else None
-        )
-        vh = (
-            self.new_with(
-                sectors=self.sectors[:, (1, 1)],
-                blocks=bvh,
-                indices=(bond_ind.conj(), ixr),
-            )
-            if bvh is not None
-            else None
-        )
-        s = (
-            FlatVector(
-                sectors=self.sectors[:, -1],
-                blocks=bs,
-            )
-            if bs is not None
-            else None
-        )
-
-        if DEBUG:
-            if u is not None:
-                u.check()
-            if vh is not None:
-                vh.check()
-            if s is not None:
-                s.check()
-
-        return u, s, vh
 
     def _eigh_abelian(self) -> tuple["FlatArrayCommon", FlatVector]:
         if self.ndim != 2:
@@ -2074,42 +1761,19 @@ class FlatArrayCommon:
         positive=0,
         **kwargs,
     ):
-        if kwargs:
-            import warnings
-
-            warnings.warn(
-                f"Got unexpected kwargs {kwargs} in eigh_truncated "
-                f"for {self.__class__}. Ignoring them.",
-                UserWarning,
+        if cutoff > 0.0 or renorm > 0:
+            raise NotImplementedError(
+                "Dynamic truncation not supported in flat eigh_truncated yet."
             )
-
-        s, U = self._eigh_abelian()
-
-        # make sure to sort by descending absolute value
-        if not positive:
-            idx = ar.do(
-                "argsort", -ar.do("abs", s._blocks, like=self.backend), axis=1
-            )
-            s.modify(
-                blocks=ar.do("take_along_axis", s._blocks, idx, axis=1),
-            )
-            U.modify(
-                blocks=ar.do(
-                    "take_along_axis", U._blocks, idx[:, None, :], axis=2
-                )
-            )
-        else:
-            # assume all positive, just need to flip
-            s.modify(blocks=s._blocks[:, ::-1])
-            U.modify(blocks=U._blocks[:, :, ::-1])
-
-        if DEBUG:
-            s.check()
-            U.check()
-
-        # then we can truncate as if svd
-        return truncate_svd_result_flat(
-            U, s, U.H, cutoff, cutoff_mode, max_bond, absorb, renorm
+        kwargs.setdefault("method", "eigh")
+        return self._split_abelian(
+            absorb=absorb,
+            max_bond=max_bond,
+            cutoff=cutoff,
+            cutoff_mode=cutoff_mode,
+            renorm=renorm,
+            positive=positive,
+            **kwargs,
         )
 
 

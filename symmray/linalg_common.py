@@ -1,6 +1,26 @@
 """Common linear algebra utilities shared across backends."""
 
+import functools
+
 import autoray as ar
+
+
+@functools.cache
+def get_quimb_array_split():
+    try:
+        from quimb.tensor.decomp import array_split
+
+        return array_split
+    except ImportError:
+        return None
+
+
+def array_split(*args, **kwargs):
+    # NOTE: wrap for three reasons:
+    # 1) avoid hard dependency and eager import
+    # 2) might want to provide fallback implementations of some methods
+    # 3) centralized place to add any informational warnings or errors
+    return get_quimb_array_split()(*args, **kwargs)
 
 
 class Absorb:
@@ -48,8 +68,52 @@ class Absorb:
     sVH = 11  # 'rfactor'
     sqVH = 12  # 'rsqrt'
 
-    _map = {}
-    _transpose_map = {}
+    _map = {
+        U_s_VH: U_s_VH,
+        "U,s,VH": U_s_VH,
+        s: s,
+        "s": s,
+        Usq: Usq,
+        "lsqrt": Usq,
+        VH: VH,
+        "VH": VH,
+        "rorthog": VH,
+        Us: Us,
+        "Us": Us,
+        "lfactor": Us,
+        Us_VH: Us_VH,
+        "Us,VH": Us_VH,
+        "left": Us_VH,
+        Usq_sqVH: Usq_sqVH,
+        "Usq,sqVH": Usq_sqVH,
+        "both": Usq_sqVH,
+        U_sVH: U_sVH,
+        "U,sVH": U_sVH,
+        "right": U_sVH,
+        U: U,
+        "U": U,
+        "lorthog": U,
+        sVH: sVH,
+        "sVH": sVH,
+        "rfactor": sVH,
+        sqVH: sqVH,
+        "sqVH": sqVH,
+        "rsqrt": sqVH,
+    }
+
+    _transpose_map = {
+        Us_VH: U_sVH,
+        U_sVH: Us_VH,
+        Us: sVH,
+        sVH: Us,
+        VH: U,
+        U: VH,
+        Usq: sqVH,
+        sqVH: Usq,
+        U_s_VH: U_s_VH,
+        s: s,
+        Usq_sqVH: Usq_sqVH,
+    }
 
     @classmethod
     def parse(cls, absorb):
@@ -94,40 +158,6 @@ class Absorb:
             The transposed absorb mode code.
         """
         return cls._transpose_map[absorb]
-
-
-# populate the map once at import time
-for _mode, _aliases in [
-    (Absorb.U_s_VH, ["U,s,VH"]),
-    (Absorb.s, ["s"]),
-    (Absorb.Usq, ["lsqrt"]),
-    (Absorb.VH, ["VH", "rorthog"]),
-    (Absorb.Us, ["Us", "lfactor"]),
-    (Absorb.Us_VH, ["Us,VH", "left"]),
-    (Absorb.Usq_sqVH, ["Usq,sqVH", "both"]),
-    (Absorb.U_sVH, ["U,sVH", "right"]),
-    (Absorb.U, ["U", "lorthog"]),
-    (Absorb.sVH, ["sVH", "rfactor"]),
-    (Absorb.sqVH, ["sqVH", "rsqrt"]),
-]:
-    Absorb._map[_mode] = _mode
-    for _alias in _aliases:
-        Absorb._map[_alias] = _mode
-del _mode, _aliases, _alias  # noqa: F821
-
-# populate the transpose map: swap left <-> right roles
-for _a, _b in [
-    (Absorb.Us_VH, Absorb.U_sVH),
-    (Absorb.Us, Absorb.sVH),
-    (Absorb.VH, Absorb.U),
-    (Absorb.Usq, Absorb.sqVH),
-]:
-    Absorb._transpose_map[_a] = _b
-    Absorb._transpose_map[_b] = _a
-# symmetric modes map to themselves
-for _a in (Absorb.U_s_VH, Absorb.s, Absorb.Usq_sqVH):
-    Absorb._transpose_map[_a] = _a
-del _a, _b
 
 
 def absorb_svd_result(U, s, VH, absorb):
@@ -587,19 +617,15 @@ def blocklevel_svd_rand_truncated(
     k_sketch = min(da, db, k + oversample)
 
     if right is None:
-        if absorb in (
-            Absorb.U,
-            Absorb.Us,
-            Absorb.Us_VH,
-            Absorb.VH,
-        ):
-            right = False
-        elif absorb in (Absorb.sVH, Absorb.sqVH, Absorb.U_sVH):
+        # avoid svd on reduced factor if possible
+        if absorb in (Absorb.U_sVH, Absorb.U, Absorb.sVH):
             right = True
+        elif absorb in (Absorb.Us_VH, Absorb.Us, Absorb.VH):
+            right = False
         else:
             right = da > db
 
-    rng = ar.do("random.default_rng", seed, like=x)
+    rng = xp.random.default_rng(seed, like=x)
     xdag = xp.conj(xp.swapaxes(x, -2, -1))
 
     if right:
@@ -617,12 +643,12 @@ def blocklevel_svd_rand_truncated(
 
         # X ~ Q @ B
         if k >= k_sketch:
-            if absorb == Absorb.U:
-                return Q, None, None
-            if absorb == Absorb.sVH:
-                return None, None, Qdag @ x
-            if absorb == Absorb.U_sVH:
+            if absorb == Absorb.U_sVH:  # 'right'
                 return Q, None, Qdag @ x
+            if absorb == Absorb.sVH:  # 'rfactor'
+                return None, None, Qdag @ x
+            if absorb == Absorb.U:  # 'lorthog'
+                return Q, None, None
 
         # form reduced factor
         B = Qdag @ x
@@ -640,14 +666,14 @@ def blocklevel_svd_rand_truncated(
         Q, _ = xp.linalg.qr(y)
         Qdag = xp.conj(xp.swapaxes(Q, -2, -1))
 
-        # X ~ B @ Qdag
+        # X ≈ B @ Qdag, maybe shortcut for some absorb if no truncation needed
         if k >= k_sketch:
-            if absorb == Absorb.VH:
-                return None, None, Qdag
-            if absorb == Absorb.Us:
-                return x @ Q, None, None
-            if absorb == Absorb.Us_VH:
+            if absorb == Absorb.Us_VH:  # 'left'
                 return x @ Q, None, Qdag
+            if absorb == Absorb.Us:  # 'lfactor'
+                return x @ Q, None, None
+            if absorb == Absorb.VH:  # 'rorthog'
+                return None, None, Qdag
 
         # form reduced factor
         B = x @ Q
