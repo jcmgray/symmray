@@ -8,6 +8,7 @@ import autoray as ar
 from .index_common import Index
 from .symmetries import Symmetry, get_symmetry
 from .utils import DEBUG, lazyabstractmethod
+from .vector_common import VectorCommon
 
 
 @functools.lru_cache(maxsize=2**15)
@@ -527,19 +528,149 @@ class ArrayCommon:
             return self.isel(axis, indices, inplace=inplace)
         raise NotImplementedError("Only single index selection is supported.")
 
-    def _svd_abelian(self, **kwargs):
+    def svd(
+        self, **kwargs
+    ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
+        """Singular value decomposition of this array.
+
+        Returns
+        -------
+        u : ArrayCommon
+            The left singular vectors.
+        s : VectorCommon
+            The singular values.
+        vh : ArrayCommon
+            The right singular vectors (hermitian transposed).
+        """
         kwargs.setdefault("method", "svd")
         kwargs.setdefault("absorb", None)
-        kwargs.setdefault("max_bond", None)
-        kwargs.setdefault("cutoff", 0.0)
-        return self._split_abelian(**kwargs)
+        kwargs.setdefault("max_bond", -1)
+        kwargs.setdefault("cutoff", -1.0)
+        return self._split(**kwargs)
 
-    def _svd_via_eig_abelian(self, **kwargs):
+    def svd_truncated(
+        self,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
+        **kwargs,
+    ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
+        """Truncated singular value decomposition of this array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Singular value cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize the singular values (depends on
+            `cutoff_mode`).
+
+        Returns
+        -------
+        u : ArrayCommon or None
+            The abelian array of left singular vectors.
+        s : VectorCommon or None
+            The vector of singular values, or None if absorbed.
+        vh : ArrayCommon or None
+            The abelian array of right singular vectors.
+        """
+        kwargs.setdefault("method", "svd")
+        kwargs.setdefault("cutoff", cutoff)
+        kwargs.setdefault("cutoff_mode", cutoff_mode)
+        kwargs.setdefault("max_bond", max_bond)
+        kwargs.setdefault("absorb", absorb)
+        kwargs.setdefault("renorm", renorm)
+        return self._split(**kwargs)
+
+    def svd_via_eig(self, **kwargs):
+        """Singular value decomposition of this array, using
+        eigen-decomposition of the Gram matrix (xdag @ x or x @ xdag). This can
+        be faster, but also incur a loss of precision due to the squaring.
+        """
         kwargs.setdefault("method", "svd:eig")
         kwargs.setdefault("absorb", None)
-        kwargs.setdefault("max_bond", None)
-        kwargs.setdefault("cutoff", 0.0)
-        return self._split_abelian(**kwargs)
+        kwargs.setdefault("max_bond", -1)
+        kwargs.setdefault("cutoff", -1.0)
+        return self._split(**kwargs)
+
+    def svd_via_eig_truncated(
+        self,
+        cutoff=0.0,
+        cutoff_mode="rsum2",
+        max_bond=None,
+        absorb="both",
+        renorm=False,
+        **kwargs,
+    ):
+        """Truncated singular value decomposition of this array, using
+        eigen-decomposition of the gram matrix (xdag @ x or x @ xdag). This can
+        be faster, but also incur a loss of precision due to the squaring.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Singular value cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values as a BlockVector.
+
+        renorm : {0, 1}
+            Whether to renormalize singular values (depends on `cutoff_mode`).
+
+        Returns
+        -------
+        u : AbelianCommon or None
+            The abelian array of left singular vectors.
+        s : VectorCommon or None
+            The vector of singular values, or None if absorbed.
+        vh : AbelianCommon or None
+            The abelian array of right singular vectors.
+        """
+        kwargs.setdefault("method", "svd:eig")
+        kwargs.setdefault("cutoff", cutoff)
+        kwargs.setdefault("cutoff_mode", cutoff_mode)
+        kwargs.setdefault("max_bond", max_bond)
+        kwargs.setdefault("absorb", absorb)
+        kwargs.setdefault("renorm", renorm)
+        return self._split(**kwargs)
 
     def qr(
         self,
@@ -612,12 +743,37 @@ class ArrayCommon:
         kwargs.setdefault("solve_triangular", solve_triangular)
         return self._split_abelian(**kwargs)
 
-    def _lq_abelian(self, **kwargs) -> tuple["ArrayCommon", "ArrayCommon"]:
-        """Regular Abelian LQ decomposition."""
+    def lq(
+        self,
+        stabilized=False,
+        **kwargs,
+    ) -> tuple["ArrayCommon", "ArrayCommon"]:
+        """LQ decomposition.
+
+        Parameters
+        ----------
+        stabilized : bool, optional
+            Whether to use a stabilized LQ decomposition, that is, with
+            positive diagonal elements in the L factor. Default is False.
+        absorb : str or int, optional
+            Which factors to return in the output, by default 'Us_VH' (both).
+            Options are:
+
+            - "left" or "Us_VH": return (L, Q)
+            - "lfactor" or "Us": return (L, None)
+            - "rorthog" or "VH": return (None, Q)
+
+        Returns
+        -------
+        l : ArrayCommon
+            The lower triangular matrix.
+        q : ArrayCommon
+            The orthogonal matrix.
+        """
         kwargs.setdefault("method", "lq")
-        kwargs.setdefault("stabilized", False)
+        kwargs.setdefault("stabilized", stabilized)
         kwargs.setdefault("left_carries_charge", False)
-        l, _, q = self._split_abelian(**kwargs)
+        l, _, q = self._split(**kwargs)
         return l, q
 
     def _lq_via_cholesky_abelian(

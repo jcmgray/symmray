@@ -1821,6 +1821,42 @@ class SparseArrayCommon:
 
     # --------------------------- linalg methods ---------------------------- #
 
+    def _split_abelian_full_spectrum(
+        self, *, fn=None, left_carries_charge=True, **kwargs
+    ):
+        # pop out truncation and absorb options
+        cutoff = kwargs.pop("cutoff", 0.0)
+        cutoff_mode = kwargs.pop("cutoff_mode", "rsum2")
+        renorm = kwargs.pop("renorm", False)
+        max_bond = kwargs.pop("max_bond", -1)
+        absorb = kwargs.pop("absorb", "both")
+        use_abs = kwargs.pop("use_abs", False)
+
+        # 1. compute full decomposition
+        left, s, right = self._split_abelian(
+            fn=fn,
+            left_carries_charge=left_carries_charge,
+            cutoff=0.0,
+            renorm=False,
+            max_bond=-1,
+            absorb=None,
+            **kwargs,
+        )
+
+        # 2. ... then truncate / handle absorb separately
+        return truncate_svd_result_blocksparse(
+            left,
+            s,
+            right,
+            cutoff=cutoff,
+            cutoff_mode=_CUTOFF_MODE_MAP[cutoff_mode],
+            max_bond=max_bond,
+            absorb=absorb,
+            renorm=renorm,
+            use_abs=use_abs,
+            backend=self.backend,
+        )
+
     def _split_abelian(
         self,
         *,
@@ -1832,6 +1868,27 @@ class SparseArrayCommon:
             raise NotImplementedError(
                 "split only implemented for 2D AbelianArrays,"
                 f" got {self.ndim}D. Consider fusing first."
+            )
+
+        # if max_bond is supplied make sure it is parsed
+        if "max_bond" in kwargs:
+            if kwargs["max_bond"] is None:
+                kwargs["max_bond"] = -1
+
+        need_full_spectrum = (
+            (kwargs.get("cutoff", -1.0) > 0.0)
+            or (kwargs.get("renorm", 0) > 0)
+            or
+            # XXX: currently need full spectrum even for fixed max_bond
+            # as it may not be evenly distributed across blocks
+            (kwargs.get("max_bond", -1) > 0)
+        )
+        if need_full_spectrum:
+            # must compute full spectrum first, *then* truncate / absorb
+            return self._split_abelian_full_spectrum(
+                fn=fn,
+                left_carries_charge=left_carries_charge,
+                **kwargs,
             )
 
         xp = self.get_namespace()
@@ -1934,114 +1991,6 @@ class SparseArrayCommon:
                 right.check_with(s, 0)
 
         return left, s, right
-
-    def _svd_via_eig_truncated_abelian(
-        self,
-        cutoff=0.0,
-        cutoff_mode="rsum2",
-        max_bond=None,
-        absorb="both",
-        renorm=False,
-        **kwargs,
-    ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
-        absorb = Absorb.parse(absorb)
-
-        if max_bond is None:
-            max_bond = -1
-
-        # XXX: currently need full spectrum even for fixed max_bond as it
-        # may not be evenly distributed across blocks
-        need_full_spectrum = (cutoff > 0.0) or (renorm > 0) or (max_bond > 0)
-
-        if need_full_spectrum:
-            # 1. compute full svd via eig ...
-            u, s, vh = self._svd_via_eig_abelian()
-
-            # 2. ... then truncate / handle absorb separately
-            return truncate_svd_result_blocksparse(
-                u,
-                s,
-                vh,
-                cutoff,
-                _CUTOFF_MODE_MAP[cutoff_mode],
-                max_bond,
-                absorb,
-                renorm,
-                backend=self.backend,
-            )
-        else:
-            # perform in one step per block, using absorb shortcuts
-            kwargs.setdefault("method", "svd:eig")
-            return self._split_abelian(
-                absorb=absorb,
-                max_bond=-1,
-                **kwargs,
-            )
-
-    def svd_truncated(
-        self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
-        **kwargs,
-    ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
-        """Truncated singular value decomposition of this sparse abelian
-        symmetric array.
-
-        Parameters
-        ----------
-        cutoff : float, optional
-            Singular value cutoff threshold.
-        cutoff_mode : int or str, optional
-            How to perform the truncation:
-
-            - 1 or 'abs': trim values below ``cutoff``
-            - 2 or 'rel': trim values below ``s[0] * cutoff``
-            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
-            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
-            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
-            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
-
-        max_bond : int
-            An explicit maximum bond dimension, use -1 for none.
-        absorb : {-1, 0, 1, None}
-            How to absorb the singular values.
-
-            - -1 or 'left': absorb into the left factor (U).
-            - 0 or 'both': absorb the square root into both factors.
-            - 1 or 'right': absorb into the right factor (VH).
-            - None: do not absorb, return singular values as a BlockVector.
-
-        renorm : {0, 1}
-            Whether to renormalize the singular values (depends on
-            `cutoff_mode`).
-        """
-        if kwargs:
-            import warnings
-
-            warnings.warn(
-                f"Got unexpected kwargs {kwargs} in svd_truncated "
-                f"for {self.__class__}. Ignoring them.",
-                UserWarning,
-            )
-
-        # raw abelian or fermionic svd
-        U, s, VH = self.svd()
-
-        # then truncate according to the options
-        return truncate_svd_result_blocksparse(
-            U,
-            s,
-            VH,
-            cutoff,
-            _CUTOFF_MODE_MAP[cutoff_mode],
-            max_bond,
-            absorb,
-            renorm,
-            backend=self.backend,
-        )
 
     def _eigh_abelian(self) -> tuple["BlockVector", "SparseArrayCommon"]:
         if self.ndim != 2:

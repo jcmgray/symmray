@@ -1522,14 +1522,14 @@ class FlatArrayCommon:
         ixl, ixr = self.indices
 
         if "max_bond" in kwargs:
-            rank = min(ixl.charge_size, ixr.charge_size)
-            num_charges = ixl.num_charges
             max_bond = kwargs.pop("max_bond")
 
+            rank = min(ixl.charge_size, ixr.charge_size)
             if max_bond is None or max_bond < 0:
                 # no truncation
                 max_bond = rank
             else:
+                num_charges = ixl.num_charges
                 max_bond = min(max_bond // num_charges, rank)
 
             kwargs["max_bond"] = max_bond
@@ -1638,74 +1638,6 @@ class FlatArrayCommon:
 
         l_or_r = self.copy_with(blocks=left if right is None else right)
         return l_or_r
-
-    def svd_truncated(
-        self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
-        **kwargs,
-    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        """Truncated singular value decomposition of this flat abelian
-        symmetric array.
-
-        Parameters
-        ----------
-        cutoff : float, optional
-            Singular value cutoff threshold.
-        cutoff_mode : int or str, optional
-            How to perform the truncation:
-
-            - 1 or 'abs': trim values below ``cutoff``
-            - 2 or 'rel': trim values below ``s[0] * cutoff``
-            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
-            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
-            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
-            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
-
-        max_bond : int
-            An explicit maximum bond dimension, use -1 for none.
-        absorb : {-1, 0, 1, None}
-            How to absorb the singular values.
-
-            - -1 or 'left': absorb into the left factor (U).
-            - 0 or 'both': absorb the square root into both factors.
-            - 1 or 'right': absorb into the right factor (VH).
-            - None: do not absorb, return singular values as a BlockVector.
-
-        renorm : {0, 1}
-            Whether to renormalize the singular values (depends on
-            `cutoff_mode`).
-        """
-        # perform in one step per block, using absorb shortcuts
-        kwargs.setdefault("method", "svd")
-        return self._split_abelian(
-            absorb=absorb,
-            max_bond=max_bond,
-            **kwargs,
-        )
-
-    def _svd_via_eig_truncated_abelian(
-        self,
-        max_bond=None,
-        cutoff=0.0,
-        cutoff_mode="rsum2",
-        absorb="both",
-        renorm=False,
-        **kwargs,
-    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        # perform in one step per block, using absorb shortcuts
-        kwargs.setdefault("method", "svd:eig")
-        return self._split_abelian(
-            absorb=absorb,
-            max_bond=max_bond,
-            cutoff=cutoff,
-            cutoff_mode=cutoff_mode,
-            renorm=renorm,
-            **kwargs,
-        )
 
     def _svd_rand_truncated_abelian(
         self,

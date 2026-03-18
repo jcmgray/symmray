@@ -2,8 +2,11 @@
 
 import autoray as ar
 
+from .array_common import ArrayCommon
+from .vector_common import VectorCommon
 
-def eigh(x, *args, **kwargs):
+
+def eigh(x: ArrayCommon, *args, **kwargs):
     """Hermitian eigen-decomposition of an assumed hermitian symmray array.
 
     Returns
@@ -16,7 +19,7 @@ def eigh(x, *args, **kwargs):
     return x.eigh(*args, **kwargs)
 
 
-def eigh_truncated(x, *args, **kwargs):
+def eigh_truncated(x: ArrayCommon, *args, **kwargs):
     """Truncated hermitian eigen-decomposition of an assumed hermitian symmray
     array.
 
@@ -59,17 +62,17 @@ def eigh_truncated(x, *args, **kwargs):
     return x.eigh_truncated(*args, **kwargs)
 
 
-def norm(x, *args, **kwargs):
+def norm(x: ArrayCommon, *args, **kwargs):
     return x.norm(*args, **kwargs)
 
 
-def qr(x, *args, **kwargs):
+def qr(x: ArrayCommon, *args, **kwargs):
     """QR decomposition of a symmray array."""
     kwargs.setdefault("stabilized", False)
     return x.qr(*args, **kwargs)
 
 
-def qr_stabilized(x, *args, **kwargs):
+def qr_stabilized(x: ArrayCommon, *args, **kwargs):
     """Stabilized QR decomposition of a symmray array, returning results in an
     SVD-like ``(Q, None, R)`` format for compatibility with tensor network
     split drivers.
@@ -79,13 +82,13 @@ def qr_stabilized(x, *args, **kwargs):
     return q, None, r
 
 
-def lq(x, *args, **kwargs):
+def lq(x: ArrayCommon, *args, **kwargs):
     """LQ decomposition of a symmray array."""
     kwargs.setdefault("stabilized", False)
     return x.lq(*args, **kwargs)
 
 
-def lq_stabilized(x, *args, **kwargs):
+def lq_stabilized(x: ArrayCommon, *args, **kwargs):
     """Stabilized LQ decomposition of a symmray array, returning results in an
     SVD-like ``(L, None, Q)`` format for compatibility with tensor network
     split drivers.
@@ -95,15 +98,20 @@ def lq_stabilized(x, *args, **kwargs):
     return l, None, q
 
 
-def solve(x, *args, **kwargs):
+def solve(x: ArrayCommon, *args, **kwargs):
     return x.solve(*args, **kwargs)
 
 
-def svd(x, *args, **kwargs):
+def svd(
+    x: ArrayCommon, *args, **kwargs
+) -> tuple[ArrayCommon, VectorCommon, ArrayCommon]:
+    """Singular value decomposition of a symmray array, returning all singular
+    values and vectors without truncation.
+    """
     return x.svd(*args, **kwargs)
 
 
-def svd_truncated(x, *args, **kwargs):
+def svd_truncated(x: ArrayCommon, *args, **kwargs):
     """Truncated singular value decomposition of a symmray array.
 
     Parameters
@@ -145,7 +153,7 @@ def svd_truncated(x, *args, **kwargs):
     return x.svd_truncated(*args, **kwargs)
 
 
-def svd_rand_truncated(x, *args, **kwargs):
+def svd_rand_truncated(x: ArrayCommon, *args, **kwargs):
     """Truncated singular value decomposition of a symmray array,
     using randomized sketching. This is efficient for low-rank
     approximations when a target ``max_bond`` is known.
@@ -181,7 +189,7 @@ def svd_rand_truncated(x, *args, **kwargs):
     return x.svd_rand_truncated(*args, **kwargs)
 
 
-def svd_via_eig_truncated(x, *args, **kwargs):
+def svd_via_eig_truncated(x: ArrayCommon, *args, **kwargs):
     """Truncated singular value decomposition of a symmray array, using
     eigen-decomposition of the gram (xdag @ x or x @ xdag) matrix. This can
     be faster, but also incur a loss of precision due to the squaring.
@@ -225,7 +233,7 @@ def svd_via_eig_truncated(x, *args, **kwargs):
     return x.svd_via_eig_truncated(*args, **kwargs)
 
 
-def cholesky(x, *args, **kwargs):
+def cholesky(x: ArrayCommon, *args, **kwargs):
     """Cholesky decomposition of an assumed positive-definite symmray array.
 
     Parameters
@@ -245,7 +253,7 @@ def cholesky(x, *args, **kwargs):
     return x.cholesky(*args, **kwargs)
 
 
-def cholesky_regularized(x, *args, **kwargs):
+def cholesky_regularized(x: ArrayCommon, *args, **kwargs):
     """Cholesky decomposition with optional diagonal regularization,
     returning results in an SVD-like ``(left, None, right)`` format
     for compatibility with tensor network split drivers.
@@ -279,7 +287,7 @@ def cholesky_regularized(x, *args, **kwargs):
     return x.cholesky_regularized(*args, **kwargs)
 
 
-def lq_via_cholesky(x, *args, **kwargs):
+def lq_via_cholesky(x: ArrayCommon, *args, **kwargs):
     """LQ decomposition via Cholesky factorization of ``x @ x^H``.
 
     Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q`` is
@@ -316,7 +324,7 @@ def lq_via_cholesky(x, *args, **kwargs):
     return x.lq_via_cholesky(*args, **kwargs)
 
 
-def qr_via_cholesky(x, *args, **kwargs):
+def qr_via_cholesky(x: ArrayCommon, *args, **kwargs):
     """QR decomposition via Cholesky factorization of ``x^H @ x``.
 
     Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is upper
