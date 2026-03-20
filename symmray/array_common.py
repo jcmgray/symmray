@@ -674,6 +674,7 @@ class ArrayCommon:
 
     def qr(
         self,
+        absorb="right",
         stabilized=False,
         **kwargs,
     ) -> tuple["ArrayCommon", "ArrayCommon"]:
@@ -683,6 +684,13 @@ class ArrayCommon:
         ----------
         x : ArrayCommon
             The array to decompose.
+        absorb : int or str, optional
+            Absorption mode:
+
+            - ``Absorb.U_sVH`` (1, 'right'): return ``(Q, None, R)``.
+            - ``Absorb.sVH`` (11, 'rfactor'): return ``(None, None, R)``.
+            - ``Absorb.U`` (10, 'lorthog'): return ``(Q, None, None)``.
+
         stabilized : bool, optional
             Whether to use a stabilized QR decomposition, that is, ensure
             positive diagonal elements in the R factor. Default is False.
@@ -696,11 +704,13 @@ class ArrayCommon:
         """
         kwargs.setdefault("method", "qr")
         kwargs.setdefault("stabilized", stabilized)
+        kwargs.setdefault("absorb", absorb)
         q, _, r = self._split(**kwargs)
         return q, r
 
     def _qr_via_cholesky_abelian(
         self,
+        absorb="right",
         shift=True,
         solve_triangular=True,
         **kwargs,
@@ -739,12 +749,14 @@ class ArrayCommon:
             The upper triangular factor.
         """
         kwargs.setdefault("method", "qr:cholesky")
+        kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("shift", shift)
         kwargs.setdefault("solve_triangular", solve_triangular)
         return self._split_abelian(**kwargs)
 
     def lq(
         self,
+        absorb="left",
         stabilized=False,
         **kwargs,
     ) -> tuple["ArrayCommon", "ArrayCommon"]:
@@ -771,13 +783,14 @@ class ArrayCommon:
             The orthogonal matrix.
         """
         kwargs.setdefault("method", "lq")
+        kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("stabilized", stabilized)
-        kwargs.setdefault("left_carries_charge", False)
         l, _, q = self._split(**kwargs)
         return l, q
 
     def _lq_via_cholesky_abelian(
         self,
+        absorb="left",
         shift=True,
         solve_triangular=True,
         **kwargs,
@@ -815,9 +828,9 @@ class ArrayCommon:
             The isometric factor.
         """
         kwargs.setdefault("method", "lq:cholesky")
+        kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("shift", shift)
         kwargs.setdefault("solve_triangular", solve_triangular)
-        kwargs.setdefault("left_carries_charge", False)
         return self._split_abelian(**kwargs)
 
     def __str__(self):

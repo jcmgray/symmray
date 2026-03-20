@@ -159,6 +159,26 @@ class Absorb:
         """
         return cls._transpose_map[absorb]
 
+    @staticmethod
+    @functools.cache
+    def choose_charge_side(absorb, charge_side="auto"):
+
+        absorb = Absorb.parse(absorb)
+
+        if charge_side not in ("auto", "left", "right"):
+            raise ValueError(f"Invalid charge_side: {charge_side}")
+
+        if charge_side == "auto":
+            # we prefer keeping the charge on the isometric factor, as the
+            # reduced factor is more likely to be passed around as a gauge
+            if absorb in (Absorb.Us_VH, Absorb.Us, Absorb.VH):
+                charge_side = "right"
+            else:
+                # for left isometric and everything else, keep charge on left
+                charge_side = "left"
+
+        return charge_side
+
 
 def absorb_svd_result(U, s, VH, absorb):
     """Apply absorption of singular values into U and/or VH.

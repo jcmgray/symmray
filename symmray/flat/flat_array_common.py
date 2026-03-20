@@ -1500,7 +1500,7 @@ class FlatArrayCommon:
         self,
         *,
         fn=None,
-        left_carries_charge=True,
+        charge_side="auto",
         **kwargs,
     ):
         if self.ndim != 2:
@@ -1518,6 +1518,8 @@ class FlatArrayCommon:
                 "Dynamic renormalization-based splitting "
                 "not implemented yet for flat backend."
             )
+
+        charge_side = Absorb.choose_charge_side(kwargs["absorb"], charge_side)
 
         ixl, ixr = self.indices
 
@@ -1553,9 +1555,9 @@ class FlatArrayCommon:
                 max_bond = xp.shape(s_b)[-1]
 
         # now we wrap blocks into FlatArray objects
-        if left_carries_charge:
+        if charge_side == "left":
             bond_dual = ixr.dual
-        else:
+        else:  # charge_side == "right"
             bond_dual = not ixl.dual
         ixb = FlatIndex(
             num_charges=ixl.num_charges,
@@ -1565,9 +1567,9 @@ class FlatArrayCommon:
 
         if left_b is not None:
             lopts = {"indices": (ixl, ixb), "blocks": left_b}
-            if left_carries_charge:
+            if charge_side == "left":
                 left = self.copy_with(**lopts)
-            else:
+            else:  # charge_side == "right"
                 left = self.new_with(sectors=self.sectors[:, (0, 0)], **lopts)
         else:
             left = None
@@ -1582,9 +1584,9 @@ class FlatArrayCommon:
 
         if right_b is not None:
             ropts = {"indices": (ixb.conj(), ixr), "blocks": right_b}
-            if left_carries_charge:
+            if charge_side == "left":
                 right = self.new_with(sectors=self.sectors[:, (1, 1)], **ropts)
-            else:
+            else:  # charge_side == "right"
                 right = self.copy_with(**ropts)
         else:
             right = None

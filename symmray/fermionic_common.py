@@ -500,7 +500,7 @@ class FermionicCommon:
     def _split(
         self,
         *args,
-        left_carries_charge=True,
+        charge_side="auto",
         **kwargs,
     ):
         """Fermionic array splitting, involving a phase sync, the abelian split
@@ -509,13 +509,15 @@ class FermionicCommon:
         """
         x = self.phase_sync()
 
+        charge_side = Absorb.choose_charge_side(kwargs["absorb"], charge_side)
+
         left, s, right = x._split_abelian(*args, **kwargs)
 
         # check if inner index is like |x><x| and needs a phase flip
-        if left_carries_charge:
+        if charge_side == "left":
             if right is not None and right.indices[0].dual:
                 right.phase_flip(0, inplace=True)
-        else:
+        else:  # charge_side == "right"
             if left is not None and not left.indices[-1].dual:
                 left.phase_flip(-1, inplace=True)
 

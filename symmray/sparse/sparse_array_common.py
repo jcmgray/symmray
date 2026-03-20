@@ -1822,7 +1822,11 @@ class SparseArrayCommon:
     # --------------------------- linalg methods ---------------------------- #
 
     def _split_abelian_full_spectrum(
-        self, *, fn=None, left_carries_charge=True, **kwargs
+        self,
+        *,
+        fn=None,
+        charge_side="auto",
+        **kwargs,
     ):
         # pop out truncation and absorb options
         cutoff = kwargs.pop("cutoff", 0.0)
@@ -1835,7 +1839,7 @@ class SparseArrayCommon:
         # 1. compute full decomposition
         left, s, right = self._split_abelian(
             fn=fn,
-            left_carries_charge=left_carries_charge,
+            charge_side=charge_side,
             cutoff=0.0,
             renorm=False,
             max_bond=-1,
@@ -1861,7 +1865,7 @@ class SparseArrayCommon:
         self,
         *,
         fn=None,
-        left_carries_charge=True,
+        charge_side="auto",
         **kwargs,
     ):
         if self.ndim != 2:
@@ -1887,9 +1891,11 @@ class SparseArrayCommon:
             # must compute full spectrum first, *then* truncate / absorb
             return self._split_abelian_full_spectrum(
                 fn=fn,
-                left_carries_charge=left_carries_charge,
+                charge_side=charge_side,
                 **kwargs,
             )
+
+        charge_side = Absorb.choose_charge_side(kwargs["absorb"], charge_side)
 
         xp = self.get_namespace()
 
@@ -1904,21 +1910,21 @@ class SparseArrayCommon:
         for sector, array in self.get_sector_block_pairs():
             left, s, right = fn(array, **kwargs)
 
-            bond_charge = sector[1] if left_carries_charge else sector[0]
+            bond_charge = sector[1] if charge_side == "left" else sector[0]
             bond_charge_size = None
 
             if left is not None:
-                if left_carries_charge:
+                if charge_side == "left":
                     l_sector = sector
-                else:
+                else:  # charge_side == "right"
                     l_sector = (bond_charge, bond_charge)
                 left_blocks[l_sector] = left
                 bond_charge_size = xp.shape(left)[-1]
 
             if right is not None:
-                if left_carries_charge:
+                if charge_side == "left":
                     r_sector = (bond_charge, bond_charge)
-                else:
+                else:  # charge_side == "right"
                     r_sector = sector
 
                 right_blocks[r_sector] = right
@@ -1935,9 +1941,9 @@ class SparseArrayCommon:
         ixl, ixr = self.indices
 
         # now we wrap blocks into SparseArray objects
-        if left_carries_charge:
+        if charge_side == "left":
             bond_dual = ixr.dual
-        else:
+        else:  # charge_side == "right"
             bond_dual = not ixl.dual
         ixb = BlockIndex(new_chargemap, dual=bond_dual)
 
@@ -1953,9 +1959,9 @@ class SparseArrayCommon:
 
         if create_left:
             lopts = {"indices": (ixl, ixb), "blocks": left_blocks}
-            if left_carries_charge:
+            if charge_side == "left":
                 left = self.copy_with(**lopts)
-            else:
+            else:  # charge_side == "right"
                 zero_charge = self.symmetry.combine()
                 left = self.new_with(charge=zero_charge, **lopts)
         else:
@@ -1968,10 +1974,10 @@ class SparseArrayCommon:
 
         if create_right:
             ropts = {"indices": (ixb.conj(), ixr), "blocks": right_blocks}
-            if left_carries_charge:
+            if charge_side == "left":
                 zero_charge = self.symmetry.combine()
                 right = self.new_with(charge=zero_charge, **ropts)
-            else:
+            else:  # charge_side == "right"
                 right = self.copy_with(**ropts)
         else:
             right = None
