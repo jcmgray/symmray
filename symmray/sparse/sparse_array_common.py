@@ -1828,6 +1828,10 @@ class SparseArrayCommon:
         charge_side="auto",
         **kwargs,
     ):
+        """Helper method for decomposition methods involving dynamic
+        truncation, which require the full spectrum to be computed first since
+        truncation sizes will depend on all blocks.
+        """
         # pop out truncation and absorb options
         cutoff = kwargs.pop("cutoff", 0.0)
         cutoff_mode = kwargs.pop("cutoff_mode", "rsum2")
@@ -1868,6 +1872,33 @@ class SparseArrayCommon:
         charge_side="auto",
         **kwargs,
     ):
+        """Main driver method for decomposing sparse abelian arrays. This
+        handles mapping the split function over the blocks, and then wrapping
+        the output blocks back into new SparseArray objects.
+
+        Parameters
+        ----------
+        fn : callable, optional
+            A custom function to perform the split on each block, which should
+            take an array and return a tuple of (left, s, right) arrays. If not
+            given, :func:`quimb.tensor.array_split` will be used.
+        charge_side : {"left", "right", "auto"}, optional
+            Which side the array charge and label should be associated with.
+            If "auto", it will be chosen based on the value of `absorb` to be
+            the isometric side (e.g. "right" for LQ-like absorb="left") else
+            "left" by default.
+        kwargs
+            Additional keyword arguments to pass to the split function.
+
+        Returns
+        -------
+        left : SparseArrayCommon or None
+            The left factor, if any.
+        s : BlockVector or None
+            The singular (or possibly eigen) values, if any.
+        right : SparseArrayCommon or None
+            The right factor, if any.
+        """
         if self.ndim != 2:
             raise NotImplementedError(
                 "split only implemented for 2D AbelianArrays,"

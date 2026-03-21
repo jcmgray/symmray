@@ -509,11 +509,10 @@ class FermionicCommon:
         """
         x = self.phase_sync()
 
-        charge_side = Absorb.choose_charge_side(kwargs["absorb"], charge_side)
-
         left, s, right = x._split_abelian(*args, **kwargs)
 
         # check if inner index is like |x><x| and needs a phase flip
+        charge_side = Absorb.choose_charge_side(kwargs["absorb"], charge_side)
         if charge_side == "left":
             if right is not None and right.indices[0].dual:
                 right.phase_flip(0, inplace=True)
@@ -654,99 +653,6 @@ class FermionicCommon:
             "Invalid absorb value, must be one of -12 ('lsqrt' / 'Usq') 0 "
             "('both' / 'Usq_sqVH'), or 12 ( 'rsqrt' / 'sqVH')."
         )
-
-    def lq_via_cholesky(
-        self,
-        absorb=Absorb.Us_VH,
-        shift=True,
-        solve_triangular=True,
-    ):
-        """LQ decomposition of a fermionic array via Cholesky factorization of
-        ``x @ x^H``.
-
-        Parameters
-        ----------
-        absorb : int or str, optional
-            Absorption mode:
-
-            - ``-1`` or ``'left'``: return ``(L, None, Q)``.
-            - ``-10`` or ``'lfactor'``: return ``(L, None, None)``.
-            - ``-11`` or ``'rorthog'``: return ``(None, None, Q)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-        solve_triangular : bool, optional
-            Whether to use triangular solve. Default is True.
-
-        Returns
-        -------
-        L : FermionicCommon or None
-            The lower triangular factor.
-        s : None
-            Always None.
-        Q : FermionicCommon or None
-            The isometric factor.
-        """
-        x = self.phase_sync()
-        l, _, q = x._lq_via_cholesky_abelian(
-            absorb=absorb,
-            shift=shift,
-            solve_triangular=solve_triangular,
-        )
-
-        if l is not None and not l.indices[1].dual:
-            # inner index is like |x><x| so introduce a phase flip
-            l.phase_flip(1, inplace=True)
-
-        return l, None, q
-
-    def qr_via_cholesky(
-        self,
-        absorb=Absorb.U_sVH,
-        shift=True,
-        solve_triangular=True,
-    ):
-        """QR decomposition of a fermionic array via Cholesky factorization of
-        ``x^H @ x``.
-
-        Parameters
-        ----------
-        absorb : int or str, optional
-            Absorption mode:
-
-            - ``1`` or ``'right'``: return ``(Q, None, R)``.
-            - ``11`` or ``'rfactor'``: return ``(None, None, R)``.
-            - ``10`` or ``'lorthog'``: return ``(Q, None, None)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-        solve_triangular : bool, optional
-            Whether to use triangular solve. Default is True.
-
-        Returns
-        -------
-        Q : FermionicCommon or None
-            The isometric factor.
-        s : None
-            Always None.
-        R : FermionicCommon or None
-            The upper triangular factor.
-        """
-        x = self.phase_sync()
-        q, _, r = x._qr_via_cholesky_abelian(
-            absorb=absorb,
-            shift=shift,
-            solve_triangular=solve_triangular,
-        )
-
-        if r is not None and r.indices[0].dual:
-            r.phase_flip(0, inplace=True)
-
-        return q, None, r
 
     def solve(self, b: "FermionicCommon", **kwargs) -> "FermionicCommon":
         """Solve linear system Ax = b for x, where A is this fermionic array.

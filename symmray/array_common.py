@@ -708,7 +708,7 @@ class ArrayCommon:
         q, _, r = self._split(**kwargs)
         return q, r
 
-    def _qr_via_cholesky_abelian(
+    def qr_via_cholesky(
         self,
         absorb="right",
         shift=True,
@@ -752,7 +752,7 @@ class ArrayCommon:
         kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("shift", shift)
         kwargs.setdefault("solve_triangular", solve_triangular)
-        return self._split_abelian(**kwargs)
+        return self._split(**kwargs)
 
     def lq(
         self,
@@ -788,7 +788,7 @@ class ArrayCommon:
         l, _, q = self._split(**kwargs)
         return l, q
 
-    def _lq_via_cholesky_abelian(
+    def lq_via_cholesky(
         self,
         absorb="left",
         shift=True,
@@ -831,7 +831,7 @@ class ArrayCommon:
         kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("shift", shift)
         kwargs.setdefault("solve_triangular", solve_triangular)
-        return self._split_abelian(**kwargs)
+        return self._split(**kwargs)
 
     def __str__(self):
         lines = [
