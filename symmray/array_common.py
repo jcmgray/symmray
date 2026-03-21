@@ -672,6 +672,55 @@ class ArrayCommon:
         kwargs.setdefault("renorm", renorm)
         return self._split(**kwargs)
 
+    def svd_rand_truncated(
+        self,
+        max_bond,
+        absorb=0,
+        oversample=10,
+        num_iterations=2,
+        seed=None,
+        **kwargs,
+    ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
+        """Truncated singular value decomposition of this array, using
+        randomized projection. This is efficient for low-rank approximations
+        when a target ``max_bond`` is known.
+
+        Parameters
+        ----------
+        max_bond : int
+            Target rank / maximum bond dimension.
+        absorb : {-1, 0, 1, None}
+            How to absorb the singular values.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return singular values.
+
+        oversample : int, optional
+            Extra sketch dimensions for accuracy. Default is 10.
+        num_iterations : int, optional
+            Number of power iterations for accuracy. Default is 2.
+        seed : int, Generator or None, optional
+            Random seed or generator for reproducibility.
+
+        Returns
+        -------
+        u : ArrayCommon or None
+            The abelian array of left singular vectors.
+        s : VectorCommon or None
+            The singular values, or None if absorbed.
+        vh : ArrayCommon or None
+            The abelian array of right singular vectors.
+        """
+        kwargs.setdefault("method", "svd:rand")
+        kwargs.setdefault("max_bond", max_bond)
+        kwargs.setdefault("absorb", absorb)
+        kwargs.setdefault("oversample", oversample)
+        kwargs.setdefault("num_iterations", num_iterations)
+        kwargs.setdefault("seed", seed)
+        return self._split(**kwargs)
+
     def qr(
         self,
         absorb="right",
@@ -715,12 +764,11 @@ class ArrayCommon:
         solve_triangular=True,
         **kwargs,
     ) -> tuple["ArrayCommon", None, "ArrayCommon"]:
-        """QR decomposition of a 2D flat abelian array via Cholesky
-        factorization. Implemented by transposing to LQ at the block
-        level.
+        """QR decomposition of a this array via Cholesky factorization.
 
-        Computes ``x = Q @ R`` where ``Q`` is isometric and ``R`` is
-        upper triangular.
+        By default (absorb="right") computes ``x = Q @ R`` where ``Q`` is
+        isometric and ``R`` is upper triangular. LQ-like decompositions can be
+        obtained with absorb="left" for example.
 
         Parameters
         ----------
@@ -795,11 +843,11 @@ class ArrayCommon:
         solve_triangular=True,
         **kwargs,
     ) -> tuple["ArrayCommon", None, "ArrayCommon"]:
-        """LQ decomposition of a 2D flat abelian array via Cholesky
-        factorization of the Gram matrix ``x @ x^H``.
+        """LQ decomposition of a this array via Cholesky factorization of the
+        Gram matrix ``x @ x^H``.
 
-        Computes ``x = L @ Q`` where ``L`` is lower triangular and ``Q``
-        is isometric.
+        By default (absorb="left") computes ``x = L @ Q`` where ``L`` is lower
+        triangular and ``Q`` is isometric.
 
         Parameters
         ----------

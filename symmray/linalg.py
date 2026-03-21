@@ -154,9 +154,9 @@ def svd_truncated(x: ArrayCommon, *args, **kwargs):
 
 
 def svd_rand_truncated(x: ArrayCommon, *args, **kwargs):
-    """Truncated singular value decomposition of a symmray array,
-    using randomized sketching. This is efficient for low-rank
-    approximations when a target ``max_bond`` is known.
+    """Truncated singular value decomposition of a symmray array, using
+    randomized projection. This is efficient for low-rank approximations when a
+    target ``max_bond`` is known.
 
     Parameters
     ----------

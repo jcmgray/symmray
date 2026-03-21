@@ -1670,25 +1670,6 @@ class FlatArrayCommon:
         l_or_r = self.copy_with(blocks=left if right is None else right)
         return l_or_r
 
-    def _svd_rand_truncated_abelian(
-        self,
-        max_bond,
-        absorb=0,
-        oversample=10,
-        num_iterations=2,
-        seed=None,
-        **kwargs,
-    ) -> tuple["FlatArrayCommon", FlatVector, "FlatArrayCommon"]:
-        kwargs.setdefault("method", "svd:rand")
-        return self._split_abelian(
-            absorb=absorb,
-            max_bond=max_bond,
-            oversample=oversample,
-            num_iterations=num_iterations,
-            seed=seed,
-            **kwargs,
-        )
-
     def _eigh_abelian(self) -> tuple["FlatArrayCommon", FlatVector]:
         if self.ndim != 2:
             raise NotImplementedError(
