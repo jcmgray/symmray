@@ -643,7 +643,7 @@ This library was developed in part for the work:
 If `symmray` has been useful to you, and to encourage development, please consider citing it.
 
 ```bibtex
-@article{gao2024fermionic,
+@article{gao2025fermionic,
   title = {Fermionic tensor network contraction for arbitrary geometries},
   author = {Gao, Yang and Zhai, Huanchen and Gray, Johnnie and Peng, Ruojing and Park, Gunhee and Liu, Wen-Yuan and Kj\o{}nstad, Eirik F. and Chan, Garnet Kin-Lic},
   journal = {Phys. Rev. Res.},
