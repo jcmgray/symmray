@@ -638,16 +638,24 @@ Some notable other libraries with overlapping functionality:
 
 This library was developed in part for the work:
 
-"Fermionic tensor network contraction for arbitrary geometries" - *Yang Gao, Huanchen Zhai, Johnnie Gray, Ruojing Peng, Gunhee Park, Wen-Yuan Liu, Eirik F. Kjønstad, Garnet Kin-Lic Chan* - https://arxiv.org/abs/2410.02215
+"Fermionic tensor network contraction for arbitrary geometries" - *Yang Gao, Huanchen Zhai, Johnnie Gray, Ruojing Peng, Gunhee Park, Wen-Yuan Liu, Eirik F. Kjønstad, Garnet Kin-Lic Chan* - https://doi.org/10.1103/PhysRevResearch.7.023193
 
 If `symmray` has been useful to you, and to encourage development, please consider citing it.
 
 ```bibtex
 @article{gao2024fermionic,
-  title={Fermionic tensor network contraction for arbitrary geometries},
-  author={Gao, Yang and Zhai, Huanchen and Gray, Johnnie and Peng, Ruojing and Park, Gunhee and Liu, Wen-Yuan and Kjønstad, Eirik F and Chan, Garnet Kin-Lic},
-  journal={arXiv preprint arXiv:2410.02215},
-  year={2024}
+  title = {Fermionic tensor network contraction for arbitrary geometries},
+  author = {Gao, Yang and Zhai, Huanchen and Gray, Johnnie and Peng, Ruojing and Park, Gunhee and Liu, Wen-Yuan and Kj\o{}nstad, Eirik F. and Chan, Garnet Kin-Lic},
+  journal = {Phys. Rev. Res.},
+  volume = {7},
+  issue = {2},
+  pages = {023193},
+  numpages = {10},
+  year = {2025},
+  month = {May},
+  publisher = {American Physical Society},
+  doi = {10.1103/PhysRevResearch.7.023193},
+  url = {https://link.aps.org/doi/10.1103/PhysRevResearch.7.023193}
 }
 ```
 
