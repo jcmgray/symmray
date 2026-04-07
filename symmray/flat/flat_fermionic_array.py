@@ -532,30 +532,28 @@ class FermionicArrayFlat(
         new = self if inplace else self.copy()
 
         N = new.ndim
+        xp = ar.get_namespace(new.sectors)
         if axes is None:
             # full reversal, shortcut to count the swaps
-            nswap = (
-                ar.do("sum", new.sectors % 2, axis=1, like=self.backend) // 2
-            )
+            nswap = xp.sum(new.sectors % 2, axis=1) // 2
         elif all(ax == i for i, ax in enumerate(axes)):
             # identity, nothing to do
             return new
         else:
-            # convert permutation to sequence of pairwise neighboring swaps
             swaps = perm_to_swaps(tuple(axes))
 
-            # count how many swaps of odd charges there are
-            parities = [new.sectors[:, i] % 2 for i in range(N)]
-            nswap = None
-            for il, ir in swaps:
-                if nswap is None:
-                    nswap = parities[il] * parities[ir]
-                else:
-                    nswap = nswap + (parities[il] * parities[ir])
-                parities[il], parities[ir] = parities[ir], parities[il]
+            if len(swaps) == 0:
+                raise ValueError("No phase changes required.")
 
-        if nswap is None:
-            raise ValueError("No phase changes required.")
+            order = list(range(N))
+            swap_pairs = []
+            for il, ir in swaps:
+                swap_pairs.append((order[il], order[ir]))
+                order[il], order[ir] = order[ir], order[il]
+            swap_pairs = xp.asarray(swap_pairs)
+
+            parities = new.sectors.T % 2
+            nswap = xp.sum(xp.prod(parities[swap_pairs], axis=1), axis=0)
 
         # absorb into current phases
         phase_change = (nswap % 2) * -2 + 1
@@ -642,15 +640,17 @@ class FermionicArrayFlat(
             sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
         )
         swaps = perm_to_swaps(perm)
+        phase_swaps = 1
         for i, j in swaps:
             a, b = dummy_modes[i], dummy_modes[j]
             # compute sign from swap
-            phase = phase * ((a.parity * b.parity) * -2 + 1)
+            phase_swaps *= (a.parity * b.parity) * -2 + 1
             # perform swap
             dummy_modes[i], dummy_modes[j] = b, a
 
         # do the global phase, and set the new sorted dummy modes and parities
-        self.modify(dummy_modes=tuple(dummy_modes), phases=self.phases * phase)
+        new_phase = self.phases * phase * phase_swaps
+        self.modify(dummy_modes=tuple(dummy_modes), phases=new_phase)
 
     def _resolve_dummy_modes_squeeze(self, axes_squeeze):
         """Assuming we are about to squeeze away `axes_squeeze`, compute the
