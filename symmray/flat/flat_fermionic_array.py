@@ -540,19 +540,24 @@ class FermionicArrayFlat(
             # identity, nothing to do
             return new
         else:
+            # convert permutation to sequence of pairwise neighboring swaps
             swaps = perm_to_swaps(tuple(axes))
 
             if len(swaps) == 0:
                 raise ValueError("No phase changes required.")
 
-            order = list(range(N))
+            # count how many swaps of odd charges there are
+            axes = list(range(N))
             swap_pairs = []
             for il, ir in swaps:
-                swap_pairs.append((order[il], order[ir]))
-                order[il], order[ir] = order[ir], order[il]
+                swap_pairs.append((axes[il], axes[ir]))
+                axes[il], axes[ir] = axes[ir], axes[il]
             swap_pairs = xp.asarray(swap_pairs)
 
             parities = new.sectors.T % 2
+            # shape: (which_axis, which_sector)
+            # fancy indexing gives ->
+            # shape: (which_swap, l_or_r, which_sector)
             nswap = xp.sum(xp.prod(parities[swap_pairs], axis=1), axis=0)
 
         # absorb into current phases
@@ -640,17 +645,15 @@ class FermionicArrayFlat(
             sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
         )
         swaps = perm_to_swaps(perm)
-        phase_swaps = 1
         for i, j in swaps:
             a, b = dummy_modes[i], dummy_modes[j]
             # compute sign from swap
-            phase_swaps *= (a.parity * b.parity) * -2 + 1
+            phase = phase * ((a.parity * b.parity) * -2 + 1)
             # perform swap
             dummy_modes[i], dummy_modes[j] = b, a
 
         # do the global phase, and set the new sorted dummy modes and parities
-        new_phase = self.phases * phase * phase_swaps
-        self.modify(dummy_modes=tuple(dummy_modes), phases=new_phase)
+        self.modify(dummy_modes=tuple(dummy_modes), phases=self.phases * phase)
 
     def _resolve_dummy_modes_squeeze(self, axes_squeeze):
         """Assuming we are about to squeeze away `axes_squeeze`, compute the

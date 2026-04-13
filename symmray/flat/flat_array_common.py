@@ -52,7 +52,7 @@ except ImportError:
     einops_repeat = functools.partial(missinglib, name="einops.repeat")
 
 
-def lexsort_sectors(sectors, symm_order=None, stable=True):
+def lexsort_sectors(sectors, order=None, stable=True):
     """Given a sequence of columns of positive integers, or equivalently a
     matrix of shape (num_sectors, num_charges), find the indices that
     sort them lexicographically, such that the first column is the most
@@ -65,9 +65,10 @@ def lexsort_sectors(sectors, symm_order=None, stable=True):
         integer charges. Either supplied as a 2D array, or a sequence of 1D
         arrays (columns of charges), in which case they will be stacked along a
         second axis.
-    symm_order : int, optional
-        The order of the symmetry group, which specifies the largest possible charge.
-        Default is None, in which case no symmetry-based optimization is applied.
+    order : int, optional
+        The order of the symmetry group, which specifies the largest possible
+        charge. Default is None, in which case no symmetry-based optimization
+        is applied.
     stable : bool, optional
         Whether to use a stable sort. Default is True, which uses the
         `argsort` function with the `stable` parameter set to True. If False,
@@ -95,22 +96,23 @@ def lexsort_sectors(sectors, symm_order=None, stable=True):
     ncol = sectors.shape[1] if is_array else len(sectors)
     xp = ar.get_namespace(sectors[0])
 
-    if symm_order is not None and ncol <= 63 and symm_order ** ncol <= (1 << 63):
-        # Pack the charges into a single integer key when order is small enough
+    if order is not None and ncol <= 63 and order**ncol <= (1 << 63):
+        # pack the charges into a single integer key when order is small enough
         if not is_array:
             sectors = xp.stack(sectors, axis=1)
         sectors = xp.asarray(sectors, dtype="int64")
-        arange = xp.arange(sectors.shape[1] - 1, -1, -1, dtype="int64")[None, :]
-        key = xp.sum(sectors * (symm_order ** arange), axis=1)
+        powers = xp.arange(sectors.shape[1] - 1, -1, -1, dtype="int64")
+        key = xp.sum(sectors * (order ** powers[None, :]), axis=1)
         return xp.argsort(key, stable=stable)
 
     if xp._backend in ("numpy", "jax", "cupy"):
-        # Direct lexsort (stable) when it's supported by the backend
+        # direct lexsort (stable) when it's supported by the backend
+        # TODO: don't hard-code backends, just check lexsort is importable
         if is_array:
             sectors = sectors.T
         return xp.lexsort(sectors[::-1])
 
-    # General implementation of lexsort
+    # general implementation of lexsort
     if is_array:
         cols = tuple(sectors[:, c] for c in range(ncol))
     else:
