@@ -18,7 +18,7 @@ from ..linalg_common import (
     Absorb,
     array_split,
 )
-from ..utils import DEBUG, get_array_cls, hasher, lazyabstractmethod
+from ..utils import DEBUG, get_array_cls, hasher
 from .sparse_index import BlockIndex, SubIndexInfo
 from .sparse_vector import BlockVector
 
@@ -550,10 +550,6 @@ class SparseArrayCommon:
         new._label = self._label
         return new
 
-    @lazyabstractmethod
-    def copy(self):
-        pass
-
     def _copy_with_abelian(self, indices=None, charge=None, blocks=None):
         """A copy of this block array with some attributes replaced. Note that
         checks are not performed on the new properties, this is intended for
@@ -565,10 +561,6 @@ class SparseArrayCommon:
         new._symmetry = self._symmetry
         new._label = self._label
         return new
-
-    @lazyabstractmethod
-    def copy_with(self, indices=None, charge=None, blocks=None):
-        pass
 
     def _modify_abelian(self, indices=None, charge=None, blocks=None):
         """Modify this block array in place with some attributes replaced. Note
@@ -583,10 +575,6 @@ class SparseArrayCommon:
             self._charge = charge
 
         return self
-
-    @lazyabstractmethod
-    def modify(self, indices=None, charge=None, blocks=None):
-        pass
 
     def _to_pytree_abelian(self):
         data = self._to_pytree_blockcommon()
@@ -919,10 +907,6 @@ class SparseArrayCommon:
         # now check blocks
         return self._allclose_blockcommon(other, **allclose_opts)
 
-    @lazyabstractmethod
-    def allclose(self, other, **allclose_opts):
-        pass
-
     def _test_allclose_abelian(self, other, **allclose_opts):
         """Assert that this ``SparseArrayCommon`` is close to another,
         that is, has all the same sectors, and the corresponding arrays are
@@ -959,10 +943,6 @@ class SparseArrayCommon:
 
         # now check blocks
         return self._test_allclose_blockcommon(other, **allclose_opts)
-
-    @lazyabstractmethod
-    def test_allclose(self, other, **allclose_opts):
-        pass
 
     @classmethod
     def from_blocks(cls, blocks, duals, charge=None, symmetry=None, **kwargs):
@@ -1177,10 +1157,6 @@ class SparseArrayCommon:
                 for sector, array in new.get_sector_block_pairs()
             },
         )
-
-    @lazyabstractmethod
-    def transpose(self, axes=None, inplace=False):
-        pass
 
     def _conj_abelian(self, inplace=False) -> "SparseArrayCommon":
         """Return the complex conjugate of this block array, including the
@@ -1404,7 +1380,7 @@ class SparseArrayCommon:
         *axes_groups,
         mode="auto",
         inplace=False,
-    ):
+    ) -> "SparseArrayCommon":
         # ignore empty groups, expanding them is handled by `fuse`
         axes_groups = tuple(gaxes for gaxes in axes_groups if gaxes)
 
@@ -1480,10 +1456,6 @@ class SparseArrayCommon:
         return self._modify_or_copy(
             indices=new_indices, blocks=new_blocks, inplace=inplace
         )
-
-    @lazyabstractmethod
-    def _fuse_core(self, *axes_groups, mode="auto", inplace=False):
-        pass
 
     def _unfuse_abelian(self, axis, inplace=False):
         if axis < 0:
@@ -1564,10 +1536,6 @@ class SparseArrayCommon:
 
         return c
 
-    @lazyabstractmethod
-    def __matmul__(self, other, preserve_array=False):
-        pass
-
     def _trace_abelian(self):
         """Compute the trace of the block array, assuming it is a square
         matrix.
@@ -1583,10 +1551,6 @@ class SparseArrayCommon:
             # only take diagonal blocks
             if sector[0] == sector[1]
         )
-
-    @lazyabstractmethod
-    def trace(self):
-        pass
 
     def multiply_diagonal(self, v: BlockVector, axis, power=1, inplace=False):
         """Multiply this block array by a vector as if contracting a diagonal
@@ -1747,10 +1711,6 @@ class SparseArrayCommon:
             # no aligned blocks, return zero
             return 0.0
 
-    @lazyabstractmethod
-    def einsum(self, eq, preserve_array=False):
-        pass
-
     def _tensordot_abelian(
         self, other, axes=2, mode="auto", preserve_array=False
     ):
@@ -1807,10 +1767,6 @@ class SparseArrayCommon:
                 return _concat(arrays, axis=i)
 
         return _recurse_all_charges()
-
-    @lazyabstractmethod
-    def to_dense(self):
-        pass
 
     def to_flat(self):
         """Convert this block sparse backend abelian or fermionic array to a

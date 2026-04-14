@@ -3,13 +3,11 @@
 from ..array_common import ArrayCommon
 from ..bosonic_common import BosonicCommon
 from ..common import SymmrayCommon
-from ..linalg_common import Absorb
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .sparse_array_common import SparseArrayCommon
 from .sparse_data_common import BlockCommon
 from .sparse_index import BlockIndex
-from .sparse_vector import BlockVector
 
 
 class AbelianArray(
@@ -104,12 +102,6 @@ class AbelianArray(
             self.check()
         return self
 
-    def to_pytree(self):
-        """Convert this sparse abelian array to a pytree purely of non-symmray
-        containers and objects.
-        """
-        return self._to_pytree_abelian()
-
     @classmethod
     def from_pytree(cls, pytree):
         """Create a sparse abelian array from a pytree purely of non-symmray
@@ -124,226 +116,11 @@ class AbelianArray(
             label=pytree["label"],
         )
 
-    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
-        return self._binary_blockwise_op_abelian(
-            other, fn, missing=missing, inplace=inplace
-        )
-
     def _map_blocks(self, fn_block=None, fn_sector=None, fn_filter=None):
         """Map the blocks and their keys (sectors) of the array inplace."""
         self._map_blocks_blockcommon(fn_block, fn_sector, fn_filter)
 
-    def _fuse_core(self, *axes_groups, mode="auto", inplace=False):
-        return self._fuse_core_abelian(
-            *axes_groups, mode=mode, inplace=inplace
-        )
-
-    def unfuse(self, axis, inplace=False) -> "AbelianArray":
-        """Unfuse the ``axis`` index, which must carry subindex information,
-        likely generated automatically from a fusing operation.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to unfuse. It must have subindex information (`.subinfo`).
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-        """
-        return self._unfuse_abelian(axis, inplace=inplace)
-
-    def squeeze(self, axis=None, inplace=False):
-        """Squeeze the block array, removing axes of size 1.
-
-        Parameters
-        ----------
-        axis : int or tuple[int], optional
-            The axis or axes to squeeze. If None, all axes of size 1 will be
-            removed.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-        """
-        return self._squeeze_abelian(axis=axis, inplace=inplace)
-
-    def einsum(self, eq, preserve_array=False):
-        """Einsum for abelian arrays, currently only single term.
-
-        Parameters
-        ----------
-        eq : str
-            The einsum equation, e.g. "abcb->ca". The output indices must be
-            specified and only trace and permutations are allowed.
-        preserve_array : bool, optional
-            If tracing to a scalar, whether to return an AbelainArray object
-            with no indices, or simply scalar itself (the default).
-
-        Returns
-        -------
-        AbelianArray or scalar
-        """
-        return self._einsum_abelian(eq, preserve_array=preserve_array)
-
-    def tensordot(self, other, axes=2, mode="auto", preserve_array=False):
-        """Tensordot between two block sparse abelian symmetric arrays.
-
-        Parameters
-        ----------
-        a, b : SparseArrayCommon
-            The arrays to be contracted.
-        axes : int or tuple[int]
-            The axes to contract. If an integer, the last ``axes`` axes of
-            ``a`` will be contracted with the first ``axes`` axes of ``b``. If
-            a tuple, the axes to contract in ``a`` and ``b`` respectively.
-        mode : {"auto", "fused", "blockwise"}
-            The mode to use for the contraction. If "auto", it will choose
-            between "fused" and "blockwise" based on the number of axes to
-            contract.
-        preserve_array : bool, optional
-            Whether to return a scalar if the result is a scalar.
-        """
-        return self._tensordot_abelian(
-            other,
-            axes=axes,
-            mode=mode,
-            preserve_array=preserve_array,
-        )
-
-    def __matmul__(self, other, preserve_array=False):
-        return self._matmul_abelian(other, preserve_array=preserve_array)
-
-    def trace(self):
-        """Compute the trace of the block array, assuming it is a square
-        matrix.
-        """
-        return self._trace_abelian()
-
-    def to_dense(self):
-        return self._to_dense_abelian()
-
-    def allclose(self, other, **allclose_opts):
-        """Test whether this `AbelianArray` is close to another, that is,
-        has all the same sectors, and the corresponding arrays are close.
-
-        Parameters
-        ----------
-        other : AbelianArray
-            The other array to compare to.
-        allclose_opts
-            Keyword arguments to pass to `allclose`.
-
-        Returns
-        -------
-        bool
-        """
-        return self._allclose_abelian(other, **allclose_opts)
-
-    def test_allclose(self, other, **allclose_opts):
-        """Assert that this ``SparseArrayCommon`` is close to another,
-        that is, has all the same sectors, and the corresponding arrays are
-        close. Unlike `allclose`, this raises an AssertionError with details
-        if not.
-
-        Parameters
-        ----------
-        other : SparseArrayCommon
-            The other array to compare to.
-        allclose_opts
-            Keyword arguments to pass to `allclose`.
-
-        Raises
-        ------
-        AssertionError
-            If the arrays are not close.
-        """
-        return self._test_allclose_abelian(other, **allclose_opts)
-
     # --------------------------- linalg methods ---------------------------- #
-
-    def eigh(self, **kwargs) -> tuple["BlockVector", "AbelianArray"]:
-        """Eigenvalue decomposition of this assumed Hermitian AbelianArray.
-
-        Parameters
-        ----------
-        x : AbelianArray
-            The block symmetric array to decompose.
-
-        Returns
-        -------
-        w : BlockVector
-            The eigenvalues as a vector.
-        u : AbelianArray
-            The array of eigenvectors.
-        """
-        return self._eigh_abelian(**kwargs)
-
-    def cholesky(self, *, upper=False) -> "AbelianArray":
-        """Cholesky decomposition of this assumed positive-definite array.
-
-        Parameters
-        ----------
-        upper : bool, optional
-            Whether to return the upper triangular Cholesky factor.
-            Default is False, returning the lower triangular factor.
-
-        Returns
-        -------
-        l_or_r : AbelianArray
-            The Cholesky factor. Lower triangular if ``upper=False``,
-            upper triangular if ``upper=True``.
-        """
-        return self._cholesky_abelian(upper=upper, shift=0)
-
-    def cholesky_regularized(
-        self, absorb=0, shift=True
-    ) -> tuple["AbelianArray", None, "AbelianArray"]:
-        """Cholesky decomposition with optional diagonal regularization,
-        returning results in an SVD-like ``(left, None, right)`` format
-        for compatibility with tensor network split drivers.
-
-        Parameters
-        ----------
-        absorb : {-12, 0, 12}, optional
-            How to return the factors:
-
-            - ``0`` (``'both'``): return ``(L, None, L^H)``.
-            - ``-12`` (``'lsqrt'``): return ``(L, None, None)``.
-            - ``12`` (``'rsqrt'``): return ``(None, None, L^H)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-
-        Returns
-        -------
-        left : AbelianArray or None
-            The lower Cholesky factor, or None.
-        s : None
-            Always None (no singular values).
-        right : AbelianArray or None
-            The conjugate transpose of the Cholesky factor, or None.
-        """
-        absorb = Absorb.parse(absorb)
-        if absorb == Absorb.sqVH:
-            r = self._cholesky_abelian(shift=shift, upper=True)
-            return None, None, r
-
-        l = self._cholesky_abelian(shift=shift, upper=False)
-
-        if absorb == Absorb.Usq:
-            return l, None, None
-
-        if absorb == Absorb.Usq_sqVH:
-            return l, None, l.H
-
-        raise ValueError(f"Invalid absorb option: {absorb}")
 
     def solve(self, b: "AbelianArray", **kwargs) -> "AbelianArray":
         """Solve the linear system `A @ x == b` for x, where A is this array.

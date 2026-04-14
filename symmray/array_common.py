@@ -7,7 +7,7 @@ import autoray as ar
 
 from .index_common import Index
 from .symmetries import Symmetry, get_symmetry
-from .utils import DEBUG, lazyabstractmethod
+from .utils import DEBUG
 from .vector_common import VectorCommon
 
 
@@ -304,18 +304,10 @@ class ArrayCommon:
     def __itruediv__(self, other):
         return self.__truediv__(other, inplace=True)
 
-    @lazyabstractmethod
-    def transpose(self, axes=None, inplace=False) -> "ArrayCommon":
-        pass
-
     @property
     def T(self) -> "ArrayCommon":
         """The transpose of the block array."""
         return self.transpose()
-
-    @lazyabstractmethod
-    def conj(self, inplace=False) -> "ArrayCommon":
-        pass
 
     def _dagger_abelian(self, inplace=False) -> "ArrayCommon":
         """Conjugate transpose or adjoint, implements the .H property."""
@@ -326,14 +318,6 @@ class ArrayCommon:
     @property
     def H(self) -> "ArrayCommon":
         return self.dagger()
-
-    @lazyabstractmethod
-    def _fuse_core(self, *axes_groups, inplace=False, **kwargs):
-        pass
-
-    @lazyabstractmethod
-    def expand_dims(self, ax, inplace=False) -> "ArrayCommon":
-        pass
 
     def fuse(
         self,
@@ -401,10 +385,6 @@ class ArrayCommon:
                 xf.expand_dims(g0 + ax, inplace=True)
 
         return xf
-
-    @lazyabstractmethod
-    def unfuse(self, ax, inplace=False) -> "ArrayCommon":
-        pass
 
     def unfuse_all(self, inplace=False) -> "ArrayCommon":
         """Unfuse all indices that carry subindex information, likely from a
@@ -494,10 +474,6 @@ class ArrayCommon:
             x.expand_dims(ax, inplace=True)
 
         return x
-
-    @lazyabstractmethod
-    def get_any_array(self):
-        pass
 
     def __getitem__(self, item):
         axis = None

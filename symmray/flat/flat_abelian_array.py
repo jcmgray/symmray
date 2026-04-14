@@ -5,14 +5,12 @@ import autoray as ar
 from ..array_common import ArrayCommon
 from ..bosonic_common import BosonicCommon
 from ..common import SymmrayCommon
-from ..linalg_common import Absorb
 from ..sparse.sparse_abelian_array import AbelianArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
 from .flat_array_common import FlatArrayCommon
 from .flat_data_common import FlatCommon
 from .flat_index import FlatIndex
-from .flat_vector import FlatVector
 
 
 class AbelianArrayFlat(
@@ -146,12 +144,6 @@ class AbelianArrayFlat(
         if DEBUG:
             self.check()
 
-    def to_pytree(self):
-        """Convert this flat abelian array to a pytree purely of non-symmray
-        containers and objects.
-        """
-        return self._to_pytree_abelian()
-
     @classmethod
     def from_pytree(cls, pytree) -> "AbelianArrayFlat":
         """Create a flat abelian array from a pytree purely of non-symmray
@@ -283,200 +275,6 @@ class AbelianArrayFlat(
             blocks=self._blocks[kord],
             inplace=inplace,
         )
-
-    def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
-        return self._binary_blockwise_op_abelian(
-            other, fn, missing=missing, inplace=inplace
-        )
-
-    def _fuse_core(
-        self,
-        *axes_groups,
-        inplace=False,
-    ) -> "AbelianArrayFlat":
-        """The core implementation of the fuse operation, which fuses
-        multiple axes into a single group, and returns a new array with
-        the new sectors and blocks. The new axes are inserted at the minimum
-        axis of any of the groups.
-        """
-        return self._fuse_core_abelian(*axes_groups, inplace=inplace)
-
-    def unfuse(self, axis, inplace=False) -> "AbelianArrayFlat":
-        """Unfuse the ``axis`` index, which must carry subindex information,
-        likely generated automatically from a fusing operation.
-
-        Parameters
-        ----------
-        axis : int
-            The axis to unfuse. It must have fuse information
-            (`.indices[axis].subinfo`), typically from a previous fusing
-            operation.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArrayFlat
-        """
-        return self._unfuse_abelian(axis, inplace=inplace)
-
-    def __matmul__(
-        self: "AbelianArrayFlat",
-        other: "AbelianArrayFlat",
-        preserve_array=False,
-    ):
-        return self._matmul_abelian(other=other, preserve_array=preserve_array)
-
-    def tensordot(
-        self,
-        other,
-        axes=2,
-        mode="auto",
-        preserve_array=False,
-    ):
-        return self._tensordot_abelian(
-            other, axes=axes, mode=mode, preserve_array=preserve_array
-        )
-
-    def trace(self):
-        """Compute trace of the flat array, assuming it is a square matrix."""
-        return self._trace_abelian()
-
-    def einsum(self, eq, preserve_array=False):
-        """Einsum for flat abelian arrays, currently only single term.
-
-        Parameters
-        ----------
-        eq : str
-            The einsum equation, e.g. "abcb->ca". The output indices must be
-            specified and only trace and permutations are allowed.
-        preserve_array : bool, optional
-            If tracing to a scalar, whether to return an AbelainArray object
-            with no indices, or simply scalar itself (the default).
-
-        Returns
-        -------
-        FlatAbelianArray or scalar
-        """
-        return self._einsum_abelian(eq, preserve_array=preserve_array)
-
-    def squeeze(self, axis, inplace=False):
-        """Squeeze this flat abelian array, removing axes of size 1.
-
-        Parameters
-        ----------
-        axis : int or sequence of int, optional
-            The axes to squeeze. If not given, all axes of size 1 will be
-            removed.
-        inplace : bool, optional
-            Whether to perform the operation inplace.
-
-        Returns
-        -------
-        AbelianArrayFlat
-        """
-        return self._squeeze_abelian(axis, inplace=inplace)
-
-    def allclose(self, other: "AbelianArrayFlat", **allclose_opts) -> bool:
-        """Check if two flat abelian arrays are equal to within some tolerance,
-        including their sectors and signature.
-        """
-        return self._allclose_abelian(other, **allclose_opts)
-
-    def test_allclose(self, other: "AbelianArrayFlat", **allclose_opts):
-        """Assert that this ``AbelianArrayFlat`` is close to another,
-        that is, has all the same sectors, and the corresponding arrays are
-        close. Unlike `allclose`, this raises an AssertionError with details
-        if not.
-
-        Parameters
-        ----------
-        other : AbelianArrayFlat
-            The other array to compare to.
-        allclose_opts
-            Keyword arguments to pass to `allclose`.
-
-        Raises
-        ------
-        AssertionError
-            If the arrays are not close.
-        """
-        return self._test_allclose_abelian(other, **allclose_opts)
-
-    # --------------------------- linalg methods ---------------------------- #
-
-    def cholesky(self, *, upper=False) -> "AbelianArrayFlat":
-        """Cholesky decomposition of this assumed positive-definite flat
-        abelian array.
-
-        Parameters
-        ----------
-        upper : bool, optional
-            Whether to return the upper triangular Cholesky factor.
-            Default is False, returning the lower triangular factor.
-
-        Returns
-        -------
-        l_or_r : AbelianArrayFlat
-            The Cholesky factor. Lower triangular if ``upper=False``,
-            upper triangular if ``upper=True``.
-        """
-        return self._cholesky_abelian(upper=upper, shift=0)
-
-    def cholesky_regularized(
-        self, absorb=0, shift=True
-    ) -> tuple["AbelianArrayFlat", None, "AbelianArrayFlat"]:
-        """Cholesky decomposition with optional diagonal regularization,
-        returning results in an SVD-like ``(left, None, right)`` format
-        for compatibility with tensor network split drivers.
-
-        Parameters
-        ----------
-        absorb : {-12, 0, 12}, optional
-            How to return the factors:
-
-            - ``0`` (``'both'``): return ``(L, None, L^H)``.
-            - ``-12`` (``'lsqrt'``): return ``(L, None, None)``.
-            - ``12`` (``'rsqrt'``): return ``(None, None, L^H)``.
-
-        shift : float, optional
-            Diagonal regularization shift. If True or negative, auto-compute
-            from dtype machine epsilon. The shift is always applied as a
-            relative shift scaled by the trace of each block. Default is True.
-
-        Returns
-        -------
-        left : AbelianArrayFlat or None
-            The lower Cholesky factor, or None.
-        s : None
-            Always None (no singular values).
-        right : AbelianArrayFlat or None
-            The conjugate transpose of the Cholesky factor, or None.
-        """
-        absorb = Absorb.parse(absorb)
-
-        if absorb == Absorb.sqVH:
-            r = self._cholesky_abelian(shift=shift, upper=True)
-            return None, None, r
-
-        l = self._cholesky_abelian(shift=shift, upper=False)
-        if absorb == Absorb.Usq:
-            return l, None, None
-
-        # absorb == Absorb.Usq_sqVH (0 or 'both')
-        return l, None, l.H
-
-    def eigh(self) -> tuple[FlatVector, "AbelianArrayFlat"]:
-        """Hermitian eigen-decomposition of this flat abelian array.
-
-        Returns
-        -------
-        eigenvalues : FlatVector
-            The eigenvalues.
-        eigenvectors : AbelianArrayFlat
-            The abelian array of right eigenvectors.
-        """
-        return self._eigh_abelian()
 
 
 class Z2ArrayFlat(AbelianArrayFlat):

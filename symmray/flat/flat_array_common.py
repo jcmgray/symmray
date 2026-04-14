@@ -809,6 +809,7 @@ class FlatArrayCommon:
     def _fuse_core_abelian(
         self,
         *axes_groups,
+        mode="auto",
         inplace=False,
     ) -> "FlatArrayCommon":
         """The core implementation of the fuse operation, which fuses
@@ -816,6 +817,9 @@ class FlatArrayCommon:
         the new sectors and blocks. The new axes are inserted at the minimum
         axis of any of the groups.
         """
+        if mode != "auto":
+            raise NotImplementedError(f"Unsupported fuse mode {mode}.")
+
         (
             num_groups,
             group_singlets,

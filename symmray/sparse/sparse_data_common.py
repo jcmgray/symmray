@@ -7,8 +7,6 @@ import operator
 
 import autoray as ar
 
-from ..utils import lazyabstractmethod
-
 
 def _identity(x):
     return x
@@ -32,27 +30,15 @@ class BlockCommon:
         new._blocks = self._blocks.copy()
         return new
 
-    @lazyabstractmethod
-    def copy(self):
-        pass
-
     def _copy_with_blockcommon(self, blocks=None):
         new = self.__new__(self.__class__)
         new._blocks = self._blocks.copy() if blocks is None else blocks
         return new
 
-    @lazyabstractmethod
-    def copy_with(self, blocks=None):
-        pass
-
     def _modify_blockcommon(self, blocks=None):
         if blocks is not None:
             self._blocks = blocks
         return self
-
-    @lazyabstractmethod
-    def modify(self, blocks=None):
-        pass
 
     def _to_pytree_blockcommon(self):
         return {
@@ -107,10 +93,6 @@ class BlockCommon:
             for sector, block in self.get_sector_block_pairs()
             if fn_filter(sector)
         }
-
-    @lazyabstractmethod
-    def _map_blocks(self, fn_block=None, fn_sector=None, fn_filter=None):
-        pass
 
     def get_any_sector(self):
         return next(iter(self._blocks.keys()), ())
@@ -317,10 +299,6 @@ class BlockCommon:
 
         return True
 
-    @lazyabstractmethod
-    def allclose(self, other, **allclose_opts):
-        pass
-
     def _test_allclose_blockcommon(self, other, **allclose_opts):
         """Like `allclose` but raises an AssertionError with details if not
         close."""
@@ -359,7 +337,3 @@ class BlockCommon:
                 )
 
         return True
-
-    @lazyabstractmethod
-    def test_allclose(self, other, **allclose_opts):
-        pass

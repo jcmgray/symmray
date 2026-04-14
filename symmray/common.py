@@ -4,8 +4,6 @@ import operator
 
 import autoray as ar
 
-from .utils import lazyabstractmethod
-
 _symmray_namespace = None
 
 
@@ -21,27 +19,11 @@ class SymmrayCommon:
             _symmray_namespace = symmray
         return _symmray_namespace
 
-    @lazyabstractmethod
-    def copy(self) -> "SymmrayCommon":
-        pass
-
-    @lazyabstractmethod
-    def copy_with(self, **kwargs) -> "SymmrayCommon":
-        pass
-
-    @lazyabstractmethod
-    def modify(self, **kwargs) -> "SymmrayCommon":
-        pass
-
     def _modify_or_copy(self, inplace=False, **kwargs) -> "SymmrayCommon":
         if inplace:
             return self.modify(**kwargs)
         else:
             return self.copy_with(**kwargs)
-
-    @lazyabstractmethod
-    def item(self):
-        pass
 
     def __float__(self):
         return float(self.item())
@@ -54,16 +36,6 @@ class SymmrayCommon:
 
     def __bool__(self):
         return bool(self.item())
-
-    @lazyabstractmethod
-    def _binary_blockwise_op(
-        self, other, fn, missing=None, inplace=False
-    ) -> "SymmrayCommon":
-        pass
-
-    @lazyabstractmethod
-    def apply_to_arrays(self, fn):
-        pass
 
     def __mul__(self, other, inplace=False):
         if isinstance(other, self.__class__):
@@ -111,10 +83,6 @@ class SymmrayCommon:
         _clip = ar.get_lib_fn(self.backend, "clip")
         new.apply_to_arrays(lambda x: _clip(x, a_min, a_max))
         return new
-
-    @lazyabstractmethod
-    def _do_reduction(self, fn):
-        pass
 
     def max(self):
         """Get the maximum element from any block in the array."""
