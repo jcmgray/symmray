@@ -170,7 +170,7 @@ def TN_abelian_from_edges_rand(
 
     if phys_dim is not None:
         # have physical sites
-        tn = qtn.tensor_arbgeom.TensorNetworkGenVector.new(
+        tn = qtn.TensorNetworkGenVector.new(
             sites=sites,
             site_ind_id=site_ind_id,
             site_tag_id=site_tag_id,
@@ -186,7 +186,7 @@ def TN_abelian_from_edges_rand(
     else:
         # no physical sites
 
-        tn = qtn.tensor_arbgeom.TensorNetworkGen.new(
+        tn = qtn.TensorNetworkGen.new(
             sites=sites,
             site_tag_id=site_tag_id,
         )
