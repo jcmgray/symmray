@@ -133,6 +133,7 @@ docs = { features = ["pynew", "docs"] }
 
 [tool.pixi.tasks.pytest]
 default-environment = "testpymid"
+env = { SYMMRAY_DEBUG = "1" }
 cmd = "pytest"
 cwd = "."
 description = "Run pytest."
