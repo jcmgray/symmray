@@ -421,7 +421,7 @@ class FermionicCommon:
     def dagger_compose_left(self) -> "FermionicCommon":
         """Take the dagger (conjugate transpose) of this fermionic array,
         assuming we have the right factor of a hermitian decomposition and want
-        to left factor.
+        the left factor.
         """
         new = self._dagger_abelian()
         if not new.indices[-1].dual:
@@ -442,7 +442,7 @@ class FermionicCommon:
     def dagger_compose_right(self) -> "FermionicCommon":
         """Take the dagger (conjugate transpose) of this fermionic array,
         assuming we have the left factor of a hermitian decomposition and want
-        to right factor.
+        the right factor.
         """
         new = self._dagger_abelian()
         if new.indices[0].dual:

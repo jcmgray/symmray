@@ -135,10 +135,12 @@ def test_qr_roundtrip(symmetry, seed):
     x.to_blocksparse().test_allclose(sx)
 
 
+@pytest.mark.xfail(
+    reason="Unfusing single dimensions not implemented yet", strict=True
+)
 @pytest.mark.parametrize("symmetry", ("Z2",))
 @pytest.mark.parametrize("seed", range(5))
 def test_qr_with_expand_dims(symmetry, seed):
-    pytest.xfail("Unfusing single dimensions not implemented yet")
     x = sr.utils.get_rand(
         symmetry,
         [4, 6, 6],
@@ -304,7 +306,7 @@ def test_svd_rand_truncated_fermionic_ar_dispatch(symmetry, shape, seed):
 @pytest.mark.parametrize("symm", ("Z2",))
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("dtype", ("float64", "complex128"))
-def test_eigh_fermionic(symm, seed, dtype):
+def test_eigh_flat_fermionic(symm, seed, dtype):
     x = sr.utils_test.rand_herm(
         symm,
         10,
@@ -317,6 +319,70 @@ def test_eigh_fermionic(symm, seed, dtype):
     # reconstruct the matrix
     y = sr.multiply_diagonal(ev, el, 1) @ ev.H
     y.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [2, 3])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_eigh_truncated_flat_fermionic(symmetry, d, absorb, seed):
+    x = sr.utils_test.rand_matrix(
+        symmetry,
+        d,
+        seed=seed,
+        flat=True,
+        fermionic=True,
+        matrix_type="posdef" if absorb == 0 else "hermitian",
+        d_per_charge=True,
+    )
+
+    u, s, vh = sr.linalg.eigh_truncated(x, absorb=absorb)
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+
+    if absorb is None:
+        s.check()
+        xr = u @ vh.multiply_diagonal(s, 0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    xr.test_allclose(x)
+
+    if absorb is None:
+        z = u @ u.dagger_project_left() @ x @ vh.dagger_project_right() @ vh
+        z.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [5, 7])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42])
+def test_eigh_truncated_max_bond_flat_fermionic(symmetry, d, absorb, seed):
+    x = sr.utils_test.rand_matrix(
+        symmetry,
+        d,
+        seed=seed,
+        flat=True,
+        fermionic=True,
+        matrix_type="posdef" if absorb == 0 else "hermitian",
+        d_per_charge=True,
+    )
+
+    # need to have at least one state per charge sector
+    chi = int(symmetry[1:])
+    u, s, vh = sr.linalg.eigh_truncated(x, max_bond=chi, absorb=absorb)
+
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+    if s is not None:
+        s.check()
+        assert s.size <= chi
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "Z3", "Z4"))

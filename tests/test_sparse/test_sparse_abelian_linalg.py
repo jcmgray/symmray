@@ -170,6 +170,96 @@ def test_eigh(symmetry, d, seed):
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (2, 3, 5, 7))
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", range(1))
+def test_eigh_truncated(symmetry, d, absorb, seed):
+    x = sr.utils_test.rand_matrix(
+        symmetry,
+        d,
+        seed=seed,
+        matrix_type="posdef" if absorb == 0 else "hermitian",
+    )
+
+    u, s, vh = sr.linalg.eigh_truncated(x, absorb=absorb)
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+
+    if absorb is None:
+        s.check()
+        us = ar.do("multiply_diagonal", u, s, axis=1)
+        xr = sr.tensordot(us, vh, 1)
+    else:
+        assert s is None
+        xr = sr.tensordot(u, vh, 1)
+
+    xr.test_allclose(x)
+
+    if absorb is None:
+        z = u @ u.dagger_project_left() @ x @ vh.dagger_project_right() @ vh
+        z.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("d", (5, 7))
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42])
+def test_eigh_truncated_max_bond(symmetry, d, absorb, seed):
+    x = sr.utils_test.rand_matrix(
+        symmetry,
+        d,
+        seed=seed,
+        matrix_type="posdef" if absorb == 0 else "hermitian",
+    )
+
+    u, s, vh = sr.linalg.eigh_truncated(x, max_bond=2, absorb=absorb)
+
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+    if s is not None:
+        s.check()
+        assert s.size <= 2
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
+@pytest.mark.parametrize("seed", range(5))
+def test_eigh_truncated_cutoff_max_bond(symmetry, seed):
+    rng = sr.utils.get_rng(seed)
+
+    x = sr.utils_test.rand_herm(symmetry, 20, seed=rng)
+
+    # cutoff only
+    _, s, _ = sr.linalg.eigh_truncated(
+        x,
+        cutoff=3e-2,
+        absorb=None,
+    )
+    assert s.size < x.shape[0]
+
+    # max_bond only
+    _, s, _ = sr.linalg.eigh_truncated(
+        x,
+        cutoff=0.0,
+        max_bond=3,
+        absorb=None,
+    )
+    assert s.size <= 3
+
+    # both
+    _, s, _ = sr.linalg.eigh_truncated(
+        x,
+        cutoff=1e-2,
+        max_bond=7,
+        absorb=None,
+    )
+    assert s.size <= 7
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 @pytest.mark.parametrize("dtype", ("complex128", "float64"))
 @pytest.mark.parametrize("seed", range(1))

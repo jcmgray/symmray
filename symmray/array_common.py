@@ -379,7 +379,7 @@ class ArrayCommon:
 
         Returns
         -------
-        AbelianCommon
+        ArrayCommon
         """
         # handle empty groups and ensure hashable
         _axes_groups = []
@@ -417,7 +417,7 @@ class ArrayCommon:
 
         Returns
         -------
-        AbelianCommon
+        ArrayCommon
         """
         new = self if inplace else self.copy()
         for ax in reversed(range(self.ndim)):
@@ -467,7 +467,7 @@ class ArrayCommon:
 
         Returns
         -------
-        AbelianCommon
+        ArrayCommon
 
         See Also
         --------
@@ -528,6 +528,68 @@ class ArrayCommon:
             return self.isel(axis, indices, inplace=inplace)
         raise NotImplementedError("Only single index selection is supported.")
 
+    def eigh_truncated(
+        self,
+        cutoff=-1.0,
+        cutoff_mode="rsum2",
+        max_bond=-1,
+        absorb=0,
+        renorm=False,
+        positive=False,
+        **kwargs,
+    ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
+        """Truncated hermitian eigen-decomposition of this assumed hermitian
+        array.
+
+        Parameters
+        ----------
+        cutoff : float, optional
+            Absolute eigenvalue cutoff threshold.
+        cutoff_mode : int or str, optional
+            How to perform the truncation:
+
+            - 1 or 'abs': trim values below ``cutoff``
+            - 2 or 'rel': trim values below ``s[0] * cutoff``
+            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
+            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
+            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
+            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
+
+        max_bond : int
+            An explicit maximum bond dimension, use -1 for none.
+        absorb : {-1, 0, 1, None}
+            How to absorb the eigenvalues.
+
+            - -1 or 'left': absorb into the left factor (U).
+            - 0 or 'both': absorb the square root into both factors.
+            - 1 or 'right': absorb into the right factor (VH).
+            - None: do not absorb, return eigenvalues as a `VectorCommon`.
+
+        renorm : {0, 1}
+            Whether to renormalize the eigenvalues (depends on
+            ``cutoff_mode``).
+        positive : bool, optional
+            If True, assume all eigenvalues are positive for a faster
+            sort. By default False.
+
+        Returns
+        -------
+        u : ArrayCommon
+            The array of left eigenvectors.
+        w : VectorCommon or None
+            The vector of eigenvalues, or None if absorbed.
+        uh : ArrayCommon
+            The array of right eigenvectors.
+        """
+        kwargs.setdefault("method", "eigh")
+        kwargs.setdefault("cutoff", cutoff)
+        kwargs.setdefault("cutoff_mode", cutoff_mode)
+        kwargs.setdefault("max_bond", max_bond)
+        kwargs.setdefault("absorb", absorb)
+        kwargs.setdefault("renorm", renorm)
+        kwargs.setdefault("positive", positive)
+        return self._split(**kwargs)
+
     def svd(
         self, **kwargs
     ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
@@ -581,7 +643,7 @@ class ArrayCommon:
             - -1 or 'left': absorb into the left factor (U).
             - 0 or 'both': absorb the square root into both factors.
             - 1 or 'right': absorb into the right factor (VH).
-            - None: do not absorb, return singular values as a BlockVector.
+            - None: do not absorb, return singular values as a `VectorCommon`.
 
         renorm : {0, 1}
             Whether to renormalize the singular values (depends on
@@ -650,18 +712,18 @@ class ArrayCommon:
             - -1 or 'left': absorb into the left factor (U).
             - 0 or 'both': absorb the square root into both factors.
             - 1 or 'right': absorb into the right factor (VH).
-            - None: do not absorb, return singular values as a BlockVector.
+            - None: do not absorb, return singular values as a `VectorCommon`.
 
         renorm : {0, 1}
             Whether to renormalize singular values (depends on `cutoff_mode`).
 
         Returns
         -------
-        u : AbelianCommon or None
+        u : ArrayCommon or None
             The abelian array of left singular vectors.
         s : VectorCommon or None
             The vector of singular values, or None if absorbed.
-        vh : AbelianCommon or None
+        vh : ArrayCommon or None
             The abelian array of right singular vectors.
         """
         kwargs.setdefault("method", "svd:eig")
@@ -789,11 +851,11 @@ class ArrayCommon:
 
         Returns
         -------
-        Q : AbelianCommon or None
+        Q : ArrayCommon or None
             The isometric factor.
         s : None
             Always None.
-        R : AbelianCommon or None
+        R : ArrayCommon or None
             The upper triangular factor.
         """
         kwargs.setdefault("method", "qr:cholesky")
@@ -868,11 +930,11 @@ class ArrayCommon:
 
         Returns
         -------
-        L : AbelianCommon or None
+        L : ArrayCommon or None
             The lower triangular factor.
         s : None
             Always None.
-        Q : AbelianCommon or None
+        Q : ArrayCommon or None
             The isometric factor.
         """
         kwargs.setdefault("method", "lq:cholesky")

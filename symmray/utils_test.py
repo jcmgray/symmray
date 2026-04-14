@@ -158,9 +158,38 @@ def rand_matrix(
     fermionic=False,
     flat=False,
     matrix_type="general",
+    d_per_charge=False,
 ):
     """Create a general, hermitian, or positive definite matrix (with conjugate
     indices) with the given symmetry and shape (d, d). For testing purposes.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        Symmetry to use.
+    d : int
+        Dimension of each index. If `d_per_charge` is True, this is the
+        dimension per charge sector, else it is the total dimension.
+    seed : int or np.random.Generator or None
+        Random seed or generator. If None, a new generator is created.
+    subsizes : str or None
+        Passed to `rand_index`. If "equal", all sectors will have equal size,
+        required for flat arrays.
+    dtype : str or dtype
+        Data type of the array.
+    fermionic : bool
+        Whether the array should be fermionic.
+    flat : bool
+        Whether to return a flat array (with a single index) instead of a
+        block array. If True, `subsizes` must be "equal".
+    matrix_type : {"general", "hermitian", "posdef"}
+        Type of matrix to generate. "general" generates a general matrix,
+        "hermitian" generates a hermitian matrix, and "posdef" generates a
+        positive definite matrix.
+    d_per_charge : bool
+        Whether `d` specifies the dimension per charge sector (True) or the
+        total dimension (False). If True, the total dimension is determined by
+        the symmetry and `d`, only valid for ZN.
     """
     from .symmetries import get_symmetry
     from .utils import get_rand, get_rng, rand_index
@@ -177,8 +206,13 @@ def rand_matrix(
             fermionic=fermionic,
             flat=flat,
             matrix_type=matrix_type,
+            d_per_charge=d_per_charge,
         )
     )
+
+    if d_per_charge:
+        N = int(symmetry[1:])
+        d = N * d
 
     i = rand_index(symm, d, subsizes=subsizes, seed=rng)
 

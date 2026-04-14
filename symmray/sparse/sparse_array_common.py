@@ -1838,7 +1838,7 @@ class SparseArrayCommon:
         renorm = kwargs.pop("renorm", False)
         max_bond = kwargs.pop("max_bond", -1)
         absorb = kwargs.pop("absorb", "both")
-        use_abs = kwargs.pop("use_abs", False)
+        use_abs = kwargs.pop("use_abs", None)
 
         # 1. compute full decomposition
         left, s, right = self._split_abelian(
@@ -1850,6 +1850,16 @@ class SparseArrayCommon:
             absorb=None,
             **kwargs,
         )
+
+        # use_abs only for eigh_truncated (has possibly negative spectrum)
+        if use_abs is None:
+            positive = kwargs.get("positive", None)
+            if positive is None:
+                # not eigh
+                use_abs = False
+            else:
+                # eigh: use abs unless guaranteed positive spectrum
+                use_abs = not positive
 
         # 2. ... then truncate / handle absorb separately
         return truncate_svd_result_blocksparse(
@@ -2059,63 +2069,6 @@ class SparseArrayCommon:
             eigenvalues.check()
 
         return eigenvalues, eigenvectors
-
-    def _eigh_truncated_abelian(
-        self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
-        positive=0,
-        **kwargs,
-    ) -> tuple["SparseArrayCommon", "BlockVector", "SparseArrayCommon"]:
-        if kwargs:
-            import warnings
-
-            warnings.warn(
-                f"Got unexpected kwargs {kwargs} in svd_truncated "
-                f"for {self.__class__}. Ignoring them.",
-                UserWarning,
-            )
-
-        s, U = self._eigh_abelian()
-
-        # inplace sort by descending magnitude
-        for sector, charge in zip(U.sectors, s.sectors):
-            evals = s.get_block(charge)
-            evecs = U.get_block(sector)
-
-            if not positive:
-                idx = ar.do(
-                    "argsort",
-                    -ar.do("abs", evals, like=self.backend),
-                    like=self.backend,
-                )
-                s.set_block(charge, evals[idx])
-                U.set_block(sector, evecs[:, idx])
-            else:
-                # assume positive, just need to flip
-                s.set_block(charge, evals[::-1])
-                U.set_block(sector, evecs[:, ::-1])
-
-        if DEBUG:
-            U.check()
-            s.check()
-            U.check_with(s, 1)
-
-        return truncate_svd_result_blocksparse(
-            U,
-            s,
-            U.H,
-            cutoff,
-            cutoff_mode,
-            max_bond,
-            absorb,
-            renorm,
-            backend=self.backend,
-            use_abs=True,
-        )
 
     def _cholesky_abelian(
         self, upper=False, shift=True, **kwargs

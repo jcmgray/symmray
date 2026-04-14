@@ -1721,27 +1721,6 @@ class FlatArrayCommon:
 
         return eigenvalues, eigenvectors
 
-    def _eigh_truncated_abelian(
-        self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
-        positive=0,
-        **kwargs,
-    ):
-        kwargs.setdefault("method", "eigh")
-        return self._split_abelian(
-            absorb=absorb,
-            max_bond=max_bond,
-            cutoff=cutoff,
-            cutoff_mode=cutoff_mode,
-            renorm=renorm,
-            positive=positive,
-            **kwargs,
-        )
-
 
 def truncate_svd_result_flat(
     U: FlatArrayCommon,

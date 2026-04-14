@@ -124,6 +124,68 @@ def test_eigh_flat(symmetry, d, seed, duals):
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [2, 3])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42, 34])
+def test_eigh_truncated_flat(symmetry, d, absorb, seed):
+    x = sr.utils_test.rand_matrix(
+        symmetry,
+        d,
+        seed=seed,
+        flat=True,
+        matrix_type="posdef" if absorb == 0 else "hermitian",
+        d_per_charge=True,
+    )
+
+    u, s, vh = sr.linalg.eigh_truncated(x, absorb=absorb)
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+
+    if absorb is None:
+        s.check()
+        xr = u @ vh.multiply_diagonal(s, 0)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    xr.test_allclose(x)
+
+    if absorb is None:
+        z = u @ u.dagger_project_left() @ x @ vh.dagger_project_right() @ vh
+        z.test_allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+@pytest.mark.parametrize("d", [5, 7])
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+@pytest.mark.parametrize("seed", [42])
+def test_eigh_truncated_max_bond_flat(symmetry, d, absorb, seed):
+    x = sr.utils_test.rand_matrix(
+        symmetry,
+        d,
+        seed=seed,
+        flat=True,
+        matrix_type="posdef" if absorb == 0 else "hermitian",
+        d_per_charge=True,
+    )
+
+    # need to have at least one state per charge sector
+    chi = int(symmetry[1:])
+    u, s, vh = sr.linalg.eigh_truncated(x, max_bond=chi, absorb=absorb)
+
+    if u is not None:
+        u.check()
+    if vh is not None:
+        vh.check()
+    if s is not None:
+        s.check()
+        assert s.size <= chi
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("d1", [6, 8])
 @pytest.mark.parametrize("d2", [6, 8])
 @pytest.mark.parametrize("charge", [0, 1])

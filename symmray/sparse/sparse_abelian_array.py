@@ -133,43 +133,6 @@ class AbelianArray(
         """Map the blocks and their keys (sectors) of the array inplace."""
         self._map_blocks_blockcommon(fn_block, fn_sector, fn_filter)
 
-    def transpose(self, axes=None, inplace=False):
-        """Transpose this block sparse abelian array.
-
-        Parameters
-        ----------
-        axes : tuple[int, ...] | None, optional
-            A permutation of the axes to transpose the array by. If None,
-            the axes will be reversed.
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-        """
-        return self._transpose_abelian(axes=axes, inplace=inplace)
-
-    def conj(self, inplace=False) -> "AbelianArray":
-        """Return the complex conjugate of this block array, including the
-        indices."""
-        return self._conj_abelian(inplace=inplace)
-
-    def dagger(self, inplace=False) -> "AbelianArray":
-        """Return the adjoint of this abelian array, including the
-        indices and any subindex fusing information.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-            Whether to perform the operation inplace or return a new array.
-
-        Returns
-        -------
-        AbelianArray
-        """
-        return self._dagger_abelian(inplace=inplace)
-
     def _fuse_core(self, *axes_groups, mode="auto", inplace=False):
         return self._fuse_core_abelian(
             *axes_groups, mode=mode, inplace=inplace
@@ -319,65 +282,6 @@ class AbelianArray(
             The array of eigenvectors.
         """
         return self._eigh_abelian(**kwargs)
-
-    def eigh_truncated(
-        self,
-        cutoff=-1.0,
-        cutoff_mode=4,
-        max_bond=-1,
-        absorb=0,
-        renorm=0,
-        positive=0,
-        **kwargs,
-    ) -> tuple["AbelianArray", "BlockVector", "AbelianArray"]:
-        """Truncated hermitian eigen-decomposition of this assumed hermitian
-        block sparse abelian array.
-
-        Parameters
-        ----------
-        cutoff : float, optional
-            Absolute eigenvalue cutoff threshold.
-        cutoff_mode : int or str, optional
-            How to perform the truncation:
-
-            - 1 or 'abs': trim values below ``cutoff``
-            - 2 or 'rel': trim values below ``s[0] * cutoff``
-            - 3 or 'sum2': trim s.t. ``sum(s_trim**2) < cutoff``.
-            - 4 or 'rsum2': trim s.t. ``sum(s_trim**2) < sum(s**2) * cutoff``.
-            - 5 or 'sum1': trim s.t. ``sum(s_trim**1) < cutoff``.
-            - 6 or 'rsum1': trim s.t. ``sum(s_trim**1) < sum(s**1) * cutoff``.
-
-        max_bond : int
-            An explicit maximum bond dimension, use -1 for none.
-        absorb : {-1, 0, 1, None}
-            How to absorb the eigenvalues.
-
-            - -1 or 'left': absorb into the left factor (U).
-            - 0 or 'both': absorb the square root into both factors.
-            - 1 or 'right': absorb into the right factor (VH).
-            - None: do not absorb, return eigenvalues as a BlockVector.
-
-        renorm : {0, 1}
-            Whether to renormalize the eigenvalues (depends on `cutoff_mode`).
-
-        Returns
-        -------
-        u : AbelianArray
-            The abelian array of left eigenvectors.
-        w : VectorCommon or None
-            The vector of eigenvalues, or None if absorbed.
-        uh : AbelianArray
-            The abelian array of right eigenvectors.
-        """
-        return self._eigh_truncated_abelian(
-            cutoff=cutoff,
-            cutoff_mode=cutoff_mode,
-            max_bond=max_bond,
-            absorb=absorb,
-            renorm=renorm,
-            positive=positive,
-            **kwargs,
-        )
 
     def cholesky(self, *, upper=False) -> "AbelianArray":
         """Cholesky decomposition of this assumed positive-definite array.

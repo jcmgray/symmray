@@ -502,7 +502,9 @@ sr.build_local_fermionic_elements(
 # {(0, 1, 0, 1): -2.0, (1, 0, 1, 0): -2.0, (1, 1, 1, 1): -4.0}
 ```
 
-To build an actual fermionic array we need to specify a symmetry and a `index_map` for each local basis that maps each index to a charge. For example, if we want to build the above operator into a `U1FermionicArray` we could do:
+To build an actual fermionic array we need to specify a symmetry and a
+`index_map` for each local basis that maps each index to a charge. For example,
+if we want to build the above operator into a `U1FermionicArray` we could do:
 
 ```python
 sr.build_local_fermionic_array(
@@ -558,7 +560,8 @@ sr.fermi_hubbard_local_array("U1U1", t=1.0, U=8.0, mu=5).blocks
 #  ((1, 1), (1, 1), (1, 1), (1, 1)): array([[[[-4.]]]])}
 ```
 
-(Note that zero blocks are stored - for the sake of correctness when fusing and exponentiating.) The spinful versions uses the local basis:
+(Note that zero blocks are stored - for the sake of correctness when fusing and
+exponentiating.) The spinful versions uses the local basis:
 
 $$
 |i\rangle =
@@ -568,7 +571,14 @@ $$
 which has a U1 `index_map` of charges `[0, 1, 1, 2]` or a U1U1 `index_map` of
 charges `[(0, 0), (0, 1), (1, 0), (1, 1)]`.
 
-Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array` also take a `coordinations` argument which specifies the lattice coordination of the two sites. This scales any *on-site* (i.e. 1-local) terms by inverse coordination, so that these terms can be included in the pairwise (i.e. 2-local) arrays without overcounting. For example in a 1D open chain the boundary `coordinations` would be `(1, 2)` and `(2, 1)`, whereas the bulk would be `(2, 2)`. The utility function `sr.parse_edges_to_site_info` fills in coordination information.
+Both `fermi_hubbard_local_array` and `fermi_hubbard_spinless_local_array` also
+take a `coordinations` argument which specifies the lattice coordination of the
+two sites. This scales any *on-site* (i.e. 1-local) terms by inverse
+coordination, so that these terms can be included in the pairwise (i.e.
+2-local) arrays without overcounting. For example in a 1D open chain the
+boundary `coordinations` would be `(1, 2)` and `(2, 1)`, whereas the bulk would
+be `(2, 2)`. The utility function `sr.parse_edges_to_site_info` fills in
+coordination information.
 
 
 ### Linear Algebra
@@ -589,7 +599,19 @@ Tensor network specific functions as used by `quimb`:
   maximum bond dimension and/or a cutoff threshold with various modes.
 - `qr_stabilized`: qr decomposition with sign stabilization of the R matrix
   diagonal, which is beneficial for gradient based optimization.
+- `svd_via_eig_truncated`: svd via eigendecomposition of the hermitian square,
+  which can be more efficient, especially on GPU, at the loss of some
+  precision.
+- `svd_rand_truncated`: randomized svd, which can be much for efficient for
+  low rank decompositions, at the loss of some precision.
+- `qr_via_cholesky`: qr decomposition via cholesky decomposition of the Gram
+  matrix, which can be more efficient, especially on GPU, at the loss of some
+  precision and stability.
 
+These five main drivers all accept `absorb` kwarg which controls the output
+form / where the singular (or eigen) values are 'absorbed'. For example,
+`absorb="left"` yields a LQ-like decomposition where the right factor is
+isometric.
 
 #### Diagonal matrices and vectors: ``BlockVector``
 

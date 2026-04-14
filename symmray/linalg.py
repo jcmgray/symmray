@@ -13,7 +13,7 @@ def eigh(x: ArrayCommon, *args, **kwargs):
     -------
     w : VectorCommon
         The eigenvalues as a vector.
-    u : AbelianCommon
+    u : ArrayCommon
         The array of eigenvectors.
     """
     return x.eigh(*args, **kwargs)
@@ -52,11 +52,11 @@ def eigh_truncated(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    u : AbelianCommon
+    u : ArrayCommon
         The abelian array of left eigenvectors.
     w : VectorCommon or None
         The vector of eigenvalues, or None if absorbed.
-    uh : AbelianCommon
+    uh : ArrayCommon
         The abelian array of right eigenvectors.
     """
     return x.eigh_truncated(*args, **kwargs)
@@ -143,11 +143,11 @@ def svd_truncated(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    u : AbelianCommon
+    u : ArrayCommon
         The abelian array of left singular vectors.
     s : VectorCommon or None
         The vector of singular values, or None if absorbed.
-    vh : AbelianCommon
+    vh : ArrayCommon
         The abelian array of right singular vectors.
     """
     return x.svd_truncated(*args, **kwargs)
@@ -179,11 +179,11 @@ def svd_rand_truncated(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    u : AbelianCommon or None
+    u : ArrayCommon or None
         The array of left singular vectors.
     s : VectorCommon or None
         The singular values, or None if absorbed.
-    vh : AbelianCommon or None
+    vh : ArrayCommon or None
         The array of right singular vectors.
     """
     return x.svd_rand_truncated(*args, **kwargs)
@@ -223,11 +223,11 @@ def svd_via_eig_truncated(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    u : AbelianCommon
+    u : ArrayCommon
         The abelian array of left singular vectors.
     s : VectorCommon or None
         The vector of singular values, or None if absorbed.
-    vh : AbelianCommon
+    vh : ArrayCommon
         The abelian array of right singular vectors.
     """
     return x.svd_via_eig_truncated(*args, **kwargs)
@@ -238,7 +238,7 @@ def cholesky(x: ArrayCommon, *args, **kwargs):
 
     Parameters
     ----------
-    x : AbelianCommon
+    x : ArrayCommon
         The 2D block-symmetric array to decompose.
     upper : bool, optional
         Whether to return the upper triangular Cholesky factor.
@@ -246,7 +246,7 @@ def cholesky(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    l_or_r : AbelianCommon
+    l_or_r : ArrayCommon
         The Cholesky factor. Lower triangular if ``upper=False``,
         upper triangular if ``upper=True``.
     """
@@ -260,7 +260,7 @@ def cholesky_regularized(x: ArrayCommon, *args, **kwargs):
 
     Parameters
     ----------
-    x : AbelianCommon
+    x : ArrayCommon
         The 2D block-symmetric array to decompose. Must be positive
         (semi-)definite.
     absorb : {-12, 0, 12}, optional
@@ -277,11 +277,11 @@ def cholesky_regularized(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    left : AbelianCommon or None
+    left : ArrayCommon or None
         The lower Cholesky factor, or None.
     s : None
         Always None (no singular values).
-    right : AbelianCommon or None
+    right : ArrayCommon or None
         The conjugate transpose of the Cholesky factor, or None.
     """
     return x.cholesky_regularized(*args, **kwargs)
@@ -295,7 +295,7 @@ def lq_via_cholesky(x: ArrayCommon, *args, **kwargs):
 
     Parameters
     ----------
-    x : AbelianCommon
+    x : ArrayCommon
         The 2D block-symmetric array to decompose.
     absorb : {-1, -10, -11} or str, optional
         How to return the factors:
@@ -314,11 +314,11 @@ def lq_via_cholesky(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    L : AbelianCommon or None
+    L : ArrayCommon or None
         The lower triangular factor.
     s : None
         Always None.
-    Q : AbelianCommon or None
+    Q : ArrayCommon or None
         The isometric factor.
     """
     return x.lq_via_cholesky(*args, **kwargs)
@@ -332,7 +332,7 @@ def qr_via_cholesky(x: ArrayCommon, *args, **kwargs):
 
     Parameters
     ----------
-    x : AbelianCommon
+    x : ArrayCommon
         The 2D block-symmetric array to decompose.
     absorb : {1, 11, 10} or str, optional
         How to return the factors:
@@ -351,11 +351,11 @@ def qr_via_cholesky(x: ArrayCommon, *args, **kwargs):
 
     Returns
     -------
-    Q : AbelianCommon or None
+    Q : ArrayCommon or None
         The isometric factor.
     s : None
         Always None.
-    R : AbelianCommon or None
+    R : ArrayCommon or None
         The upper triangular factor.
     """
     return x.qr_via_cholesky(*args, **kwargs)
