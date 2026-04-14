@@ -532,11 +532,10 @@ class FermionicArrayFlat(
         new = self if inplace else self.copy()
 
         N = new.ndim
+        xp = ar.get_namespace(new.sectors)
         if axes is None:
             # full reversal, shortcut to count the swaps
-            nswap = (
-                ar.do("sum", new.sectors % 2, axis=1, like=self.backend) // 2
-            )
+            nswap = xp.sum(new.sectors % 2, axis=1) // 2
         elif all(ax == i for i, ax in enumerate(axes)):
             # identity, nothing to do
             return new
@@ -544,18 +543,22 @@ class FermionicArrayFlat(
             # convert permutation to sequence of pairwise neighboring swaps
             swaps = perm_to_swaps(tuple(axes))
 
-            # count how many swaps of odd charges there are
-            parities = [new.sectors[:, i] % 2 for i in range(N)]
-            nswap = None
-            for il, ir in swaps:
-                if nswap is None:
-                    nswap = parities[il] * parities[ir]
-                else:
-                    nswap = nswap + (parities[il] * parities[ir])
-                parities[il], parities[ir] = parities[ir], parities[il]
+            if len(swaps) == 0:
+                raise ValueError("No phase changes required.")
 
-        if nswap is None:
-            raise ValueError("No phase changes required.")
+            # count how many swaps of odd charges there are
+            axes = list(range(N))
+            swap_pairs = []
+            for il, ir in swaps:
+                swap_pairs.append((axes[il], axes[ir]))
+                axes[il], axes[ir] = axes[ir], axes[il]
+            swap_pairs = xp.asarray(swap_pairs)
+
+            parities = new.sectors.T % 2
+            # shape: (which_axis, which_sector)
+            # fancy indexing gives ->
+            # shape: (which_swap, l_or_r, which_sector)
+            nswap = xp.sum(xp.prod(parities[swap_pairs], axis=1), axis=0)
 
         # absorb into current phases
         phase_change = (nswap % 2) * -2 + 1
