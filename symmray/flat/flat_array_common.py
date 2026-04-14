@@ -96,12 +96,16 @@ def lexsort_sectors(sectors, order=None, stable=True):
     ncol = sectors.shape[1] if is_array else len(sectors)
     xp = ar.get_namespace(sectors[0])
 
-    if order is not None and ncol <= 63 and order**ncol <= (1 << 63):
+    use_int_packing = order is not None and (
+        (order == 2 and ncol < 32) or (order**ncol < 32)
+    )
+
+    if use_int_packing:
         # pack the charges into a single integer key when order is small enough
         if not is_array:
             sectors = xp.stack(sectors, axis=1)
-        sectors = xp.asarray(sectors, dtype="int64")
-        powers = xp.arange(sectors.shape[1] - 1, -1, -1, dtype="int64")
+        sectors = xp.asarray(sectors)
+        powers = xp.arange(sectors.shape[1] - 1, -1, -1)
         key = xp.sum(sectors * (order ** powers[None, :]), axis=1)
         return xp.argsort(key, stable=stable)
 
