@@ -229,17 +229,6 @@ class AbelianArrayFlat(
         """Create a blocksparse abelian array from this flat abelian array."""
         return self._to_blocksparse_abelian()
 
-    def to_dense(self):
-        """Convert this abelian array to a dense array, by combining all the
-        blocks into a single large array, filling in zeros where necessary.
-
-        Returns
-        -------
-        array_like
-            A dense array with the same shape as this abelian array.
-        """
-        return self._to_dense_abelian()
-
     def _map_blocks(self, fn_sector=None, fn_block=None):
         self._map_blocks_abelian(fn_sector=fn_sector, fn_block=fn_block)
 

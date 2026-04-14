@@ -11,7 +11,6 @@ from ..utils import DEBUG, get_rng
 from .sparse_array_common import (
     SparseArrayCommon,
     permuted,
-    truncate_svd_result_blocksparse,
 )
 from .sparse_data_common import BlockCommon
 from .sparse_index import BlockIndex
