@@ -347,6 +347,7 @@ z2.dummy_modes
 # ()
 ```
 
+
 ##### Slicing and dummy modes
 
 Slicing an fermionic array (for example when computing an amplitude), even or
@@ -613,6 +614,7 @@ form / where the singular (or eigen) values are 'absorbed'. For example,
 `absorb="left"` yields a LQ-like decomposition where the right factor is
 isometric.
 
+
 #### Diagonal matrices and vectors: ``BlockVector``
 
 Decompositions such as SVD and eigendecomposition return singular and eigen
@@ -642,6 +644,17 @@ See the `symmray.symmetries` module for how to define your own symmetries. You
 can supply these directly to `AbelianArray` and `FermionicArray` constructors
 (dynamic symmetry), or you can create your own specific subclasses of these
 classes (static symmetry), such as ``U1U1FermionicArray``.
+
+
+## Class Structure
+
+To ensure methods are shareable but consistent across the sparse and flat 
+backends, `symmray` employs the following mixin inheritance structure:
+
+<img width="640" alt="image" src="https://github.com/user-attachments/assets/33c0999c-9cb9-4551-bc92-39e63855e1f5" />
+
+To help avoid inheritance errors and ambiguity, `symmray` enforces (via a unit test) 
+that no methods can be overridden or be otherwise defined in multiple places.
 
 
 ## Other libraries
