@@ -139,6 +139,35 @@ class Absorb:
         return cls._map[absorb]
 
     @classmethod
+    def explain(cls, absorb):
+        """Get a human-readable explanation of an absorb mode.
+
+        Parameters
+        ----------
+        absorb : int or None
+            A canonical absorb mode code (already parsed).
+
+        Returns
+        -------
+        str
+            A human-readable explanation of the mode.
+        """
+        explanations = {
+            cls.U_s_VH: "return U, s, VH",
+            cls.s: "return s only",
+            cls.Usq: "absorb sqrt(s) into U, return U√s only",
+            cls.VH: "return VH only",
+            cls.Us: "absorb s into U, return Us only",
+            cls.Us_VH: "absorb s into U, return Us and VH",
+            cls.Usq_sqVH: "absorb sqrt(s) into both, return U√s and √sVH",
+            cls.U_sVH: "absorb s into VH, return U and sVH",
+            cls.U: "return U only",
+            cls.sVH: "absorb s into VH, return sVH only",
+            cls.sqVH: "absorb sqrt(s) into VH, return √sVH only",
+        }
+        return explanations[absorb]
+
+    @classmethod
     def transpose(cls, absorb):
         """Map an absorb mode to its transposed equivalent.
 
@@ -183,8 +212,8 @@ class Absorb:
 def absorb_svd_result(U, s, VH, absorb):
     """Apply absorption of singular values into U and/or VH.
 
-    Works on any symmray array objects that support ``multiply_diagonal``
-    and vectors that support ``.sqrt()``.
+    Works on any symmray array objects that support ``multiply_diagonal`` and
+    vectors that support ``.sqrt()``.
 
     Parameters
     ----------

@@ -11,6 +11,65 @@ from .utils import DEBUG
 from .vector_common import VectorCommon
 
 
+def _count_suffix_consumed(shape, suffix, subshapes):
+    """Walk ``shape`` and ``suffix`` from right to left using the same matching
+    rules as the forward reshape algorithm, returning the index ``i`` such that
+    ``shape[i:]`` is consumed by ``suffix``. Used to anchor a ``-1`` entry in
+    ``newshape``: everything between the prefix-consumed region and
+    ``shape[i:]`` becomes the input axes for the ``-1`` slot.
+    """
+    ndim = len(shape)
+    nsuf = len(suffix)
+    i = ndim - 1
+    j = nsuf - 1
+
+    while i >= 0 and j >= 0:
+        di = shape[i]
+        dj = suffix[j]
+        sub = subshapes[i]
+        if (
+            sub is not None
+            and j + 1 >= len(sub)
+            and suffix[j + 1 - len(sub) : j + 1] == sub
+        ):
+            # unfuse: consumes one input axis, len(sub) output positions
+            for ds in reversed(sub):
+                if suffix[j] != ds:
+                    raise ValueError("Shape mismatch for unfuse.")
+                j -= 1
+            i -= 1
+        elif di == dj:
+            i -= 1
+            j -= 1
+        elif di == 1:
+            # squeeze: trailing singleton in shape, no output consumed
+            i -= 1
+        elif dj == 1:
+            # expand: trailing singleton in suffix, no input consumed
+            j -= 1
+        elif di < dj:
+            # fuse: accumulate further leading input axes leftward
+            i -= 1
+            while di < dj:
+                if i < 0:
+                    raise ValueError("Shape mismatch for fuse.")
+                di *= shape[i]
+                i -= 1
+            if di != dj:
+                raise ValueError("Shape mismatch for fuse.")
+            j -= 1
+        else:
+            raise ValueError("Shape mismatch.")
+
+    if j >= 0:
+        # any leftover suffix entries must be expands (size 1)
+        for jj in range(j + 1):
+            if suffix[jj] != 1:
+                raise ValueError("Shape mismatch.")
+
+    return i + 1
+
+
 @functools.lru_cache(maxsize=2**15)
 def calc_reshape_args(shape, newshape, subshapes):
     """Given a current block sparse shape ``shape`` a target shape ``newshape``
@@ -18,12 +77,18 @@ def calc_reshape_args(shape, newshape, subshapes):
     dimensions) compute the sequence of axes to unfuse, fuse and expand to
     reshape the array.
 
+    A single ``-1`` entry in ``newshape`` is interpreted structurally: it
+    consumes whichever input axes are not matched by the rest of the target
+    shape (fusing them if there is more than one). This avoids the
+    division-by-size resolution which can be ambiguous for sparse arrays
+    whose fused-axis sizes do not equal the product of their subshape.
+
     Parameters
     ----------
     shape : tuple[int]
         The current shape of the array.
     newshape : tuple[int]
-        The target shape of the array.
+        The target shape of the array. May contain at most one ``-1``.
     subshapes : tuple[None or tuple[int]]
         The sizes of the subindices that were previously fused.
 
@@ -46,7 +111,18 @@ def calc_reshape_args(shape, newshape, subshapes):
     ndim_old = len(shape)
     ndim_new = len(newshape)
 
-    term = []  # dnyamically updated labelled dimensions
+    if newshape.count(-1) > 1:
+        raise ValueError("Only one -1 entry allowed in newshape.")
+
+    if -1 in newshape:
+        neg_pos = newshape.index(-1)
+        i_right_start = _count_suffix_consumed(
+            shape, newshape[neg_pos + 1 :], subshapes
+        )
+    else:
+        i_right_start = ndim_old
+
+    term = []  # dynamically updated labelled dimensions
     axs_squeeze = []
     unfuse_sizes = {}
     fuse_sizes = {}
@@ -57,6 +133,30 @@ def calc_reshape_args(shape, newshape, subshapes):
     while i < ndim_old and j < ndim_new:
         di = shape[i]
         dj = newshape[j]
+
+        if dj == -1:
+            n_middle = i_right_start - i
+            if n_middle <= 0:
+                # nothing to absorb - treat as singleton expansion
+                axs_expand.append(k)
+                j += 1
+            elif n_middle == 1:
+                # exactly one axis: take it directly
+                term.append("o")
+                i += 1
+                j += 1
+                k += 1
+            else:
+                # multiple axes: fuse them all into one output axis
+                label = f"g{len(fuse_sizes)}"
+                for _ in range(n_middle):
+                    term.append(label)
+                fuse_sizes[label] = n_middle
+                any_fused = True
+                i = i_right_start
+                j += 1
+                k += 1
+            continue
 
         if (subshapes[i] is not None) and (
             subshapes[i] == newshape[j : j + len(subshapes[i])]
@@ -438,10 +538,17 @@ class ArrayCommon:
         squeeze them before reshaping. Similarly use ``expand_dims`` to add
         new axes with specific charges and dual-ness.
 
+        ``newshape`` may contain at most one ``-1`` entry, which is resolved
+        structurally: it absorbs whichever input axes are not matched by the
+        rest of the target shape (fusing them if there is more than one). This
+        differs from numpy's division-based resolution and avoids ambiguity
+        when fused-index sizes do not equal the product of their subshape due
+        to sparsity.
+
         Parameters
         ----------
         newshape : tuple[int]
-            The new shape to reshape to.
+            The new shape to reshape to. May contain at most one ``-1``.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -457,7 +564,6 @@ class ArrayCommon:
 
         if not isinstance(newshape, tuple):
             newshape = tuple(newshape)
-        newshape = ar.lazy.core.find_full_reshape(newshape, self.size)
 
         subshapes = tuple(ix.subshape for ix in x.indices)
 

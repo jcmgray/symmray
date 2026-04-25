@@ -142,6 +142,83 @@ def test_calc_reshape_args_edgecase():
     assert axs_fuse_groupings == (((0, 1),),)
 
 
+@pytest.mark.parametrize(
+    "shape,newshape,subshapes,expected",
+    [
+        # fuse middle
+        (
+            (3, 4, 5, 6),
+            (3, -1, 6),
+            (None,) * 4,
+            ((), (((1, 2),),), ()),
+        ),
+        # fuse all
+        ((3, 4, 5, 6), (-1,), (None,) * 4, ((), (((0, 1, 2, 3),),), ())),
+        # trailing -1 with no remaining axes -> singleton expand
+        ((3, 4, 5, 6), (3, 4, 5, 6, -1), (None,) * 4, ((), (), (4,))),
+        # single middle axis -> direct match
+        ((3, 4, 5, 6), (3, -1, 5, 6), (None,) * 4, ((), (), ())),
+        # left boundary
+        ((3, 4, 5, 6), (-1, 6), (None,) * 4, ((), (((0, 1, 2),),), ())),
+        # right boundary
+        ((3, 4, 5, 6), (3, -1), (None,) * 4, ((), (((1, 2, 3),),), ())),
+        # unfuse + -1
+        (
+            (3, 12, 6),
+            (3, 4, 5, -1),
+            (None, (4, 5), None),
+            ((1,), (), ()),
+        ),
+        # internal singleton swept up by -1
+        (
+            (2, 1, 3, 4),
+            (2, -1),
+            (None,) * 4,
+            ((), (((1, 2, 3),),), ()),
+        ),
+        # leading singleton swept up by -1
+        ((1, 3, 4), (-1, 4), (None,) * 3, ((), (((0, 1),),), ())),
+    ],
+)
+def test_calc_reshape_args_negative_one(shape, newshape, subshapes, expected):
+    from symmray.array_common import calc_reshape_args
+
+    assert calc_reshape_args(shape, newshape, subshapes) == expected
+
+
+def test_calc_reshape_args_multiple_negative_one():
+    from symmray.array_common import calc_reshape_args
+
+    with pytest.raises(ValueError):
+        calc_reshape_args((3, 4), (-1, -1), (None, None))
+
+
+@pytest.mark.parametrize("symmetry", all_symmetries)
+@pytest.mark.parametrize(
+    "shape0, shape1",
+    [
+        ((3, 4, 5, 6), (3, -1, 6)),
+        ((3, 4, 5, 6), (-1,)),
+        ((3, 4, 5, 6), (-1, 6)),
+        ((3, 4, 5, 6), (3, -1)),
+        ((3, 4, 5, 6), (3, -1, 5, 6)),
+    ],
+)
+@pytest.mark.parametrize("seed", range(3))
+def test_AbelianArray_reshape_negative_one(symmetry, shape0, shape1, seed):
+    x = sr.utils.get_rand(symmetry, shape0, seed=seed, subsizes="maximal")
+    y = ar.do("reshape", x, shape1)
+    y.check()
+    # -1 entries must be replaced by some matching positive size
+    for da, db in zip(y.shape, shape1):
+        if db != -1:
+            assert da <= db
+    # round trip back to original
+    z = ar.do("reshape", y, shape0)
+    z.check()
+    x.test_allclose(z)
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("subsizes", ("maximal", "equal"))
 @pytest.mark.parametrize("mode", ("fused", "blockwise"))

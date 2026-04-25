@@ -16,6 +16,7 @@ import autoray as ar
 from ..array_common import maybe_keep_label, parse_tensordot_axes, without
 from ..linalg_common import (
     Absorb,
+    absorb_svd_result,
     array_split,
 )
 from ..utils import DEBUG, get_array_cls, hasher
@@ -2282,38 +2283,6 @@ def truncate_svd_result_blocksparse(
         )
     )
 
-    if absorb is Absorb.U_s_VH:
-        if DEBUG:
-            U.check_with(s, 1)
-            s.check()
-            VH.check_with(s, 0)
-            U.check_with(VH, (1,), (0,))
-
-        return U, s, VH
-
-    # absorb the singular values block by block
-    for c0, c1 in U.sectors:
-        if absorb == Absorb.Us_VH:
-            U.set_block(
-                (c0, c1),
-                U.get_block((c0, c1)) * s.get_block(c1).reshape((1, -1)),
-            )
-        elif absorb == Absorb.U_sVH:
-            VH.set_block(
-                (c1, c1),
-                VH.get_block((c1, c1)) * s.get_block(c1).reshape((-1, 1)),
-            )
-        elif absorb == Absorb.Usq_sqVH:
-            s_sqrt = ar.do("sqrt", s.get_block(c1), like=backend)
-            U.set_block(
-                (c0, c1), U.get_block((c0, c1)) * s_sqrt.reshape((1, -1))
-            )
-            VH.set_block(
-                (c1, c1), VH.get_block((c1, c1)) * s_sqrt.reshape((-1, 1))
-            )
-        else:
-            raise ValueError(f"Unknown absorb value: {absorb}")
-
     if DEBUG:
         U.check()
         U.check_with(s, 1)
@@ -2322,7 +2291,7 @@ def truncate_svd_result_blocksparse(
         VH.check_with(s, 0)
         U.check_with(VH, (1,), (0,))
 
-    return U, None, VH
+    return absorb_svd_result(U, s, VH, absorb)
 
 
 # --------------------------------------------------------------------------- #
