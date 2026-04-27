@@ -1,16 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,200..800;1,200..800&family=Spline+Sans+Mono:ital,wght@0,300..700;1,300..700&display=swap');
 
 h1, h2, h3 {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: 'Spline Sans Mono', monospace;
     font-weight: bold;
 }
 
+h1 {
+	font-size: 2.0rem;
+}
+
+h2 {
+	font-size: 1.75rem;
+}
+
+h3 {
+	font-size: 1.5rem;
+}
+
 body {
-    font-family: 'Atkinson Hyperlegible', sans-serif;
+    font-family: 'Atkinson Hyperlegible Next', sans-serif;
 }
 
 code, kbd, pre, samp {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: 'Spline Sans Mono', monospace;
+}
+
+code.literal {
+	color: hsl(170, 45%, 45%);
+	font-weight: 450;
 }
 
 div.cell div.cell_input {
@@ -22,13 +39,24 @@ div.cell div.cell_input {
 	border-left-width: medium;
 }
 
-.cell_output .output.text_plain, .cell_output .output.traceback, .cell_output .output.stream, .cell_output .output.stderr {
+.cell_output .output.text_plain, .cell_output .output.traceback, .cell_output .output.stream {
 	border: 1px solid rgba(127, 127, 127, 0.0);
     background: rgba(127, 127, 127, 0.0);
 	margin-top: 0em;
 	margin-bottom: 0em;
 	margin-left: 0.5em;
 	box-shadow: none;
+}
+
+.cell_output .output.stderr {
+	border: 1px solid rgba(127, 127, 127, 0.0);
+    background: rgba(127, 127, 127, 0.0);
+	margin-top: 0em;
+	margin-bottom: 0em;
+	margin-left: 0.25em;
+	box-shadow: none;
+    border-left-color: #cc7766;
+    border-left-width: medium;
 }
 
 .cell_output {

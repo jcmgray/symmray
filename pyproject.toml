@@ -114,6 +114,7 @@ python = "3.14.*"
 
 [tool.pixi.feature.docs.dependencies]
 astroid = "*"
+cotengra = "*"
 furo = "*"
 ipython = "*"
 myst-nb = "*"
@@ -151,6 +152,26 @@ pytest \
 """
 cwd = "."
 description = "Run tests with coverage."
+
+[tool.pixi.feature.docs.tasks.docs]
+cmd = "sphinx-build -b html docs docs/_build/html"
+cwd = "."
+description = "Build the HTML documentation."
+
+[tool.pixi.feature.docs.tasks.readthedocs]
+cmd = "sphinx-build -T -b html docs $READTHEDOCS_OUTPUT/html"
+cwd = "."
+description = "Specific task for building docs on ReadTheDocs."
+
+[tool.pixi.feature.docs.tasks.docs-clean]
+cmd = "rm -rf docs/_build"
+cwd = "."
+description = "Remove documentation build artifacts."
+
+[tool.pixi.feature.docs.tasks.docs-serve]
+cmd = "python -m http.server -d docs/_build/html 8000"
+cwd = "."
+description = "Serve the documentation locally."
 
 [tool.pixi.feature.docs.tasks.lint]
 cmd = """

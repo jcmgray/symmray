@@ -1,0 +1,21 @@
+version: 2
+
+sphinx:
+  configuration: docs/conf.py
+
+build:
+  os: "ubuntu-24.04"
+  tools:
+    python: "latest"
+  jobs:
+      create_environment:
+         - asdf plugin add pixi
+         - asdf install pixi latest
+         - asdf global pixi latest
+      install:
+         - pixi install -e docs
+      build:
+         html:
+            - pixi run readthedocs
+
+formats: []
