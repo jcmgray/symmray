@@ -2,6 +2,7 @@
 
 [![Tests](https://github.com/jcmgray/symmray/actions/workflows/tests.yml/badge.svg)](https://github.com/jcmgray/symmray/actions/workflows/tests.yml)
 [![Code Coverage](https://codecov.io/gh/jcmgray/symmray/branch/main/graph/badge.svg)](https://codecov.io/gh/jcmgray/symmray)
+[![Docs](https://readthedocs.org/projects/symmray/badge/?version=latest)](https://symmray.readthedocs.io)
 [![PyPI](https://img.shields.io/pypi/v/symmray?color=teal)](https://pypi.org/project/symmray/)
 [![Anaconda-Server Badge](https://anaconda.org/conda-forge/symmray/badges/version.svg)](https://anaconda.org/conda-forge/symmray)
 [![Pixi Badge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
