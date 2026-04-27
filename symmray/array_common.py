@@ -11,63 +11,264 @@ from .utils import DEBUG
 from .vector_common import VectorCommon
 
 
-def _count_suffix_consumed(shape, suffix, subshapes):
-    """Walk ``shape`` and ``suffix`` from right to left using the same matching
-    rules as the forward reshape algorithm, returning the index ``i`` such that
-    ``shape[i:]`` is consumed by ``suffix``. Used to anchor a ``-1`` entry in
-    ``newshape``: everything between the prefix-consumed region and
-    ``shape[i:]`` becomes the input axes for the ``-1`` slot.
-    """
-    ndim = len(shape)
-    nsuf = len(suffix)
-    i = ndim - 1
-    j = nsuf - 1
+def _is_squeeze_entry(entry):
+    return entry and entry[0] == "s"
 
-    while i >= 0 and j >= 0:
+
+def _is_matched_axis_entry(entry):
+    return entry is not None and entry != () and not _is_squeeze_entry(entry)
+
+
+def _match_reshape_forward(
+    shape, subshapes, newshape, i_start, i_stop, j_start, j_stop
+):
+    """Match ``shape[i_start:i_stop]`` to ``newshape[j_start:j_stop]`` from
+    left to right, returning target entries and the first unconsumed input
+    axis.
+    """
+    entries = []
+    i = i_start
+    j = j_start
+
+    while i < i_stop and j < j_stop:
         di = shape[i]
-        dj = suffix[j]
+        dj = newshape[j]
         sub = subshapes[i]
+
+        # prefer restoring known fused structure before ordinary size matches
         if (
             sub is not None
-            and j + 1 >= len(sub)
-            and suffix[j + 1 - len(sub) : j + 1] == sub
+            and j + len(sub) <= j_stop
+            and newshape[j : j + len(sub)] == sub
         ):
-            # unfuse: consumes one input axis, len(sub) output positions
-            for ds in reversed(sub):
-                if suffix[j] != ds:
-                    raise ValueError("Shape mismatch for unfuse.")
-                j -= 1
-            i -= 1
+            # 1. unfuse:
+            entries.extend(((i, k),) for k in range(len(sub)))
+            i += 1
+            j += len(sub)
         elif di == dj:
+            # 2. direct match:
+            entries.append(((i, None),))
+            i += 1
+            j += 1
+        elif di == 1:
+            # 3. squeeze:
+            entries.append(("s", (i, None)))
+            i += 1
+        elif dj == 1:
+            # 4. expand
+            entries.append(())
+            j += 1
+        elif di < dj:
+            # 5. fuse:
+            # build one output slot by fusing consecutive input axes
+            group = [(i, None)]
+            prod = di
+            i += 1
+            while prod < dj:
+                if i >= i_stop:
+                    raise ValueError("Shape mismatch for fuse.")
+                prod *= shape[i]
+                group.append((i, None))
+                i += 1
+            if prod != dj:
+                raise ValueError("Shape mismatch for fuse.")
+            entries.append(tuple(group))
+            j += 1
+        else:
+            raise ValueError("Shape mismatch.")
+
+    while j < j_stop:
+        # trailing expands:
+        if newshape[j] != 1:
+            raise ValueError("Shape mismatch.")
+        entries.append(())
+        j += 1
+
+    return entries, i
+
+
+def _match_reshape_reverse(
+    shape, subshapes, newshape, i_start, i_stop, j_start, j_stop
+):
+    """Match ``shape[i_start:i_stop]`` to ``newshape[j_start:j_stop]`` from
+    right to left, returning target entries and the first consumed input axis.
+    """
+    entries = []
+    i = i_stop - 1
+    j = j_stop - 1
+
+    while i >= i_start and j >= j_start:
+        di = shape[i]
+        dj = newshape[j]
+        sub = subshapes[i]
+
+        # mirror the forward matcher so suffixes can be matched after ``-1``
+        if (
+            sub is not None
+            and j + 1 - len(sub) >= j_start
+            and newshape[j + 1 - len(sub) : j + 1] == sub
+        ):
+            # 1. unfuse:
+            entries.extend(((i, k),) for k in range(len(sub) - 1, -1, -1))
+            i -= 1
+            j -= len(sub)
+        elif di == dj:
+            # 2. direct match:
+            entries.append(((i, None),))
             i -= 1
             j -= 1
         elif di == 1:
-            # squeeze: trailing singleton in shape, no output consumed
+            # 3. squeeze:
+            entries.append(("s", (i, None)))
             i -= 1
         elif dj == 1:
-            # expand: trailing singleton in suffix, no input consumed
+            # 4. expand:
+            entries.append(())
             j -= 1
         elif di < dj:
-            # fuse: accumulate further leading input axes leftward
+            # 5. fuse:
+            # accumulate a fused group leftward, then restore normal order
+            group = [(i, None)]
+            prod = di
             i -= 1
-            while di < dj:
-                if i < 0:
+            while prod < dj:
+                if i < i_start:
                     raise ValueError("Shape mismatch for fuse.")
-                di *= shape[i]
+                prod *= shape[i]
+                group.append((i, None))
                 i -= 1
-            if di != dj:
+            if prod != dj:
                 raise ValueError("Shape mismatch for fuse.")
+            entries.append(tuple(reversed(group)))
             j -= 1
         else:
             raise ValueError("Shape mismatch.")
 
-    if j >= 0:
-        # any leftover suffix entries must be expands (size 1)
-        for jj in range(j + 1):
-            if suffix[jj] != 1:
-                raise ValueError("Shape mismatch.")
+    while j >= j_start:
+        # leading expands:
+        if newshape[j] != 1:
+            raise ValueError("Shape mismatch.")
+        entries.append(())
+        j -= 1
 
-    return i + 1
+    entries.reverse()
+    return entries, i + 1
+
+
+def _absorb_squeeze_entries(entries):
+    """Attach squeezed singleton axes to a neighbouring kept dimension."""
+    if not any(_is_squeeze_entry(entry) for entry in entries):
+        return entries
+
+    entries = list(entries)
+    first_kept = None
+    for i, entry in enumerate(entries):
+        if _is_matched_axis_entry(entry):
+            first_kept = i
+            break
+
+    if first_kept is None:
+        raise ValueError("Cannot reshape only squeezed axes.")
+
+    # leading squeezes have no left neighbour, so attach them to the right
+    leading = [i for i in range(first_kept) if _is_squeeze_entry(entries[i])]
+    if leading:
+        entry = tuple(entries[i][1] for i in leading) + entries[first_kept]
+        entries[first_kept] = entry
+        for i in leading:
+            entries[i] = None
+
+    # all other squeezed axes attach to the nearest kept entry on the left
+    for i in range(first_kept + 1, len(entries)):
+        if not _is_squeeze_entry(entries[i]):
+            continue
+
+        j = i - 1
+        while j >= 0 and not _is_matched_axis_entry(entries[j]):
+            j -= 1
+        if j < 0:
+            raise ValueError("Cannot reshape squeezed axis.")
+        entries[j] = entries[j] + (entries[i][1],)
+        entries[i] = None
+
+    return [entry for entry in entries if entry is not None]
+
+
+def _entries_to_reshape_args(entries, ndim_old):
+    """Convert target entries to unfuse/fuse/expand operation arguments."""
+    # track the current live axes as operations mutate the array shape
+    current = [((i, None),) for i in range(ndim_old)]
+
+    # first determine which original axes need to be expanded by unfuse()
+    unfuse_sizes = {}
+    for entry in entries:
+        if not _is_matched_axis_entry(entry):
+            continue
+        for i, k in entry:
+            if k is None:
+                # not part of an unfuse
+                continue
+            unfuse_sizes[i] = max(unfuse_sizes.get(i, 0), k + 1)
+
+    axs_unfuse = []
+    for i in sorted(unfuse_sizes):
+        # unfuse replaces one live axis with its indexed subaxes
+        ax = current.index(((i, None),))
+        axs_unfuse.append(ax)
+        current[ax : ax + 1] = [((i, k),) for k in range(unfuse_sizes[i])]
+
+    # consecutive multi-axis entries can be handled by one fuse() call
+    axs_fuse = []
+    current_groups = []
+    current_entries = []
+
+    def flush_current_groups():
+        nonlocal current_groups, current_entries
+
+        if not current_groups:
+            return
+
+        axs_fuse.append(tuple(current_groups))
+
+        # after one fuse() call, each fused group becomes one live entry
+        start = current_groups[0][0]
+        stop = current_groups[-1][-1] + 1
+        current[start:stop] = current_entries
+        current_groups = []
+        current_entries = []
+
+    for entry in entries:
+        if entry == ():
+            continue
+
+        if len(entry) <= 1:
+            # a kept axis separates neighbouring fuse calls
+            flush_current_groups()
+            continue
+
+        # locate the current positions of each source part in this output axis
+        axes = tuple(current.index((part,)) for part in entry)
+        if current_groups and axes[0] != current_groups[-1][-1] + 1:
+            # non-adjacent fuse groups need separate fuse() calls
+            flush_current_groups()
+            axes = tuple(current.index((part,)) for part in entry)
+
+        current_groups.append(axes)
+        current_entries.append(entry)
+
+    flush_current_groups()
+
+    # expands run last, so return their positions from right to left
+    axs_expand = []
+    pos = 0
+    for entry in entries:
+        if entry == ():
+            axs_expand.append(pos)
+        else:
+            pos += 1
+    axs_expand.reverse()
+
+    return tuple(axs_unfuse), tuple(axs_fuse), tuple(axs_expand)
 
 
 @functools.lru_cache(maxsize=2**15)
@@ -101,209 +302,60 @@ def calc_reshape_args(shape, newshape, subshapes):
     axs_expand : tuple[int]
         The axes (after unfusing and fusing) to expand.
     """
-    # tracks position in input shape
-    i = 0
-    # tracks position in output shape
-    j = 0
-    # tracks position in post-fuse / pre-expand shape
-    k = 0
+    if newshape.count(-1) > 1:
+        raise ValueError("Only one -1 entry allowed in newshape.")
+
+    # first we build target 'entries', one per output axis, matching up input
+    # and output axes. Each entry is one of:
+    # ()  ->  'expand'
+    #     an expanded (size-1) output axis with no corresponding input axis
+    # ((i, None),)  ->  'match'
+    #     direct match of input axis i to the output axis
+    # ((i1, None), (i2, None), ...)  ->  'fuse'
+    #     fuse of consecutive input axes into one output axis
+    # ((i, k),)  ->  'unfuse'
+    #     one subaxis of an unfuse: input axis i is split, and this entry takes
+    #    the k-th subaxis (consecutive entries with the same i and increasing k
+    #    cover the full unfuse)
+    # ("s", (i, None))  ->  'squeeze'
+    #     a squeeze sentinel for a size-1 input axis i with no output; later
+    #     absorbed into a neighbouring entry by _absorb_squeeze_entries (so
+    #     post-absorb entries may carry extra (i, None) fuse parts)
+    # entries are ordered by output axis
 
     ndim_old = len(shape)
     ndim_new = len(newshape)
 
-    if newshape.count(-1) > 1:
-        raise ValueError("Only one -1 entry allowed in newshape.")
-
-    if -1 in newshape:
-        neg_pos = newshape.index(-1)
-        i_right_start = _count_suffix_consumed(
-            shape, newshape[neg_pos + 1 :], subshapes
+    if -1 not in newshape:
+        # without ``-1`` the whole reshape is a single forward match
+        entries, i = _match_reshape_forward(
+            shape, subshapes, newshape, 0, ndim_old, 0, ndim_new
         )
+        while i < ndim_old:
+            if shape[i] != 1:
+                raise ValueError("Shape mismatch.")
+            entries.append(("s", (i, None)))
+            i += 1
     else:
-        i_right_start = ndim_old
-
-    term = []  # dynamically updated labelled dimensions
-    axs_squeeze = []
-    unfuse_sizes = {}
-    fuse_sizes = {}
-    axs_expand = []
-    any_singleton = False
-    any_fused = False
-
-    while i < ndim_old and j < ndim_new:
-        di = shape[i]
-        dj = newshape[j]
-
-        if dj == -1:
-            n_middle = i_right_start - i
-            if n_middle <= 0:
-                # nothing to absorb - treat as singleton expansion
-                axs_expand.append(k)
-                j += 1
-            elif n_middle == 1:
-                # exactly one axis: take it directly
-                term.append("o")
-                i += 1
-                j += 1
-                k += 1
-            else:
-                # multiple axes: fuse them all into one output axis
-                label = f"g{len(fuse_sizes)}"
-                for _ in range(n_middle):
-                    term.append(label)
-                fuse_sizes[label] = n_middle
-                any_fused = True
-                i = i_right_start
-                j += 1
-                k += 1
-            continue
-
-        if (subshapes[i] is not None) and (
-            subshapes[i] == newshape[j : j + len(subshapes[i])]
-        ):
-            # unfuse, check first
-            label = f"u{len(unfuse_sizes)}"
-            s = 0
-            for ds in subshapes[i]:
-                dj = newshape[j]
-                if ds != dj:
-                    raise ValueError("Shape mismatch for unfuse.")
-                s += 1
-                j += 1
-                k += 1
-            unfuse_sizes[label] = s
-            term.append(label)
-            i += 1
-        elif di == dj:
-            # output dimension already
-            term.append("o")
-            i += 1
-            j += 1
-            k += 1
-        elif di == 1:
-            # have to handle squeezed dimensions after unfusing
-            term.append("s")
-            axs_squeeze.append(i)
-            any_singleton = True
-            i += 1
-        elif dj == 1:
-            # record expansion location relative to *post* fuse shape
-            axs_expand.append(k)
-            j += 1
-        elif di < dj:
-            # need to fuse
-            label = f"g{len(fuse_sizes)}"
-            term.append(label)
-            s = 1
-            i += 1
-            while di < dj:
-                di *= shape[i]
-                term.append(label)
-                i += 1
-                s += 1
-            if di != dj:
-                raise ValueError("Shape mismatch for fuse.")
-            fuse_sizes[label] = s
-            any_fused = True
-            j += 1
-            k += 1
-        else:
+        # with ``-1``, match both sides and let the middle become one entry
+        minus_1_pos = newshape.index(-1)
+        prefix, i_left = _match_reshape_forward(
+            shape, subshapes, newshape, 0, ndim_old, 0, minus_1_pos
+        )
+        suffix, i_right = _match_reshape_reverse(
+            shape, subshapes, newshape, 0, ndim_old, minus_1_pos + 1, ndim_new
+        )
+        if i_left > i_right:
             raise ValueError("Shape mismatch.")
 
-    # check trailing dimensions, which should be size 1
-    for i in range(i, ndim_old):
-        any_singleton = True
-        term.append("s")
-    for j in range(j, ndim_new):
-        axs_expand.append(k)
+        middle = tuple((i, None) for i in range(i_left, i_right))
+        entries = prefix + [middle] + suffix
 
-    # first we handle unfusings
-    axs_unfuse = []
-    for label, s in unfuse_sizes.items():
-        ax = term.index(label)
-        axs_unfuse.append(ax)
-        term = term[:ax] + ["o"] * s + term[ax + 1 :]
+    # handle squeeze entries by grouping them into fuses
+    entries = _absorb_squeeze_entries(entries)
 
-    # handle squeezes by converting them into fuse groups
-    if any_singleton:
-        i = 0
-        label = term[i]
-        if label == "s":
-            # if we have squeeze axes on left, we have to group into right
-            while label == "s":
-                i += 1
-                label = term[i]
-
-            if label[0] == "g":
-                # adjacent to existing group
-                g = label
-            elif label == "o":
-                # or new group
-                g = f"g{len(fuse_sizes)}"
-                term[i] = g
-                fuse_sizes[g] = 1
-
-            # mark all axs up to this point
-            for j in range(0, i):
-                fuse_sizes[g] += 1
-                term[j] = g
-
-        # process rest of term, now preferring grouping into left
-        i += 1
-        while i < len(term):
-            label = term[i]
-            if label == "s":
-                left = term[i - 1]
-                if left[0] == "g":
-                    g = left
-                elif left == "o":
-                    g = f"g{len(fuse_sizes)}"
-                    term[i - 1] = g
-                    fuse_sizes[g] = 1
-
-                # update any right block of squeeze axs to g
-                while label == "s":
-                    term[i] = g
-                    fuse_sizes[g] += 1
-                    i += 1
-                    if i == len(term):
-                        break
-                    label = term[i]
-            i += 1
-
-    # now we handle fusing
-    axs_fuse = []
-    if any_fused or any_singleton:
-        # complexity here is we want to simulteneously fuse adjacent groups for
-        # efficiency, but also need to handle non-adjacent groups
-        current_groups = []
-        i = 0
-        while i < len(term):
-            label = term[i]
-            if label not in fuse_sizes:
-                if current_groups:
-                    # start of groups
-                    i0 = i - sum(map(len, current_groups))
-                    ng = len(current_groups)
-                    term = term[:i0] + ["o"] * ng + term[i:]
-                    axs_fuse.append(tuple(current_groups))
-                    current_groups = []
-                    # rewind to end of new group(s)
-                    i = i0 + ng
-                else:
-                    i += 1
-                continue
-
-            s = fuse_sizes[label]
-            current_groups.append(tuple(range(i, i + s)))
-            i += s
-        if current_groups:
-            axs_fuse.append(tuple(current_groups))
-
-    # handle expansion
-    axs_expand.reverse()
-
-    return tuple(axs_unfuse), tuple(axs_fuse), tuple(axs_expand)
+    # finally convert the target entries to unfuse/fuse/expand indices
+    return _entries_to_reshape_args(entries, len(shape))
 
 
 class ArrayCommon:
