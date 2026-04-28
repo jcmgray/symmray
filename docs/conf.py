@@ -67,12 +67,18 @@ html_theme = "furo"
 html_theme_options = {
     "sidebar_hide_name": True,
     "light_css_variables": {
-        "color-brand-primary": "#2da193",
-        "color-brand-content": "#2da193",
+        "color-brand-primary": "#2c96c7",
+        "color-brand-content": "#2c96c7",
+        "font-stack": "Atkinson Hyperlegible Next, sans-serif",
+        "font-stack--monospace": "Spline Sans Mono, monospace",
+        "font-stack--headings": "Spline Sans Mono, monospace",
     },
     "dark_css_variables": {
-        "color-brand-primary": "#65cabb",
-        "color-brand-content": "#65cabb",
+        "color-brand-primary": "#34aae2",
+        "color-brand-content": "#34aae2",
+        "font-stack": "Atkinson Hyperlegible Next, sans-serif",
+        "font-stack--monospace": "Spline Sans Mono, monospace",
+        "font-stack--headings": "Spline Sans Mono, monospace",
     },
     "light_logo": "logo-title.png",
     "dark_logo": "logo-title.png",
