@@ -174,7 +174,20 @@ def einsum(*args, **kwargs):
     `cotengra` to dispatch the full expression into pairwise tensordot (or
     einsum if necessary) calls.
     """
-    return ctg.einsum(*args, **kwargs)
+    if not isinstance(args[0], str):
+        # convert from interleaved
+        eq, arrays = ctg.utils.convert_from_interleaved(args)
+    else:
+        eq, *arrays = args
+
+    if len(arrays) == 1:
+        # use symmray for single term
+        return arrays[0].einsum(eq, **kwargs)
+
+    # TODO: handle 2 terms with symmray as well?
+
+    # else dispatch to pairwise contractions
+    return ctg.einsum(eq, *arrays, **kwargs)
 
 
 def transpose(a, axes=None, **kwargs):
