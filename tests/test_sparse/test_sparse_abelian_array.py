@@ -294,6 +294,23 @@ def test_einsum_single_term(eq, symmetry):
     assert_allclose(dy, ar.do("einsum", eq, dx))
 
 
+@pytest.mark.parametrize("symmetry", all_symmetries)
+def test_einsum_multi_term(symmetry):
+    a = sr.utils.rand_index(symmetry, 4)
+    b = sr.utils.rand_index(symmetry, 5)
+    c = sr.utils.rand_index(symmetry, 6)
+    d = sr.utils.rand_index(symmetry, 7)
+
+    rng = sr.utils.get_rng(42)
+    x = sr.utils.get_rand(symmetry, (a, b), seed=rng)
+    y = sr.utils.get_rand(symmetry, (b.conj(), c), seed=rng)
+    z = sr.utils.get_rand(symmetry, (c.conj(), d), seed=rng)
+
+    result = ar.do("einsum", "ab,bc,cd->ad", x, y, z)
+    expected = sr.tensordot(sr.tensordot(x, y, axes=1), z, axes=1)
+    result.test_allclose(expected)
+
+
 @pytest.mark.parametrize("symm", ["Z2", "U1", "Z3"])
 def test_can_pickle_abelian_array(symm):
     import pickle

@@ -406,6 +406,27 @@ def test_einsum_vs_tensordot(symm, seed):
     assert z1.allclose(z2)
 
 
+@pytest.mark.parametrize("symm", all_symmetries)
+@pytest.mark.parametrize("seed", range(3))
+def test_einsum_multi_term(symm, seed):
+    rng = sr.utils.get_rng(seed)
+    a = sr.utils.rand_index(symm, 4, seed=rng)
+    b = sr.utils.rand_index(symm, 5, seed=rng)
+    c = sr.utils.rand_index(symm, 6, seed=rng)
+    d = sr.utils.rand_index(symm, 7, seed=rng)
+
+    x = sr.utils.get_rand(symm, (a, b), fermionic=True, seed=rng)
+    y = sr.utils.get_rand(symm, (b.conj(), c), fermionic=True, seed=rng)
+    z = sr.utils.get_rand(symm, (c.conj(), d), fermionic=True, seed=rng)
+    x.randomize_phases(rng, inplace=True)
+    y.randomize_phases(rng, inplace=True)
+    z.randomize_phases(rng, inplace=True)
+
+    result = sr.einsum("ab,bc,cd->ad", x, y, z)
+    expected = sr.tensordot(sr.tensordot(x, y, axes=1), z, axes=1)
+    result.test_allclose(expected)
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("shape", [(4, 8, 12), (8,)])
 @pytest.mark.parametrize("charge", [0, 1])

@@ -723,6 +723,35 @@ def test_eigh_truncated_fermionic_flat(symmetry, seed, dtype, duals):
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+@pytest.mark.parametrize("seed", range(3))
+def test_einsum_multi_term(symmetry, seed):
+    N = int(symmetry[1:])
+    rng = sr.utils.get_rng(seed)
+    a = sr.utils.rand_index(symmetry, 2 * N, subsizes="equal", dual=False)
+    b = sr.utils.rand_index(symmetry, 3 * N, subsizes="equal", dual=False)
+    c = sr.utils.rand_index(symmetry, 3 * N, subsizes="equal", dual=False)
+    d = sr.utils.rand_index(symmetry, 4 * N, subsizes="equal", dual=False)
+
+    sx = sr.utils.get_rand(
+        symmetry, (a, b), subsizes="equal", fermionic=True, seed=rng
+    )
+    sy = sr.utils.get_rand(
+        symmetry, (b.conj(), c), subsizes="equal", fermionic=True, seed=rng
+    )
+    sz = sr.utils.get_rand(
+        symmetry, (c.conj(), d), subsizes="equal", fermionic=True, seed=rng
+    )
+    sx.randomize_phases(rng, inplace=True)
+    sy.randomize_phases(rng, inplace=True)
+    sz.randomize_phases(rng, inplace=True)
+    x, y, z = sx.to_flat(), sy.to_flat(), sz.to_flat()
+
+    result = sr.einsum("ab,bc,cd->ad", x, y, z)
+    expected = sr.tensordot(sr.tensordot(x, y, axes=1), z, axes=1)
+    result.test_allclose(expected)
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("shape", [(4, 8, 12), (8,)])
 @pytest.mark.parametrize("charge", [0, 1])
 def test_to_pytree_and_back(symmetry, shape, charge):

@@ -1,6 +1,7 @@
 """Functional interface for `symmray` array objects."""
 
 import autoray as ar
+import cotengra as ctg
 
 
 def conj(x, **kwargs):
@@ -168,9 +169,12 @@ def tensordot(a, b, axes=2, **kwargs):
             raise TypeError(f"Expected SymmrayCommon, got {type(a).__name__}.")
 
 
-def einsum(eq, x):
-    """Perform an Einstein summation on a `symmray` array."""
-    return x.einsum(eq)
+def einsum(*args, **kwargs):
+    """Perform an Einstein summation on a `symmray` array, this simply uses
+    `cotengra` to dispatch the full expression into pairwise tensordot (or
+    einsum if necessary) calls.
+    """
+    return ctg.einsum(*args, **kwargs)
 
 
 def transpose(a, axes=None, **kwargs):

@@ -418,6 +418,30 @@ def test_abelian_array_slice(symmetry, ndim, seed):
             np.testing.assert_allclose(x_slc.to_dense(), dx_slc)
 
 
+@pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
+def test_einsum_multi_term(symmetry):
+    N = int(symmetry[1:])
+    a = sr.utils.rand_index(symmetry, 2 * N, subsizes="equal", dual=False)
+    b = sr.utils.rand_index(symmetry, 3 * N, subsizes="equal", dual=False)
+    c = sr.utils.rand_index(symmetry, 3 * N, subsizes="equal", dual=False)
+    d = sr.utils.rand_index(symmetry, 4 * N, subsizes="equal", dual=False)
+
+    rng = sr.utils.get_rng(42)
+    x = sr.utils.get_rand(
+        symmetry, (a, b), subsizes="equal", seed=rng
+    ).to_flat()
+    y = sr.utils.get_rand(
+        symmetry, (b.conj(), c), subsizes="equal", seed=rng
+    ).to_flat()
+    z = sr.utils.get_rand(
+        symmetry, (c.conj(), d), subsizes="equal", seed=rng
+    ).to_flat()
+
+    result = sr.einsum("ab,bc,cd->ad", x, y, z)
+    expected = sr.tensordot(sr.tensordot(x, y, axes=1), z, axes=1)
+    result.test_allclose(expected)
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("shape", [(4, 8, 12), (8,)])
 @pytest.mark.parametrize("charge", [0, 1])
