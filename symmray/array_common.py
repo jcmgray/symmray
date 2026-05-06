@@ -456,6 +456,18 @@ class ArrayCommon:
     def __itruediv__(self, other):
         return self.__truediv__(other, inplace=True)
 
+    def __pow__(self, other, inplace=False):
+        if isinstance(other, ArrayCommon):
+            # exponentiation by implicit zeros not defined
+            return NotImplemented("Can't exponentiate by an symmray array.")
+
+        if DEBUG and getattr(other, "ndim", 0) != 0:
+            raise ValueError(f"Exponential {self} ** {other} not supported.")
+
+        new = self if inplace else self.copy()
+        new.apply_to_arrays(lambda x: x**other)
+        return new
+
     @property
     def T(self) -> "ArrayCommon":
         """The transpose of the block array."""

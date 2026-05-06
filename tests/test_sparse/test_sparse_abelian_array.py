@@ -385,3 +385,11 @@ def test_to_pytree_and_back(symmetry, shape, charge):
         yf = type(xf).from_pytree(tree)
         xf.test_allclose(yf)
         yf.unfuse_all().test_allclose(x)
+
+
+def test_pow():
+    x = sr.utils.get_rand("Z2", (3, 4))
+    x2 = x**2
+    assert x2.shape == (3, 4)
+    assert x2.num_blocks == x.num_blocks
+    assert_allclose(x2.to_dense(), x.to_dense() ** 2)
