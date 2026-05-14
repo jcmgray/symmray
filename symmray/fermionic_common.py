@@ -501,11 +501,20 @@ class FermionicCommon:
         self,
         *args,
         charge_side="auto",
+        drop_dummy_modes="auto",
         **kwargs,
     ):
         """Fermionic array splitting, involving a phase sync, the abelian split
         which is handled by the backend, and then a possible phase flip
         depending of the dualness of the inner bond.
+
+        Parameters
+        ----------
+        drop_dummy_modes : {"auto", bool}, optional
+            Whether to drop ``dummy_modes`` (and the array ``label``) from the
+            returned factors. Useful is using the factors as projectors rather
+            than replacements for the original array. If "auto", will drop if
+            the method is "eigh".
         """
         x = self.phase_sync()
 
@@ -520,9 +529,24 @@ class FermionicCommon:
             if left is not None and not left.indices[-1].dual:
                 left.phase_flip(-1, inplace=True)
 
+        if drop_dummy_modes == "auto":
+            # XXX: push this logic up into e.g. quimb
+            # compression algorithms explicitly?
+            drop_dummy_modes = kwargs.get("method") == "eigh"
+        if drop_dummy_modes:
+            for factor in (left, right):
+                if factor is not None:
+                    factor._dummy_modes = ()
+                    factor._label = None
+
         return left, s, right
 
-    def cholesky(self, *, upper=False) -> "FermionicCommon":
+    def cholesky(
+        self,
+        *,
+        upper=False,
+        drop_dummy_modes="auto",
+    ) -> "FermionicCommon":
         """Cholesky decomposition of a fermionic array.
 
         Parameters
@@ -530,6 +554,10 @@ class FermionicCommon:
         upper : bool, optional
             Whether to return the upper triangular Cholesky factor.
             Default is False, returning the lower triangular factor.
+        drop_dummy_modes : {"auto", bool}, optional
+            Whether to drop ``dummy_modes`` (and the array ``label``) from the
+            returned factors. Useful is using the factors as projectors rather
+            than replacements for the original array. If "auto", will drop.
 
         Returns
         -------
@@ -542,9 +570,18 @@ class FermionicCommon:
         if upper and l_or_r.indices[0].dual:
             # inner index is like |x><x| so introduce a phase flip
             l_or_r.phase_flip(0, inplace=True)
+        if drop_dummy_modes == "auto" or drop_dummy_modes:
+            # cholesky output is always one half of a hermitian sandwich
+            l_or_r._dummy_modes = ()
+            l_or_r._label = None
         return l_or_r
 
-    def cholesky_regularized(self, absorb=0, shift=True) -> "FermionicCommon":
+    def cholesky_regularized(
+        self,
+        absorb=0,
+        shift=True,
+        drop_dummy_modes="auto",
+    ) -> "FermionicCommon":
         """Cholesky decomposition with optional diagonal regularization,
         returning results in an SVD-like ``(left, None, right)`` format
         for compatibility with tensor network split drivers. Handles
@@ -563,6 +600,10 @@ class FermionicCommon:
             Diagonal regularization shift. If True or negative, auto-compute
             from dtype machine epsilon. The shift is always applied as a
             relative shift scaled by the trace of each block. Default is True.
+        drop_dummy_modes : {"auto", bool}, optional
+            Whether to drop ``dummy_modes`` (and the array ``label``) from the
+            returned factors. Useful is using the factors as projectors rather
+            than replacements for the original array. If "auto", will drop.
 
         Returns
         -------
@@ -579,20 +620,26 @@ class FermionicCommon:
             r = x._cholesky_abelian(shift=shift, upper=True)
             if not r.indices[0].dual:
                 r.phase_flip(0, inplace=True)
-            return None, None, r
+            left, right = None, r
+        elif absorb == Absorb.Usq:
+            left = x._cholesky_abelian(shift=shift, upper=False)
+            right = None
+        elif absorb == Absorb.Usq_sqVH:
+            left = x._cholesky_abelian(shift=shift, upper=False)
+            right = left.dagger_compose_right()
+        else:
+            raise ValueError(
+                "Invalid absorb value, must be one of -12 ('lsqrt' / 'Usq') 0 "
+                "('both' / 'Usq_sqVH'), or 12 ( 'rsqrt' / 'sqVH')."
+            )
 
-        l = x._cholesky_abelian(shift=shift, upper=False)
-        if absorb == Absorb.Usq:
-            return l, None, None
+        if drop_dummy_modes == "auto" or drop_dummy_modes:
+            for factor in (left, right):
+                if factor is not None:
+                    factor._dummy_modes = ()
+                    factor._label = None
 
-        if absorb == Absorb.Usq_sqVH:
-            r = l.dagger_compose_right()
-            return l, None, r
-
-        raise ValueError(
-            "Invalid absorb value, must be one of -12 ('lsqrt' / 'Usq') 0 "
-            "('both' / 'Usq_sqVH'), or 12 ( 'rsqrt' / 'sqVH')."
-        )
+        return left, None, right
 
     def solve(self, b: "FermionicCommon", **kwargs) -> "FermionicCommon":
         """Solve linear system Ax = b for x, where A is this fermionic array.
