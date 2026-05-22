@@ -1815,8 +1815,13 @@ class SparseArrayCommon:
                 # not eigh
                 use_abs = False
             else:
-                # eigh: use abs unless guaranteed positive spectrum
-                use_abs = not positive
+                if positive:
+                    # if positive spectrum guaranteed, no need to use abs
+                    use_abs = False
+                    # but very small -ve. eigenvalues can still cause problems
+                    s = s.clip(0.0, None)
+                else:
+                    use_abs = True
 
         # 2. ... then truncate / handle absorb separately
         return truncate_svd_result_blocksparse(
