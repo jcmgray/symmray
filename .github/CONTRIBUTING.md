@@ -11,6 +11,8 @@ useful:
 
 - [GitHub - Creating a pull request](https://help.github.com/articles/creating-a-pull-request/)
 
+Please read and follow the [`symmray` Code of Conduct](../CODE_OF_CONDUCT.md).
+
 
 ## AI Policy
 
