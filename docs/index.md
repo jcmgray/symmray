@@ -18,6 +18,15 @@ ndarrays, whose blocks can be backed by `numpy`, `torch` or any other
 :maxdepth: 2
 
 installation.md
+dummy_modes.md
+```
+
+```{toctree}
+:caption: Development
+:hidden:
+
+changelog.md
+develop.md
 ```
 
 ```{toctree}

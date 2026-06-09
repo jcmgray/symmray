@@ -65,7 +65,7 @@ docs = [
 "Documentation" = "https://symmray.readthedocs.io/"
 "Repository" = "https://github.com/jcmgray/symmray/"
 "Issues" = "https://github.com/jcmgray/symmray/issues"
-"Changelog" = "https://github.com/jcmgray/symmray/releases"
+"Changelog" = "https://symmray.readthedocs.io/en/latest/changelog.html"
 
 
 [build-system]
