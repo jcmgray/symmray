@@ -44,71 +44,6 @@ def make_node_factory(coeff):
     return node_factory
 
 
-def tfim_local_array(
-    symmetry,
-    jx=-1.0,
-    hz=-3.0,
-    coordinations=(1, 1),
-    flat=False,
-):
-    """Build an abelian symmetric local operator for the transverse field
-    Ising model::
-
-        H = jx * sum_ij X_i X_j + hz * sum_i Z_i
-
-    Note that its rotated into the x-basis so that the Z2 symmetry is manifest.
-
-    Parameters
-    ----------
-    symmetry : str
-        The symmetry of the model. Should be "Z2".
-    jx : float
-        The coupling strength for the X-X interactions, by default -1.0.
-    hz : float or tuple[float, float]
-        The coupling strength for the Z interactions, by default -3.0. If a
-        tuple is given it should contain the fields for the two sites.
-    coordinations : tuple[int, int], optional
-        The coordinations of the two sites, by default (1, 1). The fields
-        are divided by these values to account for double counting.
-    flat : bool, optional
-        Whether to return a flat array, by default False.
-
-    Returns
-    -------
-    Z2Array or Z2ArrayFlat
-        The local Hamiltonian term.
-    """
-    import quimb as qu
-
-    from .utils import from_dense
-
-    if symmetry != "Z2":
-        raise ValueError(f"Symmetry {symmetry} not supported for TFIM.")
-
-    index_map = [0, 1]
-
-    try:
-        ha, hb = hz
-    except TypeError:
-        ha = hb = hz
-
-    I, Z, X = (qu.pauli(s, dtype="float64") for s in "IZX")
-
-    h2 = (
-        jx * (X & X)
-        + (ha / coordinations[0]) * (Z & I)
-        + (hb / coordinations[1]) * (I & Z)
-    )
-
-    return from_dense(
-        h2.reshape(2, 2, 2, 2),
-        symmetry=symmetry,
-        index_maps=[index_map] * 4,
-        duals=[False, False, True, True],
-        flat=flat,
-    )
-
-
 def ham_tfim_from_edges(
     symmetry,
     edges,
@@ -125,8 +60,9 @@ def ham_tfim_from_edges(
 
     Parameters
     ----------
-    symmetry : str
-        The symmetry of the model. Should be "Z2".
+    symmetry : str or None
+        The symmetry of the model. Should be "Z2", or None to return raw dense
+        arrays.
     edges : Sequence[tuple[Hashable, Hashable]]
         A list of edges representing the lattice, each edge is a tuple of two
         nodes, each node is some hashable label.
@@ -146,6 +82,8 @@ def ham_tfim_from_edges(
     dict[tuple[Hashable, Hashable], AbelianArray | AbelianArrayFlat]
         A dictionary mapping edges to local Hamiltonian terms.
     """
+    from .spin_local_operators import tfim_local_array
+
     coordinations = {}
     for cooa, coob in edges:
         coordinations[cooa] = coordinations.setdefault(cooa, 0) + 1
@@ -169,19 +107,38 @@ def ham_tfim_from_edges(
 def ham_heisenberg_from_edges(
     symmetry,
     edges,
+    j=1.0,
+    b=0.0,
     flat=False,
-    **kwargs,
 ):
     """Return a dict of local 2-body Hamiltonian abelian symmetric terms for
-    the Heisenberg model on the given lattice defined by `edges`.
+    the Heisenberg model on the given lattice defined by `edges`::
+
+        H = sum_ij (jx Sx_i Sx_j + jy Sy_i Sy_j + jz Sz_i Sz_j)
+            - sum_i bz Sz_i
+
+    where the spin operators are the spin-1/2 operators (eigenvalues +/- 1/2).
 
     Parameters
     ----------
-    symmetry : str
-        The symmetry of the model. Either "Z2" or "U1".
+    symmetry : str or None
+        The symmetry of the model. Either "Z2" or "U1", or None to return raw
+        dense arrays. Note "U1" requires the XY couplings to be equal
+        (``jx == jy``), so that total magnetization is conserved.
     edges : Sequence[tuple[Hashable, Hashable]]
         A list of edges representing the lattice, each edge is a tuple of two
         nodes, each node is some hashable label.
+    j : float, tuple, dict, or callable, optional
+        The coupling strength, by default 1.0. A tuple is interpreted as the
+        ``(jx, jy, jz)`` couplings. If a dict is given it should map edges to
+        values, if a callable it should take the two sites as input.
+    b : float, dict, or callable, optional
+        The magnetic field along the z-axis, by default 0.0. If a dict is given
+        it should map sites to values, if a callable it should take the site as
+        input, in either case allowing a different field per site. The field is
+        divided by each site's coordination to avoid double counting. Only
+        z-fields are supported as transverse fields would not conserve the
+        symmetry.
     flat : bool, optional
         Whether to return flat arrays, by default False.
 
@@ -190,22 +147,26 @@ def ham_heisenberg_from_edges(
     dict[tuple[Hashable, Hashable], AbelianArray | AbelianArrayFlat]
         A dictionary mapping edges to local Hamiltonian terms.
     """
-    import quimb as qu
+    from .spin_local_operators import heisenberg_local_array
 
-    from .utils import from_dense
+    coordinations = {}
+    for cooa, coob in edges:
+        coordinations[cooa] = coordinations.setdefault(cooa, 0) + 1
+        coordinations[coob] = coordinations.setdefault(coob, 0) + 1
 
-    h2 = qu.ham_heis(2, **kwargs)
-    index_map = [0, 1]
+    j_factory = make_edge_factory(j)
+    b_factory = make_node_factory(b)
 
-    h2 = from_dense(
-        h2.reshape(2, 2, 2, 2),
-        symmetry=symmetry,
-        index_maps=[index_map] * 4,
-        duals=[False, False, True, True],
-        flat=flat,
-    )
-
-    return {(a, b): h2 for a, b in edges}
+    return {
+        (cooa, coob): heisenberg_local_array(
+            symmetry,
+            j=j_factory(cooa, coob),
+            b=(b_factory(cooa), b_factory(coob)),
+            coordinations=(coordinations[cooa], coordinations[coob]),
+            flat=flat,
+        )
+        for cooa, coob in edges
+    }
 
 
 def ham_fermi_hubbard_from_edges(

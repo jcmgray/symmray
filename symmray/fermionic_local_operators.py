@@ -252,6 +252,10 @@ def build_local_fermionic_elements(terms, bases):
 
 
 def build_local_fermionic_dense(terms, bases, like="numpy"):
+    """Build the local operator as a dense array of elements including internal
+    fermionic signs - this is the raw tensor data, not the bare operator matrix
+    (whose true action is only recovered under fermionic contraction).
+    """
     hij = ar.do("zeros", tuple(len(b) for b in bases) * 2, like=like)
 
     for idx, val in build_local_fermionic_elements(terms, bases).items():
