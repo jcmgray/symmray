@@ -1,6 +1,11 @@
 import pytest
 
 import symmray as sr
+from symmray.fermionic_local_operators import FermionicOperator
+from symmray.flat.flat_fermionic_array import (
+    _koszul_sort_phase,
+    perm_to_swaps,
+)
 
 from .test_flat_abelian_array import get_zn_blocksparse_flat_compat
 
@@ -776,3 +781,155 @@ def test_to_pytree_and_back(symmetry, shape, charge):
         yf = type(xf).from_pytree(tree)
         xf.test_allclose(yf)
         yf.unfuse_all().test_allclose(x)
+
+
+# --- dummy-mode sorting sign (`_koszul_sort_phase`) -------------------------
+#
+# Check that the vectorized `_koszul_sort_phase` reproduces, exactly, the
+# original swap-by-swap accumulation of the dummy-mode sorting sign that used
+# to live inline in `FermionicArrayFlat._resolve_dummy_modes_combine`. Parities
+# are exercised as plain python ints, numpy scalars and jax arrays (the last
+# both eagerly and under `jax.jit`, i.e. the traced-compilation case).
+
+
+def _reference_swap_phase(modes):
+    """The original implementation: sort the modes into ascending label order
+    via a sequence of adjacent swaps, multiplying ``(-1) ** (p_i * p_j)`` for
+    each swap. This is the exact code that ``_koszul_sort_phase`` replaced.
+    """
+    modes = list(modes)
+    perm = tuple(sorted(range(len(modes)), key=modes.__getitem__))
+    phase = 1
+    for i, j in perm_to_swaps(perm):
+        a, b = modes[i], modes[j]
+        phase = phase * ((a.parity * b.parity) * -2 + 1)
+        modes[i], modes[j] = b, a
+    return phase
+
+
+def _random_modes(rng, n, wrap):
+    """Build ``n`` random modes. Labels are a mix of ints and tuples (as in
+    ``unpack``'s position vs ('squeeze', ...) modes), duals are random, and the
+    parity is wrapped by ``wrap`` to select the backend/type under test.
+    """
+    modes = []
+    for _ in range(n):
+        if rng.integers(0, 2):
+            label = int(rng.integers(0, n))
+        else:
+            label = ("squeeze", int(rng.integers(0, n)), 4)
+        dual = bool(rng.integers(0, 2))
+        parity = int(rng.integers(0, 2))
+        modes.append(FermionicOperator(label, dual=dual, parity=wrap(parity)))
+    return modes
+
+
+def _wrap_python(p):
+    return int(p)
+
+
+def _wrap_numpy(p):
+    import numpy as np
+
+    return np.int64(p)
+
+
+def _wrap_jax(p):
+    import jax.numpy as jnp
+
+    return jnp.asarray(p, dtype=jnp.int32)
+
+
+_KOSZUL_WRAPPERS = {
+    "python": (_wrap_python, "numpy"),  # all-static -> backend unused
+    "numpy": (_wrap_numpy, "numpy"),
+    "jax": (_wrap_jax, "jax"),
+}
+
+
+@pytest.mark.parametrize("kind", ["python", "numpy", "jax"])
+@pytest.mark.parametrize("seed", range(10))
+def test_koszul_sort_phase_matches_swap_loop(kind, seed):
+    if kind == "jax":
+        pytest.importorskip("jax")
+    wrap, backend = _KOSZUL_WRAPPERS[kind]
+
+    rng = sr.utils.get_rng(seed)
+    n = int(rng.integers(1, 9))
+    modes = _random_modes(rng, n, wrap)
+
+    expected = int(_reference_swap_phase(modes))
+    got = int(_koszul_sort_phase(modes, backend))
+
+    assert got in (-1, 1)
+    assert got == expected
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_koszul_sort_phase_under_jit(seed):
+    """The real use case: parities are traced. Build the modes *inside* a
+    jitted function from a traced parity vector and check the (concrete) result
+    still matches the eager swap-loop reference.
+    """
+    jax = pytest.importorskip("jax")
+    import jax.numpy as jnp
+
+    rng = sr.utils.get_rng(seed)
+    n = int(rng.integers(2, 9))
+
+    # static structure (labels, duals) + a parity vector that will be traced
+    labels = [
+        int(rng.integers(0, n))
+        if rng.integers(0, 2)
+        else ("squeeze", int(rng.integers(0, n)), 4)
+        for _ in range(n)
+    ]
+    duals = [bool(rng.integers(0, 2)) for _ in range(n)]
+    parities = [int(rng.integers(0, 2)) for _ in range(n)]
+
+    ref_modes = [
+        FermionicOperator(labels[k], dual=duals[k], parity=parities[k])
+        for k in range(n)
+    ]
+    expected = int(_reference_swap_phase(ref_modes))
+
+    def f(p):
+        modes = [
+            FermionicOperator(labels[k], dual=duals[k], parity=p[k])
+            for k in range(n)
+        ]
+        return _koszul_sort_phase(modes, "jax")
+
+    got = int(jax.jit(f)(jnp.asarray(parities, dtype=jnp.int32)))
+
+    assert got in (-1, 1)
+    assert got == expected
+
+
+def test_koszul_sort_phase_explicit_cases():
+    """A few hand-checked cases, including a full reversal of odd modes."""
+    # all-even -> always +1
+    even = [FermionicOperator(k, parity=0) for k in (3, 2, 1, 0)]
+    assert _koszul_sort_phase(even, "numpy") == 1
+
+    # two odd modes out of order -> one swap -> -1
+    swap_two = [FermionicOperator(1, parity=1), FermionicOperator(0, parity=1)]
+    assert _koszul_sort_phase(swap_two, "numpy") == -1
+    assert int(_reference_swap_phase(swap_two)) == -1
+
+    # reversed sequence of m odd modes -> sign (-1) ** (m * (m - 1) // 2)
+    for m in range(1, 7):
+        modes = [FermionicOperator(m - 1 - k, parity=1) for k in range(m)]
+        sign = -1 if ((m * (m - 1) // 2) % 2) else 1
+        assert _koszul_sort_phase(modes, "numpy") == sign
+        assert int(_reference_swap_phase(modes)) == sign
+
+    # an even mode interleaved among odd modes must not change the sign
+    with_even = [
+        FermionicOperator(2, parity=1),
+        FermionicOperator(1, parity=0),  # even, transparent
+        FermionicOperator(0, parity=1),
+    ]
+    assert _koszul_sort_phase(with_even, "numpy") == int(
+        _reference_swap_phase(with_even)
+    )
