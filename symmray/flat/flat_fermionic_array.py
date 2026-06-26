@@ -104,10 +104,10 @@ def _koszul_sort_phase(modes, backend):
         mask[i][j] = 1
     M = ar.do("array", mask, like=backend)
 
-    # K = p @ M @ p  evaluated as a broadcast-multiply-reduce (no gather)
+    # K = p @ M @ p, contracted as (M @ p, then p @ (M @ p))
     p = ar.do("stack", parities, like=backend)
     P = ar.do("astype", p, M.dtype)
-    K = ar.do("sum", M * P[:, None] * P[None, :])
+    K = ar.do("sum", P * ar.do("matmul", M, P))
     return (K % 2) * -2 + 1
 
 
