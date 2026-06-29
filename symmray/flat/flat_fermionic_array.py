@@ -62,11 +62,12 @@ def _koszul_sort_phase(modes, backend):
     """Fermionic (Koszul) sign from sorting ``modes`` into ascending label
     order: ``(-1) ** K`` with ``K = sum_{i<j, modes[j] < modes[i]} p_i p_j``.
 
-    Mode *labels* are static, so the inverted pairs are known at trace time.
-    Mode *parities* ``p`` may be jax tracers (an array's charges can depend on
-    traced data), so we contract them against the constant inversion matrix
-    ``M`` in one ``K = p @ M @ p`` rather than unrolling O(n^2) scalar
-    multiplies into the graph - the latter dominates contraction compile time.
+    Mode *labels* are static, so the inverted pairs are enumerated at trace
+    time. Mode *parities* ``p`` may be jax tracers (an array's charges can
+    depend on traced data), so the two parity vectors of the inverted pairs are
+    stacked and reduced as ``K = sum(p_i * p_j)`` in a single vectorized op,
+    rather than unrolling O(n^2) scalar multiplies into the graph - the latter
+    dominates contraction compile time.
 
     Returns the plain int ``1`` when no inverted pair can contribute.
     """
@@ -74,40 +75,38 @@ def _koszul_sort_phase(modes, backend):
     if n < 2:
         return 1
 
-    parities = tuple(m.parity for m in modes)
+    all_static = all(isinstance(m.parity, int) for m in modes)
     # a statically-even parity (plain int) contributes no sign
-    static_zero = tuple(isinstance(p, int) and (p % 2 == 0) for p in parities)
+    static_zero = tuple(all_static and (m.parity % 2 == 0) for m in modes)
 
     # enumerate inverted pairs (static); skip pairs that cannot contribute
-    pairs = []
+    parities_i = []
+    parities_j = []
     for i in range(n):
         if static_zero[i]:
             continue
         mi = modes[i]
         for j in range(i + 1, n):
-            if (not static_zero[j]) and (modes[j] < mi):
-                pairs.append((i, j))
+            mj = modes[j]
+            if mj < mi and not static_zero[j]:
+                parities_i.append(mi.parity)
+                parities_j.append(mj.parity)
 
-    if not pairs:
+    if len(parities_i) == 0:
         # already sorted (up to even modes) -> no sign change
         return 1
 
-    # all contributing parities static -> evaluate the sign in python
-    if all(isinstance(parities[i], int) and isinstance(parities[j], int)
-           for i, j in pairs):
-        K = sum(parities[i] * parities[j] for i, j in pairs)
+    # all parities static -> evaluate the sign in for-loop
+    #     K = sum_{(i, j) in pairs} p_i * p_j
+    if all_static:
+        K = sum(pi * pj for pi, pj in zip(parities_i, parities_j))
         return -1 if (K % 2) else 1
 
-    # constant strictly-upper-triangular {0, 1} inversion matrix
-    mask = [[0] * n for _ in range(n)]
-    for i, j in pairs:
-        mask[i][j] = 1
-    M = ar.do("array", mask, like=backend)
-
-    # K = p @ M @ p, contracted as (M @ p, then p @ (M @ p))
-    p = ar.do("stack", parities, like=backend)
-    P = ar.do("astype", p, M.dtype)
-    K = ar.do("sum", P * ar.do("matmul", M, P))
+    # some parities tracer -> evaluate the sign with arrays
+    #     K = sum_{(i, j) in pairs} p_i * p_j
+    pi = ar.do("stack", parities_i, like=backend)
+    pj = ar.do("stack", parities_j, like=backend)
+    K = ar.do("sum", pi * pj)
     return (K % 2) * -2 + 1
 
 
