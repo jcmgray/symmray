@@ -58,6 +58,58 @@ def perm_to_swaps(perm):
     return tuple(swaps)
 
 
+def _koszul_sort_phase(modes, backend):
+    """Fermionic (Koszul) sign from sorting ``modes`` into ascending label
+    order: ``(-1) ** K`` with ``K = sum_{i<j, modes[j] < modes[i]} p_i p_j``.
+
+    Mode *labels* are static, so the inverted pairs are enumerated at trace
+    time. Mode *parities* ``p`` may be jax tracers (an array's charges can
+    depend on traced data), so the two parity vectors of the inverted pairs are
+    stacked and reduced as ``K = sum(p_i * p_j)`` in a single vectorized op,
+    rather than unrolling O(n^2) scalar multiplies into the graph - the latter
+    dominates contraction compile time.
+
+    Returns the plain int ``1`` when no inverted pair can contribute.
+    """
+    n = len(modes)
+    if n < 2:
+        return 1
+
+    all_static = all(isinstance(m.parity, int) for m in modes)
+    # a statically-even parity (plain int) contributes no sign
+    static_zero = tuple(all_static and (m.parity % 2 == 0) for m in modes)
+
+    # enumerate inverted pairs (static); skip pairs that cannot contribute
+    parities_i = []
+    parities_j = []
+    for i in range(n):
+        if static_zero[i]:
+            continue
+        mi = modes[i]
+        for j in range(i + 1, n):
+            mj = modes[j]
+            if mj < mi and not static_zero[j]:
+                parities_i.append(mi.parity)
+                parities_j.append(mj.parity)
+
+    if len(parities_i) == 0:
+        # already sorted (up to even modes) -> no sign change
+        return 1
+
+    # all parities static -> evaluate the sign in for-loop
+    #     K = sum_{(i, j) in pairs} p_i * p_j
+    if all_static:
+        K = sum(pi * pj for pi, pj in zip(parities_i, parities_j))
+        return -1 if (K % 2) else 1
+
+    # some parities tracer -> evaluate the sign with arrays
+    #     K = sum_{(i, j) in pairs} p_i * p_j
+    pi = ar.do("stack", parities_i, like=backend)
+    pj = ar.do("stack", parities_j, like=backend)
+    K = ar.do("sum", pi * pj)
+    return (K % 2) * -2 + 1
+
+
 class FermionicArrayFlat(
     FermionicCommon,
     FlatArrayCommon,
@@ -640,20 +692,20 @@ class FermionicArrayFlat(
         r_dummy_parity = sum(m.parity for m in r_dummy_modes) % 2
         phase = (a.parity * r_dummy_parity) * -2 + 1
 
-        # then we want to sort the joint set of left and right dummy modes,
+        # 2. sort the merged dummy modes into canonical label order; the
+        # fermionic sign of that sort is the Koszul sign (computed vectorized,
+        # as parities may be jax tracers - see `_koszul_sort_phase`).
         perm = tuple(
             sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
         )
-        swaps = perm_to_swaps(perm)
-        for i, j in swaps:
-            a, b = dummy_modes[i], dummy_modes[j]
-            # compute sign from swap
-            phase = phase * ((a.parity * b.parity) * -2 + 1)
-            # perform swap
-            dummy_modes[i], dummy_modes[j] = b, a
+        swap_phase = _koszul_sort_phase(dummy_modes, self.backend)
 
-        # do the global phase, and set the new sorted dummy modes and parities
-        self.modify(dummy_modes=tuple(dummy_modes), phases=self.phases * phase)
+        # apply the (static) reordering and fold in all phases
+        dummy_modes = [dummy_modes[k] for k in perm]
+        self.modify(
+            dummy_modes=tuple(dummy_modes),
+            phases=self.phases * phase * swap_phase,
+        )
 
     def _resolve_dummy_modes_squeeze(self, axes_squeeze):
         """Assuming we are about to squeeze away `axes_squeeze`, compute the
