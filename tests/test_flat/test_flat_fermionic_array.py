@@ -810,15 +810,21 @@ def _reference_swap_phase(modes):
 def _random_modes(rng, n, wrap):
     """Build ``n`` random modes. Labels are a mix of ints and tuples (as in
     ``unpack``'s position vs ('squeeze', ...) modes), duals are random, and the
-    parity is wrapped by ``wrap`` to select the backend/type under test.
+    parity is wrapped by ``wrap`` to select the backend/type under test. The
+    ``(dual, label)`` combos are unique, matching real use where dummy mode
+    labels derive from unique array labels.
     """
     modes = []
-    for _ in range(n):
+    seen = set()
+    while len(modes) < n:
         if rng.integers(0, 2):
             label = int(rng.integers(0, n))
         else:
             label = ("squeeze", int(rng.integers(0, n)), 4)
         dual = bool(rng.integers(0, 2))
+        if (dual, label) in seen:
+            continue
+        seen.add((dual, label))
         parity = int(rng.integers(0, 2))
         modes.append(FermionicOperator(label, dual=dual, parity=wrap(parity)))
     return modes
@@ -840,23 +846,53 @@ def _wrap_jax(p):
     return jnp.asarray(p, dtype=jnp.int32)
 
 
+def _wrap_torch(p):
+    import torch
+
+    return torch.tensor(p, dtype=torch.int32)
+
+
 _KOSZUL_WRAPPERS = {
     "python": (_wrap_python, "numpy"),  # all-static -> backend unused
     "numpy": (_wrap_numpy, "numpy"),
     "jax": (_wrap_jax, "jax"),
+    "torch": (_wrap_torch, "torch"),
 }
 
 
-@pytest.mark.parametrize("kind", ["python", "numpy", "jax"])
+@pytest.mark.parametrize("kind", ["python", "numpy", "jax", "torch"])
 @pytest.mark.parametrize("seed", range(10))
 def test_koszul_sort_phase_matches_swap_loop(kind, seed):
-    if kind == "jax":
-        pytest.importorskip("jax")
+    if kind in ("jax", "torch"):
+        pytest.importorskip(kind)
     wrap, backend = _KOSZUL_WRAPPERS[kind]
 
     rng = sr.utils.get_rng(seed)
     n = int(rng.integers(1, 9))
     modes = _random_modes(rng, n, wrap)
+
+    expected = int(_reference_swap_phase(modes))
+    got = int(_koszul_sort_phase(modes, backend))
+
+    assert got in (-1, 1)
+    assert got == expected
+
+
+@pytest.mark.parametrize("kind", ["numpy", "jax", "torch"])
+@pytest.mark.parametrize("seed", range(10))
+def test_koszul_sort_phase_mixed_static_traced(kind, seed):
+    """Dummy modes merged from different arrays can mix plain int parities
+    with backend scalars: check the vectorized path folds the static ones in
+    as python data (torch.stack, for one, rejects non-tensors).
+    """
+    if kind in ("jax", "torch"):
+        pytest.importorskip(kind)
+    wrap, backend = _KOSZUL_WRAPPERS[kind]
+
+    rng = sr.utils.get_rng(seed)
+    n = int(rng.integers(2, 9))
+    k = iter(range(n))
+    modes = _random_modes(rng, n, lambda p: wrap(p) if next(k) % 2 else int(p))
 
     expected = int(_reference_swap_phase(modes))
     got = int(_koszul_sort_phase(modes, backend))
@@ -933,3 +969,24 @@ def test_koszul_sort_phase_explicit_cases():
     assert _koszul_sort_phase(with_even, "numpy") == int(
         _reference_swap_phase(with_even)
     )
+
+
+def test_koszul_sort_phase_mixed_explicit_torch():
+    torch = pytest.importorskip("torch")
+
+    # inverted pair with one static and one traced parity: the plain int
+    # must not reach torch.stack
+    mixed = [
+        FermionicOperator(1, parity=1),
+        FermionicOperator(0, parity=torch.tensor(1)),
+    ]
+    assert int(_koszul_sort_phase(mixed, "torch")) == -1
+
+    # a statically-even mode prunes even when other parities are traced,
+    # leaving no contributing pair -> plain int 1, no graph ops
+    pruned = [
+        FermionicOperator(1, parity=0),
+        FermionicOperator(0, parity=torch.tensor(1)),
+    ]
+    res = _koszul_sort_phase(pruned, "torch")
+    assert isinstance(res, int) and res == 1
