@@ -697,9 +697,9 @@ def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
     )
 
 
-def fermi_spin_operator_local_array(symmetry, like="numpy", flat=False):
-    """Construct the fermionic spin operator for the Fermi-Hubbard model. The
-    indices are ordered as (a, a'), with the local basis like
+def fermi_spin_z_local_array(symmetry, like="numpy", flat=False):
+    """Construct the fermionic ``S^z`` operator for the Fermi-Hubbard model.
+    The indices are ordered as (a, a'), with the local basis like
     (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
     spin respectively for single site `a`.
 
@@ -731,6 +731,244 @@ def fermi_spin_operator_local_array(symmetry, like="numpy", flat=False):
         bases,
         symmetry,
         index_maps=[indexmap],
+        like=like,
+        flat=flat,
+    )
+
+
+fermi_spin_operator_local_array = fermi_spin_z_local_array
+
+
+def fermi_spin_plus_local_array(symmetry, like="numpy", flat=False):
+    """Construct the fermionic spin raising operator
+    ``S^+ = c_up^dagger c_down`` for the Fermi-Hubbard model.
+
+    This operator conserves total particle number but transfers one particle
+    between spin flavors, so it is only identity-charge under ``Z2`` and
+    ``U1`` symmetries.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2" or "U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
+
+    Returns
+    -------
+    FermionicArray or FermionicArrayFlat
+        The local operator in fermionic array form.
+    """
+    if symmetry not in ("Z2", "U1"):
+        raise ValueError(
+            "Spin raising transfers charge between spin flavors, so is only "
+            "an identity-charge operator under 'Z2' or 'U1', not "
+            f"{symmetry!r}."
+        )
+
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
+
+    terms = [(1, (au.dag, ad))]
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+        flat=flat,
+    )
+
+
+def fermi_spin_minus_local_array(symmetry, like="numpy", flat=False):
+    """Construct the fermionic spin lowering operator
+    ``S^- = c_down^dagger c_up`` for the Fermi-Hubbard model.
+
+    This operator conserves total particle number but transfers one particle
+    between spin flavors, so it is only identity-charge under ``Z2`` and
+    ``U1`` symmetries.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2" or "U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
+
+    Returns
+    -------
+    FermionicArray or FermionicArrayFlat
+        The local operator in fermionic array form.
+    """
+    if symmetry not in ("Z2", "U1"):
+        raise ValueError(
+            "Spin lowering transfers charge between spin flavors, so is only "
+            "an identity-charge operator under 'Z2' or 'U1', not "
+            f"{symmetry!r}."
+        )
+
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
+
+    terms = [(1, (ad.dag, au))]
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+        flat=flat,
+    )
+
+
+def fermi_double_occupancy_local_array(symmetry, like="numpy", flat=False):
+    """Construct the on-site double occupancy operator ``D = n↑ n↓`` for the
+    Fermi-Hubbard model, i.e. the projector onto the doubly occupied state. The
+    indices are ordered as (a, a'), with the local basis like
+    (|00>, ad+|00>, au+|00>, au+ad+|00>) for single site `a`. Useful as the
+    ``<U>`` interaction-energy observable.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model. Either "Z2", "U1", "Z2Z2", or "U1U1".
+    like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
+
+    Returns
+    -------
+    FermionicArray or FermionicArrayFlat
+        The local operator in fermionic array form.
+    """
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
+
+    # n↑ n↓
+    terms = [(1, (au.dag, au, ad.dag, ad))]
+    # |00>, |01>, |10>, |11>
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+        flat=flat,
+    )
+
+
+def fermi_pairing_onsite_local_array(symmetry, like="numpy", flat=False):
+    """Construct the on-site s-wave (singlet) pair annihilation operator
+    ``Δ = c↑ c↓`` for the Fermi-Hubbard model, the superconducting order
+    parameter whose expectation ``<Δ>`` is non-zero only in a number
+    non-conserving state. Use ``.dagger()`` for the pair creation operator
+    ``Δ† = c↓† c↑†``. The indices are ordered as (a, a'), with the local basis
+    like (|00>, ad+|00>, au+|00>, au+ad+|00>) for single site `a`.
+
+    The operator removes two fermions, so it conserves fermion parity but not
+    particle number: it is only an identity-charge (measurable) operator under
+    "Z2". Under "U1", "Z2Z2" or "U1U1" it is charge-changing and ``<Δ>``
+    vanishes identically, so those symmetries are rejected.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model, must be "Z2".
+    like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
+
+    Returns
+    -------
+    FermionicArray or FermionicArrayFlat
+        The local operator in fermionic array form.
+    """
+    if symmetry != "Z2":
+        raise ValueError(
+            "On-site pairing breaks U(1) particle-number conservation, so is "
+            "only well-defined as an identity-charge operator under 'Z2', not "
+            f"{symmetry!r}."
+        )
+
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
+
+    # Δ = c↑ c↓
+    terms = [(1, (au, ad))]
+    # |00>, |01>, |10>, |11>
+    bases = [((), (au.dag,), (ad.dag,), (ad.dag, au.dag))]
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        bases,
+        symmetry,
+        index_maps=[indexmap],
+        like=like,
+        flat=flat,
+    )
+
+
+def fermi_pairing_bond_local_array(symmetry, like="numpy", flat=False):
+    """Construct the nearest-neighbor spin-singlet pair annihilation operator
+    ``Delta_ab = c_a_up c_b_down - c_a_down c_b_up``.
+
+    The operator removes two fermions, so it is only identity-charge under
+    ``Z2`` symmetry. The indices are ordered as ``(a, b, a', b')``.
+
+    Parameters
+    ----------
+    symmetry : str
+        The symmetry of the model, must be "Z2".
+    like : str, optional
+        The backend to use, by default "numpy".
+    flat : bool, optional
+        Whether to return a flat array, by default False.
+
+    Returns
+    -------
+    FermionicArray or FermionicArrayFlat
+        The local operator in fermionic array form.
+    """
+    if symmetry != "Z2":
+        raise ValueError(
+            "Bond pairing breaks U(1) particle-number conservation, so is "
+            f"only an identity-charge operator under 'Z2', not {symmetry!r}."
+        )
+
+    au = FermionicOperator("a↑")
+    ad = FermionicOperator("a↓")
+    bu = FermionicOperator("b↑")
+    bd = FermionicOperator("b↓")
+
+    terms = [
+        (1, (au, bd)),
+        (-1, (ad, bu)),
+    ]
+    basis_a = ((), (au.dag,), (ad.dag,), (ad.dag, au.dag))
+    basis_b = ((), (bu.dag,), (bd.dag,), (bd.dag, bu.dag))
+    indexmap = get_spinful_charge_indexmap(symmetry)
+
+    return build_local_fermionic_array(
+        terms,
+        [basis_a, basis_b],
+        symmetry,
+        index_maps=[indexmap, indexmap],
         like=like,
         flat=flat,
     )

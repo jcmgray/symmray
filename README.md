@@ -452,13 +452,51 @@ $$
 a^\dagger a
 $$
 
-- `fermi_spin_operator_local_array`:
+- `fermi_number_up_local_array` and `fermi_number_down_local_array`:
 
 $$
-\frac{1}{2}(a_\uparrow^\dagger a_\uparrow - a_\downarrow^\dagger a_\downarrow)
+n_\uparrow = a_\uparrow^\dagger a_\uparrow, \qquad
+n_\downarrow = a_\downarrow^\dagger a_\downarrow
 $$
 
- plus lower level functions for building custom ones:
+- `fermi_double_occupancy_local_array`:
+
+$$
+D = n_\uparrow n_\downarrow
+$$
+
+- `fermi_spin_z_local_array` (also available under the old name
+  `fermi_spin_operator_local_array`):
+
+$$
+S^z = \frac{1}{2}(a_\uparrow^\dagger a_\uparrow - a_\downarrow^\dagger a_\downarrow)
+$$
+
+- `fermi_spin_plus_local_array` and `fermi_spin_minus_local_array`:
+
+$$
+S^+ = a_\uparrow^\dagger a_\downarrow, \qquad
+S^- = a_\downarrow^\dagger a_\uparrow
+$$
+
+These spin ladder operators are available with `Z2` and `U1` symmetry.
+
+- `fermi_pairing_onsite_local_array`:
+
+$$
+\Delta_a = a_\uparrow a_\downarrow
+$$
+
+- `fermi_pairing_bond_local_array`:
+
+$$
+\Delta_{ab} = a_\uparrow b_\downarrow - a_\downarrow b_\uparrow
+$$
+
+The pair annihilation operators are available with `Z2` symmetry; their
+Hermitian conjugates give the corresponding pair creation operators.
+
+Plus lower level functions for building custom ones:
 
 - `build_local_fermionic_array`
 - `build_local_fermionic_elements`

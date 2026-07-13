@@ -116,10 +116,10 @@ def TN_abelian_from_edges_rand(
     Parameters
     ----------
     symmetry : {"Z2", "U1", "Z2Z2", "U1U1", ZN}
-        The symmetry of the PEPS. Currently only "Z2" and "U1" are supported.
+        The symmetry of the PEPS.
     edges : list of tuples
         The edges of the PEPS. Each edge is a tuple of the form `(cooa, coob)`
-        where cooa and coob are hashable labels of the two sites.
+        where cooa and coob are hashable, comparable labels of the two sites.
     bond_dim : int or dict
         The total (sum of charge sizes) bond dimension of the PEPS. You can
         also provide an explicit map of bond charges to sizes.
@@ -130,13 +130,14 @@ def TN_abelian_from_edges_rand(
     seed : None, int or np.random.Generator, optional
         The random seed or generator to use.
     dtype : str, optional
-        The data type of the tensors.
+        The data type of the tensors, default is "float64".
     site_tag_id : str, optional
-        The tag format for each site tensor.
+        The tag format for each site tensor, default is "I{}".
     site_ind_id : str, optional
         The index format for each site tensor, if physical sites are included.
+        Default is "k{}".
     fermionic : bool, optional
-        Whether to generate fermionic tensors.
+        Whether to generate fermionic tensors, default is False.
     flat : bool, optional
         Whether to generate 'flat' backend arrays (True) or the default
         block-sparse backend arrays (False).
@@ -180,17 +181,16 @@ def TN_abelian_from_edges_rand(
             # custom physical charge map
             phys_chargemap = phys_dim
         elif ar.is_scalar(phys_dim):
+            # total physical dimension
             phys_chargemap = _DEFAULT_PHYS_CHARGEMAPS[symmetry, phys_dim]
         else:
             phys_chargemap = phys_dim
     else:
         # no physical sites
-
         tn = qtn.TensorNetworkGen.new(
             sites=sites,
             site_tag_id=site_tag_id,
         )
-
         phys_chargemap = None
 
     if site_charge is None:
@@ -210,7 +210,7 @@ def TN_abelian_from_edges_rand(
         else:
             raise ValueError(
                 f"symmetry={symmetry} has no default "
-                "`site_charge`. Please provide one."
+                + "`site_charge`. Please provide one."
             )
 
     rng = sr.utils.get_rng(seed)

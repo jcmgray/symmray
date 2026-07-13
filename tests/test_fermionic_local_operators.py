@@ -123,7 +123,7 @@ def test_fermi_number_and_spin_operators_spinful(symmetry):
     ntot = sr.fermi_number_operator_spinful_local_array(symmetry)
     nup = sr.fermi_number_up_local_array(symmetry)
     ndn = sr.fermi_number_down_local_array(symmetry)
-    sz = sr.fermi_spin_operator_local_array(symmetry)
+    sz = sr.fermi_spin_z_local_array(symmetry)
     for op in (ntot, nup, ndn, sz):
         op.check()
 
@@ -140,12 +140,111 @@ def test_fermi_number_and_spin_operators_spinful(symmetry):
     np.testing.assert_allclose(0.5 * (mup - mdn), msz)
 
 
+def test_fermi_spin_z_old_name_alias():
+    assert sr.fermi_spin_operator_local_array is sr.fermi_spin_z_local_array
+
+
+@pytest.mark.parametrize("symmetry", ["Z2", "U1"])
+def test_fermi_spin_plus_minus_local_array(symmetry):
+    splus = sr.fermi_spin_plus_local_array(symmetry)
+    sminus = sr.fermi_spin_minus_local_array(symmetry)
+    sz = sr.fermi_spin_z_local_array(symmetry)
+    for op in (splus, sminus):
+        op.check()
+
+    expected_plus = np.zeros((4, 4))
+    expected_minus = np.zeros((4, 4))
+    if symmetry == "Z2":
+        expected_plus[2, 3] = 1.0
+        expected_minus[3, 2] = 1.0
+    else:
+        expected_plus[1, 2] = 1.0
+        expected_minus[2, 1] = 1.0
+
+    mplus = splus.to_dense()
+    mminus = sminus.to_dense()
+    np.testing.assert_allclose(mplus, expected_plus)
+    np.testing.assert_allclose(mminus, expected_minus)
+    np.testing.assert_allclose(splus.H.to_dense(), mminus)
+    np.testing.assert_allclose(
+        mplus @ mminus - mminus @ mplus,
+        2 * sz.to_dense(),
+    )
+
+
+@pytest.mark.parametrize("symmetry", ["Z2Z2", "U1U1"])
+@pytest.mark.parametrize(
+    "fn",
+    [sr.fermi_spin_plus_local_array, sr.fermi_spin_minus_local_array],
+)
+def test_fermi_spin_plus_minus_reject_flavor_symmetry(symmetry, fn):
+    with pytest.raises(ValueError):
+        fn(symmetry)
+
+
+@pytest.mark.parametrize("symmetry", SPINFUL_SYMS)
+def test_fermi_double_occupancy_local_array(symmetry):
+    double = sr.fermi_double_occupancy_local_array(symmetry)
+    double.check()
+    matrix = double.to_dense()
+
+    expected = np.zeros((4, 4))
+    expected[1 if symmetry == "Z2" else 3, 1 if symmetry == "Z2" else 3] = 1
+    np.testing.assert_allclose(matrix, expected)
+    np.testing.assert_allclose(matrix @ matrix, matrix)
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_fermi_pairing_onsite_local_array(flat):
+    pair = sr.fermi_pairing_onsite_local_array("Z2", flat=flat)
+    pair.check()
+
+    expected = np.zeros((4, 4))
+    expected[0, 1] = 1.0
+    np.testing.assert_allclose(pair.to_dense(), expected)
+    np.testing.assert_allclose(pair.H.to_dense(), expected.T)
+
+
+@pytest.mark.parametrize("symmetry", ["U1", "Z2Z2", "U1U1"])
+def test_fermi_pairing_onsite_rejects_non_z2(symmetry):
+    with pytest.raises(ValueError):
+        sr.fermi_pairing_onsite_local_array(symmetry)
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_fermi_pairing_bond_local_array(flat):
+    pair = sr.fermi_pairing_bond_local_array("Z2", flat=flat)
+    pair.check()
+
+    expected = np.zeros((4, 4, 4, 4))
+    expected[0, 0, 2, 3] = -1.0
+    expected[0, 0, 3, 2] = 1.0
+    expected[0, 2, 2, 1] = -1.0
+    expected[0, 3, 3, 1] = -1.0
+    expected[2, 0, 1, 2] = -1.0
+    expected[2, 3, 1, 1] = -1.0
+    expected[3, 0, 1, 3] = -1.0
+    expected[3, 2, 1, 1] = 1.0
+    np.testing.assert_allclose(pair.to_dense(), expected)
+    np.testing.assert_allclose(pair.H.H.to_dense(), expected)
+
+
+@pytest.mark.parametrize("symmetry", ["U1", "Z2Z2", "U1U1"])
+def test_fermi_pairing_bond_rejects_non_z2(symmetry):
+    with pytest.raises(ValueError):
+        sr.fermi_pairing_bond_local_array(symmetry)
+
+
 def test_fermi_number_operators_flat_z2():
     # flat backend only supports Z2
     nup = sr.fermi_number_up_local_array("Z2", flat=True)
     nup.check()
     assert type(nup).__name__.endswith("Flat")
     assert sorted(np.diag(nup.to_dense()).real) == [0, 0, 1, 1]
+
+    double = sr.fermi_double_occupancy_local_array("Z2", flat=True)
+    double.check()
+    assert type(double).__name__.endswith("Flat")
 
 
 @pytest.mark.parametrize("symmetry", SPINFUL_SYMS)
