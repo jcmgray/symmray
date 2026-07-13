@@ -238,7 +238,9 @@ class FermionicArrayFlat(
         self._check_abelian()
         if self._phases is not None:
             assert ar.do("shape", self._phases) == (self.num_blocks,)
-            assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
+            if ar.infer_backend(self._phases) == "numpy":
+                # (only check for conrete numpy phases)
+                assert ar.do("all", ar.do("isin", self._phases, [-1, 1]))
 
     def new_with(
         self,
