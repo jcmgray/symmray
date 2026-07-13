@@ -455,16 +455,21 @@ class FlatArrayCommon:
         assert len(self._sectors) == len(self._blocks)
         assert self.ndim == len(self._indices)
         assert self.ndim == len(self._sectors[0])
-        # check blocks all have the same overall charge
-        sector_charges = ar.do(
-            "unique", zn_combine(self.order, self._sectors, self.duals)
-        )
-        assert ar.do("size", sector_charges) == 1
+
+        if ar.infer_backend(self._sectors) == "numpy":
+            # check blocks all have the same overall charge
+            # (only check for concrete numpy sectors)
+            sector_charges = ar.do(
+                "unique", zn_combine(self.order, self._sectors, self.duals)
+            )
+            assert ar.do("size", sector_charges) == 1
+
         for ix, ds in zip(self._indices, self.shape_block):
             ix.check()
             assert ds == ix.charge_size
 
-        if self._blocks.__class__.__name__ != "Placeholder":
+        if ar.infer_backend(self._blocks) == "numpy":
+            # (only check for concrete numpy blocks)
             assert ar.do("all", ar.do("isfinite", self._blocks))
 
     def _new_with_abelian(self, sectors, blocks, indices, label=None):

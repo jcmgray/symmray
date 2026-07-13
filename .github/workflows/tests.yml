@@ -27,6 +27,12 @@ jobs:
         - os: windows-latest
           env: testpymid
 
+        - os: ubuntu-latest
+          env: testtorch
+
+        - os: ubuntu-latest
+          env: testjax
+
     steps:
     - uses: actions/checkout@v7
 
