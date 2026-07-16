@@ -131,7 +131,9 @@ dmypy.json
 # ruff formatter
 .ruff_cache
 
+# IDEs
 .vscode
+.idea
 
 symmray/_version.py
 notebooks

@@ -219,7 +219,7 @@ class FermionicCommon:
                 not self.indices[i].dual,
             )
 
-        # tranposition introduces all necessary phases
+        # transposition introduces all necessary phases
         perm = tuple(sorted(range(self.ndim), key=key))
         x = self.transpose(perm)
         x.phase_sync(inplace=True)
