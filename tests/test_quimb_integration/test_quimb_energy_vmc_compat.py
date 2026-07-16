@@ -1,3 +1,12 @@
+"""These tests run through the full process of optimizing a fermionic PEPS
+using simple update, then check that the energy computed 'locally' matches the
+energy computed using a jordan-wigner transformed hamiltonian object from
+quimb, either via full sparse matrix expectation, or VMC style but enumerating
+all possible configurations exactly.
+"""
+
+from functools import cache
+
 import pytest
 
 edges_square_3x2_obc = (
@@ -263,7 +272,10 @@ def test_spinful_su_energy_matches_z2(edges, sector, flat):
     # NOTE: can't compute 'dense wavefunction' without reordering local
     # basis to account for spin up/down, so skip that test here
 
-    def fn_amplitude(config):
+    @cache
+    def compute_amplitude(config_items):
+        config = dict(config_items)
+
         # map (spin-up, spin-down) to 0...3 indexing
         # into symmetry grouped: [ 00, 11 ], [ 10, 01 ]
         selector = {
@@ -276,6 +288,9 @@ def test_spinful_su_energy_matches_z2(edges, sector, flat):
         }
         tnx = psi_su.isel(selector)
         return tnx.contract(all)
+
+    def fn_amplitude(config):
+        return compute_amplitude(tuple(config.items()))
 
     energy_vmc = H.evaluate_exact_configs(fn_amplitude)
     assert energy_vmc == pytest.approx(en_local_exact)

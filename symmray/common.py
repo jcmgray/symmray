@@ -37,6 +37,55 @@ class SymmrayCommon:
     def __bool__(self):
         return bool(self.item())
 
+    def to(
+        self,
+        like=None,
+        *,
+        backend=None,
+        dtype=None,
+        device=None,
+        inplace=False,
+    ):
+        """Convert all underlying arrays to a backend, dtype, and/or device.
+
+        Parameters
+        ----------
+        like : str or array_like, optional
+            Conversion target specification or example array. For example
+            "torch-float32-cuda:0" or an example array with those attributes.
+            Explicitly supplied `backend`, `dtype` or `device` override this.
+        backend : str, optional
+            Target backend.
+        dtype : str or dtype, optional
+            Target floating point or complex dtype.
+        device : str or device_like, optional
+            Target device.
+        inplace : bool, optional
+            Whether to convert this object in place.
+
+        Returns
+        -------
+        SymmrayCommon
+            The converted object.
+        """
+        try:
+            autoray_to = ar.to
+        except AttributeError:
+            raise ImportError(
+                "SymmrayCommon.to requires autoray>=0.9.0."
+            ) from None
+
+        new = self if inplace else self.copy()
+        params = autoray_to(
+            new.get_params(),
+            like=like,
+            backend=backend,
+            dtype=dtype,
+            device=device,
+        )
+        new.set_params(params)
+        return new
+
     def __mul__(self, other, inplace=False):
         if isinstance(other, self.__class__):
             return self._binary_blockwise_op(

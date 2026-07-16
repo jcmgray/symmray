@@ -118,11 +118,11 @@ class FlatCommon:
         return ar.do("allclose", self.blocks, 0.0, atol=tol, like=self.backend)
 
     def get_params(self):
-        """Interface for getting underlying arrays."""
+        """Interface for getting underlying arrays as a pytree."""
         return {"blocks": self._blocks}
 
     def _set_params_flatcommon(self, params):
-        """Interface for setting underlying arrays."""
+        """Interface for setting underlying arrays from a pytree."""
         self._blocks = params["blocks"]
         try:
             self._sectors = ar.do("asarray", self._sectors, like=self._blocks)

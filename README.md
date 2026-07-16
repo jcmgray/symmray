@@ -88,7 +88,14 @@ z = xp.tensordot(x, y, axes=[(0, 2), (1, 3)])
 
 `symmray` also uses `autoray` **internally** to handle manipulating blocks *within*
 an array, meaning that these can be `numpy`, `torch`, `jax` or any other
-`autoray` compatible library.
+`autoray` compatible library. You can convert the backend, dtype and/or device
+of these underlying blocks with the `.to()` method:
+
+```python
+x.to("torch-float32-cuda:0")
+# or e.g.
+x.to(backend="jax", dtype="complex128")
+```
 
 Whilst block sparse arrays do not have such a well defined notion of shape as
 dense arrays, for ease and compatibility with other libraries, `symmray` arrays

@@ -867,3 +867,163 @@ def test_qr_via_cholesky_fermionic_ar_dispatch(
     fy = left @ right
     fy.check()
     fy.test_allclose(fx)
+
+
+@pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+@pytest.mark.parametrize("method", ("qr", "lq", "svd", "svd:eig"))
+def test_flat_fermionic_decomposition_backend_roundtrip(
+    method,
+    backend,
+    require_backend,
+):
+    require_backend(backend)
+    sx = sr.utils.get_rand(
+        "Z2",
+        shape=[8, 6],
+        fermionic=True,
+        seed=42,
+        subsizes="equal",
+    )
+    sx.randomize_phases(seed=43, inplace=True)
+    x = sx.to_flat().to(backend)
+
+    if method == "qr":
+        left, s, right = ar.do("qr_stabilized", x)
+    elif method == "lq":
+        left, s, right = ar.do("lq_stabilized", x)
+    elif method == "svd":
+        left, s, right = ar.do("linalg.svd", x)
+    else:
+        left, s, right = x.svd_via_eig()
+
+    if s is None:
+        xr = left @ right
+    else:
+        xr = left @ right.multiply_diagonal(s, axis=0)
+
+    xr.check()
+    xr.test_allclose(x)
+
+
+@pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+@pytest.mark.parametrize("method", ("svd", "svd:eig", "svd:rand"))
+def test_flat_fermionic_svd_truncated_backend(
+    method,
+    backend,
+    require_backend,
+):
+    require_backend(backend)
+    sx = sr.utils.get_rand(
+        "Z2",
+        shape=[8, 6],
+        fermionic=True,
+        seed=42,
+        subsizes="equal",
+    )
+    sx.randomize_phases(seed=43, inplace=True)
+    x = sx.to_flat().to(backend)
+
+    if method == "svd":
+        u, s, vh = ar.do(
+            "svd_truncated",
+            x,
+            max_bond=4,
+            absorb=None,
+        )
+    elif method == "svd:eig":
+        u, s, vh = ar.do(
+            "svd_via_eig_truncated",
+            x,
+            max_bond=4,
+            absorb=None,
+        )
+    else:
+        u, s, vh = ar.do(
+            "svd_rand_truncated",
+            x,
+            max_bond=4,
+            absorb=None,
+            seed=42,
+        )
+
+    u.check()
+    s.check()
+    vh.check()
+    assert s.size <= 4
+
+    xr = u @ vh.multiply_diagonal(s, axis=0)
+    xr.check()
+    assert xr.shape == x.shape
+    assert xr.charge == x.charge
+
+
+@pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+@pytest.mark.parametrize("truncated", (False, True))
+def test_flat_fermionic_eigh_backend(
+    truncated,
+    backend,
+    require_backend,
+):
+    require_backend(backend)
+    x = sr.utils_test.rand_matrix(
+        "Z2",
+        4,
+        seed=42,
+        flat=True,
+        fermionic=True,
+        matrix_type="hermitian",
+        d_per_charge=True,
+    ).to(backend)
+
+    if truncated:
+        u, s, vh = ar.do(
+            "eigh_truncated",
+            x,
+            max_bond=4,
+            absorb=None,
+        )
+        u.check()
+        s.check()
+        vh.check()
+        assert s.size <= 4
+    else:
+        s, u = ar.do("linalg.eigh", x)
+        u.check()
+        s.check()
+        xr = u.multiply_diagonal(s, axis=1) @ u.H
+        xr.check()
+        xr.test_allclose(x)
+
+
+@pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+@pytest.mark.parametrize("regularized", (False, True))
+def test_flat_fermionic_cholesky_backend(
+    regularized,
+    backend,
+    require_backend,
+):
+    require_backend(backend)
+    x = (
+        sr.utils_test.rand_posdef(
+            "Z2",
+            8,
+            seed=42,
+            subsizes="equal",
+            fermionic=True,
+        )
+        .to_flat()
+        .to(backend)
+    )
+
+    if regularized:
+        left, s, right = ar.do("cholesky_regularized", x, absorb=0)
+        assert s is None
+    else:
+        left = ar.do("linalg.cholesky", x)
+        right = left.dagger_compose_right()
+
+    left.check()
+    right.check()
+    xr = left @ right
+    xr.check()
+    xr.test_allclose(x)

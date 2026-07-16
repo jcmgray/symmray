@@ -4,9 +4,9 @@ vectorized (batched) evaluation, on jax and torch. These run the full
 traced configs, as in the batch amplitude example notebooks, but smaller.
 """
 
+import autoray as ar
 import numpy as np
 import pytest
-import quimb as qu
 import quimb.tensor as qtn
 
 import symmray as sr
@@ -71,12 +71,12 @@ def _finite_diff_reference(amplitude, x, params, leaf, entry, eps=1e-5):
     """Central finite difference of the eager numpy amplitude with respect
     to a single parameter entry.
     """
-    leaves, ref = qu.utils.tree_flatten(params, get_ref=True)
+    leaves, ref = ar.tree_flatten(params, get_ref=True)
     leaves = [a.copy() for a in leaves]
     leaves[leaf].flat[entry] += eps
-    ap = amplitude(x, qu.utils.tree_unflatten(leaves, ref))
+    ap = amplitude(x, ar.tree_unflatten(leaves, ref))
     leaves[leaf].flat[entry] -= 2 * eps
-    am = amplitude(x, qu.utils.tree_unflatten(leaves, ref))
+    am = amplitude(x, ar.tree_unflatten(leaves, ref))
     return (ap - am) / (2 * eps)
 
 
@@ -100,14 +100,17 @@ ODD_CASE = (2, ((0, 0), (1, 1), (0, 2)))
 
 class TestVectorizedFermionicAmplitudes:
     @pytest.mark.parametrize("phys_dim,odd_sites", AMPLITUDE_CASES)
-    def test_jax_jit_and_vmap(self, phys_dim, odd_sites):
+    def test_jax_jit_and_vmap(
+        self,
+        phys_dim,
+        odd_sites,
+        convert_backend,
+    ):
         jax = pytest.importorskip("jax")
-        jax.config.update("jax_enable_x64", True)
-        import jax.numpy as jnp
 
         params, _, amplitude, xs, refs = _setup(phys_dim, odd_sites)
-        jparams = jax.tree.map(jnp.asarray, params)
-        jxs = jnp.asarray(xs)
+        jparams = convert_backend(params, "jax")
+        jxs = convert_backend(xs, "jax")
 
         a0 = jax.jit(amplitude)(jxs[0], jparams)
         assert float(a0) == pytest.approx(refs[0], rel=1e-10)
@@ -116,12 +119,17 @@ class TestVectorizedFermionicAmplitudes:
         assert list(map(float, av)) == pytest.approx(refs, rel=1e-10)
 
     @pytest.mark.parametrize("phys_dim,odd_sites", AMPLITUDE_CASES)
-    def test_torch_vmap(self, phys_dim, odd_sites):
+    def test_torch_vmap(
+        self,
+        phys_dim,
+        odd_sites,
+        convert_backend,
+    ):
         torch = pytest.importorskip("torch")
 
         params, _, amplitude, xs, refs = _setup(phys_dim, odd_sites)
-        tparams = qu.tree_map(torch.as_tensor, params)
-        txs = torch.as_tensor(xs)
+        tparams = convert_backend(params, "torch")
+        txs = convert_backend(xs, "torch")
 
         a0 = amplitude(txs[0], tparams)
         assert float(a0) == pytest.approx(refs[0], rel=1e-10)
@@ -129,15 +137,13 @@ class TestVectorizedFermionicAmplitudes:
         av = torch.vmap(amplitude, in_dims=(0, None))(txs, tparams)
         assert list(map(float, av)) == pytest.approx(refs, rel=1e-10)
 
-    def test_jax_hotrg_jit_vmap(self):
+    def test_jax_hotrg_jit_vmap(self, convert_backend):
         jax = pytest.importorskip("jax")
-        jax.config.update("jax_enable_x64", True)
-        import jax.numpy as jnp
 
         params, skeleton, _, xs, refs = _setup(*ODD_CASE)
         amplitude = _make_amplitude_fn_hotrg(skeleton)
-        jparams = jax.tree.map(jnp.asarray, params)
-        jxs = jnp.asarray(xs)
+        jparams = convert_backend(params, "jax")
+        jxs = convert_backend(xs, "jax")
 
         m, e = jax.jit(amplitude)(jxs[0], jparams)
         a0 = float(m) * 10.0 ** float(e)
@@ -147,19 +153,19 @@ class TestVectorizedFermionicAmplitudes:
         av = [float(m) * 10.0 ** float(e) for m, e in zip(mv, ev)]
         assert av == pytest.approx(refs, rel=1e-10)
 
-    def test_torch_hotrg_vmap(self):
+    def test_torch_hotrg_vmap(self, convert_backend):
         torch = pytest.importorskip("torch")
 
         params, skeleton, _, xs, refs = _setup(*ODD_CASE)
         amplitude = _make_amplitude_fn_hotrg(skeleton)
-        tparams = qu.tree_map(torch.as_tensor, params)
-        txs = torch.as_tensor(xs)
+        tparams = convert_backend(params, "torch")
+        txs = convert_backend(xs, "torch")
 
         mv, ev = torch.vmap(amplitude, in_dims=(0, None))(txs, tparams)
         av = [float(m) * 10.0 ** float(e) for m, e in zip(mv, ev)]
         assert av == pytest.approx(refs, rel=1e-10)
 
-    def test_torch_export_compile(self):
+    def test_torch_export_compile(self, convert_backend):
         torch = pytest.importorskip("torch")
 
         params, _, amplitude, xs, refs = _setup(*ODD_CASE)
@@ -171,13 +177,13 @@ class TestVectorizedFermionicAmplitudes:
         class TNAmplitudeModel(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                flat, self.pytree = qu.utils.tree_flatten(params, get_ref=True)
+                flat, self.pytree = ar.tree_flatten(params, get_ref=True)
                 self.params = torch.nn.ParameterList(
-                    [torch.as_tensor(p) for p in flat]
+                    [convert_backend(p, "torch") for p in flat]
                 )
 
                 def f(x):
-                    tparams = qu.utils.tree_unflatten(self.params, self.pytree)
+                    tparams = ar.tree_unflatten(self.params, self.pytree)
                     return amplitude(x, tparams)
 
                 self.f = torch.vmap(f)
@@ -185,7 +191,7 @@ class TestVectorizedFermionicAmplitudes:
             def forward(self, x):
                 return self.f(x)
 
-        txs = torch.as_tensor(xs)
+        txs = convert_backend(xs, "torch")
         model = TNAmplitudeModel()
         model.eval()
 
@@ -205,25 +211,26 @@ class TestVectorizedFermionicAmplitudes:
         assert all(g is not None for g in grads)
 
         # eager reference: same scalar loss on requires_grad params
-        gparams = qu.tree_map(
-            lambda a: torch.as_tensor(a).requires_grad_(), params
+        gparams = ar.tree_map(
+            lambda x: x.requires_grad_(),
+            convert_backend(params, "torch"),
         )
         torch.stack([amplitude(x, gparams) for x in txs]).sum().backward()
-        grefs = [p.grad for p in qu.utils.tree_flatten(gparams)]
+        grefs = [p.grad for p in ar.tree_flatten(gparams)]
         for g, gr in zip(grads, grefs):
             assert g.numpy() == pytest.approx(gr.numpy(), rel=1e-10)
 
-    def test_jax_grad(self):
+    def test_jax_grad(self, convert_backend):
         jax = pytest.importorskip("jax")
-        jax.config.update("jax_enable_x64", True)
-        import jax.numpy as jnp
 
         params, _, amplitude, xs, _ = _setup(*ODD_CASE)
-        jparams = jax.tree.map(jnp.asarray, params)
+        jparams = convert_backend(params, "jax")
 
-        grads = jax.grad(amplitude, argnums=1)(jnp.asarray(xs[0]), jparams)
-        # flatten with quimb to match the ordering of params
-        gleaves = [np.asarray(g) for g in qu.utils.tree_flatten(grads)]
+        grads = jax.grad(amplitude, argnums=1)(
+            convert_backend(xs[0], "jax"), jparams
+        )
+        # flatten consistently to match the ordering of params
+        gleaves = [np.asarray(g) for g in ar.tree_flatten(grads)]
         assert all(np.all(np.isfinite(g)) for g in gleaves)
 
         leaf, entry = _largest_grad_entry(gleaves)
@@ -232,70 +239,70 @@ class TestVectorizedFermionicAmplitudes:
         fd = _finite_diff_reference(amplitude, xs[0], params, leaf, entry)
         assert g == pytest.approx(fd, rel=1e-5)
 
-    def test_jax_jit_vmap_grad(self):
+    def test_jax_jit_vmap_grad(self, convert_backend):
         jax = pytest.importorskip("jax")
-        jax.config.update("jax_enable_x64", True)
         import jax.numpy as jnp
 
         params, _, amplitude, xs, _ = _setup(*ODD_CASE)
-        jparams = jax.tree.map(jnp.asarray, params)
-        jxs = jnp.asarray(xs)
+        jparams = convert_backend(params, "jax")
+        jxs = convert_backend(xs, "jax")
 
         # fully composed per-config batched gradients, as traced by a
         # batched VMC optimizer
         gfn = jax.jit(
             jax.vmap(jax.grad(amplitude, argnums=1), in_axes=(0, None))
         )
-        bleaves = qu.utils.tree_flatten(gfn(jxs, jparams))
+        bleaves = ar.tree_flatten(gfn(jxs, jparams))
         assert max(float(jnp.max(jnp.abs(g))) for g in bleaves) > 0
 
         # each batch row should match the eager unbatched gradient, which
         # test_jax_grad checks against a finite difference
         gfn_single = jax.grad(amplitude, argnums=1)
         for b in range(BATCHSIZE):
-            gleaves = qu.utils.tree_flatten(gfn_single(jxs[b], jparams))
+            gleaves = ar.tree_flatten(gfn_single(jxs[b], jparams))
             for gb, g in zip(bleaves, gleaves):
                 assert np.asarray(gb[b]) == pytest.approx(
                     np.asarray(g), rel=1e-10
                 )
 
-    def test_torch_vmap_grad(self):
+    def test_torch_vmap_grad(self, convert_backend):
         torch = pytest.importorskip("torch")
 
         params, _, amplitude, xs, _ = _setup(*ODD_CASE)
-        tparams = qu.tree_map(torch.as_tensor, params)
-        txs = torch.as_tensor(xs)
+        tparams = convert_backend(params, "torch")
+        txs = convert_backend(xs, "torch")
 
         # fully composed per-config batched gradients, as traced by a
         # batched VMC optimizer
         gfn = torch.vmap(
             torch.func.grad(amplitude, argnums=1), in_dims=(0, None)
         )
-        bleaves = qu.utils.tree_flatten(gfn(txs, tparams))
+        bleaves = ar.tree_flatten(gfn(txs, tparams))
         assert max(float(g.abs().max()) for g in bleaves) > 0
 
         # each batch row should match the eager unbatched gradient, which
         # test_torch_grad checks against a finite difference
         gfn_single = torch.func.grad(amplitude, argnums=1)
         for b in range(BATCHSIZE):
-            gleaves = qu.utils.tree_flatten(gfn_single(txs[b], tparams))
+            gleaves = ar.tree_flatten(gfn_single(txs[b], tparams))
             for gb, g in zip(bleaves, gleaves):
                 assert gb[b].numpy() == pytest.approx(g.numpy(), rel=1e-10)
 
-    def test_torch_grad(self):
-        torch = pytest.importorskip("torch")
+    def test_torch_grad(self, convert_backend):
+        pytest.importorskip("torch")
 
         params, _, amplitude, xs, _ = _setup(*ODD_CASE)
-        tparams = qu.tree_map(
-            lambda a: torch.as_tensor(a).requires_grad_(), params
+        tparams = ar.tree_map(
+            lambda x: x.requires_grad_(),
+            convert_backend(params, "torch"),
         )
 
-        a = amplitude(torch.as_tensor(xs[0]), tparams)
+        a = amplitude(convert_backend(xs[0], "torch"), tparams)
         a.backward()
 
         gleaves = [
             np.zeros(p.shape) if p.grad is None else p.grad.numpy()
-            for p in qu.utils.tree_flatten(tparams)
+            for p in ar.tree_flatten(tparams)
         ]
         assert all(np.all(np.isfinite(g)) for g in gleaves)
 

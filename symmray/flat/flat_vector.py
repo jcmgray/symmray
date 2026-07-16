@@ -161,6 +161,12 @@ class FlatVector(FlatCommon, VectorCommon, SymmrayCommon):
             self.check()
         return self
 
+    def set_params(self, params):
+        """Set the underlying array blocks from a pytree."""
+        self._set_params_flatcommon(params)
+        if DEBUG:
+            self.check()
+
     def check(self):
         assert ar.do("ndim", self._blocks, like=self.backend) == 2
 

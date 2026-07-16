@@ -1,3 +1,9 @@
+"""These tests check that for symmetric and fermionic PEPS on several
+geometries, that contract-then-slice matches slice-then-contract (for exact
+amplitude contraction), including for globally and locally odd parity networks
+which involve dummy modes in the fermionic case.
+"""
+
 import numpy as np
 import pytest
 

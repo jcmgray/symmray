@@ -1,3 +1,11 @@
+"""These tests run a number of full amplitude or norm network contraction,
+including approximately and with fermionic arrays, and ensure their contracted
+value is maintained from version to version.
+
+Note that changes in how the random networks are generated might break these
+tests without indicating any fundamental break in backend.
+"""
+
 import pytest
 
 import symmray as sr

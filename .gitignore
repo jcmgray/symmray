@@ -139,3 +139,6 @@ notebooks
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# local working notes
+.notes
