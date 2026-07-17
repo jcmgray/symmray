@@ -1,5 +1,7 @@
 """Functional interface for `symmray` array objects."""
 
+import functools
+
 import autoray as ar
 import cotengra as ctg
 
@@ -169,6 +171,79 @@ def tensordot(a, b, axes=2, **kwargs):
             raise TypeError(f"Expected SymmrayCommon, got {type(a).__name__}.")
 
 
+@functools.lru_cache(2**12)
+def _parse_tensordot_eq(eq):
+    """Try to convert the two term einsum `eq` into tensordot axes and a
+    final output permutation.
+
+    Returns None if not possible, i.e. if the eq features batched, summed,
+    or repeated indices, else a tuple `(axes_a, axes_b, perm)`, where `perm`
+    is a final permutation of the tensordot output axes, or None if not
+    needed.
+    """
+    lhs, out = eq.split("->")
+    left, right = lhs.split(",")
+
+    if (
+        len(set(left)) != len(left)
+        or len(set(right)) != len(right)
+        or len(set(out)) != len(out)
+    ):
+        # repeated indices
+        return None
+
+    sleft, sright, sout = set(left), set(right), set(out)
+    if sout != sleft ^ sright:
+        # summed (missing from output) or batched (on all three) indices
+        return None
+
+    axes_a = tuple(i for i, q in enumerate(left) if q in sright)
+    axes_b = tuple(right.index(left[i]) for i in axes_a)
+
+    # tensordot output is kept `a` indices then kept `b` indices
+    td_out = [q for q in left if q not in sright]
+    td_out.extend(q for q in right if q not in sleft)
+    perm = tuple(map(td_out.index, out))
+    if perm == tuple(range(len(perm))):
+        perm = None
+
+    return axes_a, axes_b, perm
+
+
+@functools.lru_cache(2**12)
+def _parse_multiply_diagonal_eq(eq):
+    """Check whether the two term einsum `eq` is a diagonal multiplication
+    pattern, e.g. "i,ijkl->ijkl", suitable for `multiply_diagonal`.
+
+    Returns None if it is not, else a tuple `(which, axis, perm)`, where
+    `which` is "left", "right", or "both" depending on which term(s) are
+    vector-like, `axis` is the axis of the array term that the vector
+    multiplies into, and `perm` is a final permutation of the array term
+    axes, or None if not needed.
+    """
+    lhs, out = eq.split("->")
+    left, right = lhs.split(",")
+
+    if len(left) == 1 and len(right) == 1:
+        if left == right == out:
+            # e.g. "i,i->i"
+            return "both", 0, None
+        return None
+    elif len(left) == 1:
+        which, tv, tx = "left", left, right
+    elif len(right) == 1:
+        which, tv, tx = "right", right, left
+    else:
+        return None
+
+    if len(set(tx)) != len(tx) or tv not in tx or sorted(out) != sorted(tx):
+        return None
+
+    axis = tx.index(tv)
+    perm = None if out == tx else tuple(map(tx.index, out))
+    return which, axis, perm
+
+
 def einsum(*args, **kwargs):
     """Perform an Einstein summation on a `symmray` array, this simply uses
     `cotengra` to dispatch the full expression into pairwise tensordot (or
@@ -184,9 +259,52 @@ def einsum(*args, **kwargs):
         # use symmray for single term
         return arrays[0].einsum(eq, **kwargs)
 
-    # TODO: handle 2 terms with symmray as well?
+    if len(arrays) == 2:
+        from .vector_common import VectorCommon
 
-    # else dispatch to pairwise contractions
+        a, b = arrays
+        a_isvec = isinstance(a, VectorCommon)
+        b_isvec = isinstance(b, VectorCommon)
+        if a_isvec or b_isvec:
+            # only allow diagonal multiplication
+            info = _parse_multiply_diagonal_eq(eq)
+            if info is None:
+                raise NotImplementedError(
+                    f"einsum eq {eq!r} with a symmray vector operand is only "
+                    "allowed for diagonal multiplications like 'i,ijkl->ijkl'."
+                )
+
+            which, axis, perm = info
+            if a_isvec and b_isvec:
+                # blockwise vector multiplication, e.g. "i,i->i"
+                return a * b
+            elif a_isvec and which != "right":
+                v, x = a, b
+            else:
+                v, x = b, a
+
+            # vector acts as a diagonal matrix on one array axis
+            x = x.multiply_diagonal(v, axis=axis)
+            if perm is not None:
+                x = x.transpose(perm)
+            return x
+
+        # both proper arrays: dispatch directly to tensordot
+        info = _parse_tensordot_eq(eq)
+        if info is None:
+            raise NotImplementedError(
+                f"einsum eq {eq!r} for two symmray arrays is only supported "
+                "for pure pairwise contractions, i.e. without batched, summed,"
+                " or repeated indices."
+            )
+
+        axes_a, axes_b, perm = info
+        x = tensordot(a, b, axes=(axes_a, axes_b))
+        if perm is not None:
+            x = x.transpose(perm)
+        return x
+
+    # else dispatch >2 terms to pairwise contractions using cotengra
     return ctg.einsum(eq, *arrays, **kwargs)
 
 
