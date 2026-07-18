@@ -86,7 +86,7 @@ def test_svd(symmetry, shape, duals, seed=42):
     fvh.check()
     fvh.to_blocksparse().test_allclose(vh)
 
-    fxr = fu @ fvh.multiply_diagonal(fs, axis=0)
+    fxr = sr.einsum("ij,j,jk->ik", fu, fs, fvh)
     fxr.check()
     fxr.to_blocksparse().test_allclose(x)
 
@@ -186,7 +186,7 @@ def test_svd_roundtrip(symmetry, seed):
     u, s, vh = ar.do("linalg.svd", xf)
 
     # reconstruct matrix
-    xfr = u @ ar.do("multiply_diagonal", vh, s, axis=0)
+    xfr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
 
     # unfuse back into transpose tensor
     xrt = xfr.unfuse_all()
@@ -268,7 +268,7 @@ def test_svd_rand_truncated_fermionic(symmetry, shape, absorb, seed):
 
     if absorb is None:
         s.check()
-        xr = u @ vh.multiply_diagonal(s, axis=0)
+        xr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -317,7 +317,7 @@ def test_eigh_flat_fermionic(symm, seed, dtype):
     )
     el, ev = sr.linalg.eigh(x)
     # reconstruct the matrix
-    y = sr.multiply_diagonal(ev, el, 1) @ ev.H
+    y = sr.einsum("ij,j,jk->ik", ev, el, ev.H)
     y.test_allclose(x)
 
 
@@ -344,7 +344,7 @@ def test_eigh_truncated_flat_fermionic(symmetry, d, absorb, seed):
 
     if absorb is None:
         s.check()
-        xr = u @ vh.multiply_diagonal(s, 0)
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -463,7 +463,7 @@ def test_svd_via_eig(symmetry, shape, duals, seed=42):
     fvh.check()
     fs.check()
 
-    fxr = fu @ fvh.multiply_diagonal(fs, axis=0)
+    fxr = sr.einsum("ij,j,jk->ik", fu, fs, fvh)
     fxr.check()
     fxr.to_blocksparse().test_allclose(x)
 
@@ -499,7 +499,7 @@ def test_svd_via_eig_roundtrip(symmetry, seed):
     u, s, vh = xf.svd_via_eig()
 
     # reconstruct matrix
-    xfr = u @ ar.do("multiply_diagonal", vh, s, axis=0)
+    xfr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
 
     # unfuse back into transpose tensor
     xrt = xfr.unfuse_all()
@@ -535,7 +535,7 @@ def test_svd_via_eig_truncated(symmetry, shape, absorb, seed):
 
     if absorb is None:
         s.check()
-        xr = u @ vh.multiply_diagonal(s, axis=0)
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -590,7 +590,7 @@ def test_svd_via_eig_complex(symmetry, shape, dtype, seed=42):
     vh.check()
     s.check()
 
-    xr = u @ vh.multiply_diagonal(s, axis=0)
+    xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     xr.check()
     assert xr.allclose(fx)
 
@@ -899,7 +899,7 @@ def test_flat_fermionic_decomposition_backend_roundtrip(
     if s is None:
         xr = left @ right
     else:
-        xr = left @ right.multiply_diagonal(s, axis=0)
+        xr = sr.einsum("ij,j,jk->ik", left, s, right)
 
     xr.check()
     xr.test_allclose(x)
@@ -951,7 +951,7 @@ def test_flat_fermionic_svd_truncated_backend(
     vh.check()
     assert s.size <= 4
 
-    xr = u @ vh.multiply_diagonal(s, axis=0)
+    xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     xr.check()
     assert xr.shape == x.shape
     assert xr.charge == x.charge
@@ -990,7 +990,7 @@ def test_flat_fermionic_eigh_backend(
         s, u = ar.do("linalg.eigh", x)
         u.check()
         s.check()
-        xr = u.multiply_diagonal(s, axis=1) @ u.H
+        xr = sr.einsum("ij,j,jk->ik", u, s, u.H)
         xr.check()
         xr.test_allclose(x)
 

@@ -1977,6 +1977,17 @@ def tensordot_abelian_flat(
         # inner product
         return a._tensordot_inner_abelian(b, axes_a, axes_b, preserve_array)
 
+    if (
+        mode == "auto"
+        and a.ndim <= 2
+        and b.ndim <= 2
+        and axes_a == (a.ndim - 1,)
+        and axes_b == (0,)
+    ):
+        # matmul-shaped: shortcut to the faster direct batched matmul,
+        # avoiding the sorted gather and extra batch axes of 'direct' mode
+        return a._matmul_abelian(b, preserve_array=preserve_array)
+
     if mode == "auto":
         if left_axes and right_axes:
             mode = "direct"

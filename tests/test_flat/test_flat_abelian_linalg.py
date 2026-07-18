@@ -83,7 +83,7 @@ def test_flat_svd(symmetry, d1, d2, charge, seed):
     assert fU.to_blocksparse().allclose(sU)
     assert fVh.to_blocksparse().allclose(sVh)
 
-    fy = fU @ fVh.multiply_diagonal(fS, 0)
+    fy = sr.einsum("ij,j,jk->ik", fU, fS, fVh)
     fy.check()
     assert fy.charge == fx.charge
     assert fy.allclose(fx)
@@ -118,7 +118,7 @@ def test_eigh_flat(symmetry, d, seed, duals):
     fevals, fvecs = sr.linalg.eigh(fx)
     fvecs.check()
     fevals.check()
-    fy = fvecs.multiply_diagonal(fevals, 1) @ fvecs.H
+    fy = sr.einsum("ij,j,jk->ik", fvecs, fevals, fvecs.H)
     fy.check()
     assert fy.allclose(fx)
 
@@ -145,7 +145,7 @@ def test_eigh_truncated_flat(symmetry, d, absorb, seed):
 
     if absorb is None:
         s.check()
-        xr = u @ vh.multiply_diagonal(s, 0)
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -207,7 +207,7 @@ def test_flat_svd_via_eig(symmetry, d1, d2, charge, seed):
     assert fU.charge == fx.charge
 
     # roundtrip via right multiply
-    fy = fU @ fVh.multiply_diagonal(fS, 0)
+    fy = sr.einsum("ij,j,jk->ik", fU, fS, fVh)
     fy.check()
     assert fy.charge == fx.charge
     assert fy.allclose(fx)
@@ -239,7 +239,7 @@ def test_flat_svd_via_eig_truncated(symmetry, d1, d2, absorb, seed):
 
     if absorb is None:
         s.check()
-        xr = u @ vh.multiply_diagonal(s, 0)
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -318,7 +318,7 @@ def test_flat_svd_rand_truncated(symmetry, d1, d2, absorb, seed):
     if absorb is None:
         s.check()
         assert s.size <= 8
-        xr = u @ vh.multiply_diagonal(s, 0)
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -607,7 +607,7 @@ def test_flat_decomposition_backend_roundtrip(
     if s is None:
         xr = left @ right
     else:
-        xr = left @ right.multiply_diagonal(s, axis=0)
+        xr = sr.einsum("ij,j,jk->ik", left, s, right)
 
     xr.check()
     xr.test_allclose(x)
@@ -655,7 +655,7 @@ def test_flat_svd_truncated_backend(method, backend, require_backend):
     vh.check()
     assert s.size <= 4
 
-    xr = u @ vh.multiply_diagonal(s, axis=0)
+    xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     xr.check()
     assert xr.shape == x.shape
     assert xr.charge == x.charge
@@ -689,7 +689,7 @@ def test_flat_eigh_backend(truncated, backend, require_backend):
         s, u = ar.do("linalg.eigh", x)
         u.check()
         s.check()
-        xr = u.multiply_diagonal(s, axis=1) @ u.H
+        xr = sr.einsum("ij,j,jk->ik", u, s, u.H)
         xr.check()
         xr.test_allclose(x)
 

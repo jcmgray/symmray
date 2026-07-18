@@ -54,8 +54,7 @@ def test_svd_basics(symmetry, d0, d1, f0, f1, c):
     u.check()
     s.check()
     vh.check()
-    us = ar.do("multiply_diagonal", u, s, axis=1)
-    usvh = sr.tensordot(us, vh, 1)
+    usvh = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
     assert usvh.allclose(x)
 
 
@@ -78,8 +77,7 @@ def test_svd_via_eig_basics(symmetry, d0, d1, f0, f1, c):
     u.check()
     s.check()
     vh.check()
-    us = ar.do("multiply_diagonal", u, s, axis=1)
-    usvh = sr.tensordot(us, vh, 1)
+    usvh = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
     usvh.test_allclose(x)
 
 
@@ -103,8 +101,7 @@ def test_svd_via_eig_truncated(symmetry, d0, d1, absorb):
 
     if absorb is None:
         s.check()
-        us = ar.do("multiply_diagonal", u, s, axis=1)
-        xr = sr.tensordot(us, vh, 1)
+        xr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = sr.tensordot(u, vh, 1)
@@ -164,7 +161,7 @@ def test_eigh(symmetry, d, seed):
     el, ev = ar.do("linalg.eigh", x)
     el.check()
     ev.check()
-    xr = ev @ ar.do("multiply_diagonal", ev.H, el, axis=0)
+    xr = ar.do("einsum", "ij,j,jk->ik", ev, el, ev.H)
     xr.check()
     assert x.allclose(xr)
 
@@ -189,8 +186,7 @@ def test_eigh_truncated(symmetry, d, absorb, seed):
 
     if absorb is None:
         s.check()
-        us = ar.do("multiply_diagonal", u, s, axis=1)
-        xr = sr.tensordot(us, vh, 1)
+        xr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = sr.tensordot(u, vh, 1)

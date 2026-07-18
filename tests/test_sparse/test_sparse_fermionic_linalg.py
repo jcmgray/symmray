@@ -141,7 +141,7 @@ def test_svd_roundtrip(symmetry, seed):
     u, s, vh = ar.do("linalg.svd", xf)
 
     # reconstruct matrix
-    xfr = u @ ar.do("multiply_diagonal", vh, s, axis=0)
+    xfr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
 
     # unfuse back into transpose tensor
     xrt = xfr.unfuse_all()
@@ -289,7 +289,7 @@ def test_svd_via_eig_roundtrip(symmetry, seed):
     u, s, vh = xf.svd_via_eig()
 
     # reconstruct matrix
-    xfr = u @ ar.do("multiply_diagonal", vh, s, axis=0)
+    xfr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
 
     # unfuse back into transpose tensor
     xrt = xfr.unfuse_all()
@@ -322,7 +322,7 @@ def test_svd_via_eig_truncated(symmetry, shape, absorb, seed):
 
     if absorb is None:
         s.check()
-        xr = u @ vh.multiply_diagonal(s, axis=0)
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = u @ vh
@@ -364,7 +364,7 @@ def test_eigh_fermionic(symm, seed, dtype):
     )
     el, ev = sr.linalg.eigh(x)
     # reconstruct the matrix
-    y = sr.multiply_diagonal(ev, el, 1) @ ev.H
+    y = sr.einsum("ij,j,jk->ik", ev, el, ev.H)
     y.test_allclose(x)
 
 
@@ -389,8 +389,7 @@ def test_eigh_truncated_fermionic(symmetry, d, absorb, seed):
 
     if absorb is None:
         s.check()
-        us = ar.do("multiply_diagonal", u, s, axis=1)
-        xr = sr.tensordot(us, vh, 1)
+        xr = ar.do("einsum", "ij,j,jk->ik", u, s, vh)
     else:
         assert s is None
         xr = sr.tensordot(u, vh, 1)
@@ -506,7 +505,7 @@ def test_eigh_truncated_fermionic_fused(symm, seed, dtype):
     u, s, vh = ar.do("eigh_truncated", xf, absorb=None)
 
     # reconstruct
-    y = u.multiply_diagonal(s, axis=1) @ vh
+    y = sr.einsum("ij,j,jk->ik", u, s, vh)
     y.unfuse_all().test_allclose(x)
 
     # recostruct via identity resolved projectors
