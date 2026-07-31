@@ -346,7 +346,8 @@ class FlatSubIndexInfo(SubInfo):
         )
 
     def select_charge(self, charge):
-        new_subkeys = ar.do("take", self.subkeys, (charge,), axis=0)
+        charge = ar.do("full", (1,), charge, like=self.subkeys)
+        new_subkeys = ar.do("take", self.subkeys, charge, axis=0)
         return FlatSubIndexInfo(
             indices=self.indices,
             subkeys=new_subkeys,
