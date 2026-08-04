@@ -465,3 +465,66 @@ def test_to_pytree_and_back(symmetry, shape, charge):
         yf = type(xf).from_pytree(tree)
         xf.test_allclose(yf)
         yf.unfuse_all().test_allclose(x)
+
+
+def _get_fused_subinfo(x):
+    # fuse only two of three axes, so the fused index is not locked to the
+    # total charge and retains all fused charge sectors
+    subinfo = x.fuse((1, 2)).indices[1].subinfo
+    assert subinfo.ncharge > 1
+    return subinfo
+
+
+def _get_rand_3d(symmetry="Z2"):
+    return sr.utils.get_rand(
+        symmetry=symmetry,
+        shape=(4, 4, 6),
+        subsizes="equal",
+        flat=True,
+        seed=42,
+    )
+
+
+def test_subinfo_select_charge_python_int():
+    import numpy as np
+
+    subinfo = _get_fused_subinfo(_get_rand_3d())
+    new = subinfo.select_charge(1)
+    assert new.ncharge == 1
+    np.testing.assert_array_equal(
+        np.asarray(new.subkeys[0]), np.asarray(subinfo.subkeys[1])
+    )
+
+
+@pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+def test_subinfo_select_charge_backend_charge(
+    backend,
+    require_backend,
+    convert_backend,
+):
+    import numpy as np
+
+    require_backend(backend)
+
+    x = _get_rand_3d()
+    expected = np.asarray(_get_fused_subinfo(x).select_charge(1).subkeys)
+
+    # NOTE: convert before fusing, so the subkeys are backend arrays too
+    subinfo = _get_fused_subinfo(x.to(backend))
+
+    # plain python int charge
+    got = subinfo.select_charge(1).subkeys
+    np.testing.assert_array_equal(np.asarray(got), expected)
+
+    # 0-dim backend scalar charge, as passed by e.g. align_axes
+    charge = convert_backend(np.asarray(1), backend)
+    got = subinfo.select_charge(charge).subkeys
+    np.testing.assert_array_equal(np.asarray(got), expected)
+
+    if backend == "jax":
+        import jax
+
+        # under jit the charge is a tracer: a tuple index (charge,)
+        # raises here
+        got = jax.jit(lambda c: subinfo.select_charge(c).subkeys)(1)
+        np.testing.assert_array_equal(np.asarray(got), expected)
