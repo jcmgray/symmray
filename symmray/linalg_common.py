@@ -1,6 +1,7 @@
 """Common linear algebra utilities shared across backends."""
 
 import functools
+import typing
 
 import autoray as ar
 
@@ -68,7 +69,7 @@ class Absorb:
     sVH = 11  # 'rfactor'
     sqVH = 12  # 'rsqrt'
 
-    _map = {
+    _map: typing.ClassVar = {
         U_s_VH: U_s_VH,
         "U,s,VH": U_s_VH,
         s: s,
@@ -101,7 +102,7 @@ class Absorb:
         "rsqrt": sqVH,
     }
 
-    _transpose_map = {
+    _transpose_map: typing.ClassVar = {
         Us_VH: U_sVH,
         U_sVH: Us_VH,
         Us: sVH,

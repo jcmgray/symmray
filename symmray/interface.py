@@ -369,7 +369,10 @@ ar.register_function("symmray", "rddiv", rddiv)
 
 
 def align_axes(x, y, axes):
-    """ """
+    """Align the axes of two `symmray` arrays (drop mis-matched charges)
+    to prepare for contraction, explicit or implicit (e.g. decomposition
+    that should match).
+    """
     return x.align_axes(y, axes)
 
 

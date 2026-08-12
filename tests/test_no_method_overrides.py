@@ -28,11 +28,9 @@ def _iter_methods(cls):
     ``staticmethod``, and ``property`` (via fget).
     """
     for name, value in vars(cls).items():
-        if inspect.isfunction(value):
-            yield name
-        elif isinstance(value, (classmethod, staticmethod)):
-            yield name
-        elif isinstance(value, property):
+        if inspect.isfunction(value) or isinstance(
+            value, (classmethod, staticmethod, property)
+        ):
             yield name
 
 

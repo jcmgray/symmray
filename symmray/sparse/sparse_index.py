@@ -34,9 +34,9 @@ class BlockIndex(Index):
     __slots__ = (
         "_chargemap",
         "_dual",
-        "_subinfo",
         "_hashkey",
         "_linearmap",
+        "_subinfo",
     )
 
     def __init__(
@@ -380,10 +380,12 @@ class BlockIndex(Index):
 
     def __str__(self):
         lines = [
-            f"({self.size_total} = "
-            f"{'+'.join(map(str, self._chargemap.values()))} "
-            f": {'-' if self.dual else '+'}"
-            f"[{','.join(map(str, self._chargemap.keys()))}])"
+            (
+                f"({self.size_total} = "
+                f"{'+'.join(map(str, self._chargemap.values()))} "
+                f": {'-' if self.dual else '+'}"
+                f"[{','.join(map(str, self._chargemap.keys()))}])"
+            )
         ]
 
         if self.subinfo:
@@ -436,7 +438,7 @@ class SubIndexInfo(SubInfo):
         This should not be mutated after creation.
     """
 
-    __slots__ = ("_extents", "_indices", "_hashkey")
+    __slots__ = ("_extents", "_hashkey", "_indices")
 
     def __init__(self, indices, extents):
         self._indices = indices

@@ -376,10 +376,9 @@ class FermionicArrayFlat(
 
     def _map_blocks(self, fn_sector=None, fn_block=None):
         self._map_blocks_abelian(fn_sector=fn_sector, fn_block=fn_block)
-        if fn_sector is not None:
-            if self._phases is not None:
-                # NOTE: leave missing phases, assumed to stay all ones
-                self._phases = fn_sector(self.phases)
+        if (fn_sector is not None) and (self._phases is not None):
+            # NOTE: leave missing phases, assumed to stay all ones
+            self._phases = fn_sector(self.phases)
 
     @classmethod
     def from_blocks(
@@ -423,7 +422,7 @@ class FermionicArrayFlat(
             # need phases in same order as blocks
             phases = ar.do(
                 "array",
-                [phases.get(sector, 1) for sector in blocks.keys()],
+                [phases.get(sector, 1) for sector in blocks],
                 like=next(iter(blocks.values())),
             )
 

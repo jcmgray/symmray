@@ -1101,10 +1101,8 @@ class ArrayCommon:
                 f"    {line}" for line in str(self.indices[i]).split("\n")
             )
         lines.append(
-            (
-                f"], num_blocks={self.num_blocks}, backend={self.backend}, "
-                f"dtype={self.dtype})"
-            )
+            f"], num_blocks={self.num_blocks}, backend={self.backend}, "
+            f"dtype={self.dtype})"
         )
         return "\n".join(lines)
 
@@ -1147,7 +1145,7 @@ def parse_tensordot_axes(axes, ndim_a, ndim_b):
     """
     if ar.is_scalar(axes):
         axes_a = tuple(range(ndim_a - axes, ndim_a))
-        axes_b = tuple(range(0, axes))
+        axes_b = tuple(range(axes))
     else:
         axes_a, axes_b = axes
         axes_a = tuple(x % ndim_a for x in axes_a)

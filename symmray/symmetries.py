@@ -219,7 +219,7 @@ def get_symmetry(symmetry: str | Symmetry) -> Symmetry:
 @functools.lru_cache(maxsize=2**15)
 def calc_phase_permutation(
     parities: tuple[int, ...],
-    perm: tuple[int, ...] = None,
+    perm: tuple[int, ...] | None = None,
 ) -> int:
     """Given sequence of parities and a permutation, compute the phase of the
     permutation acting on the odd charges. I.e. whether the number of swaps

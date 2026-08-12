@@ -19,7 +19,7 @@ class FlatIndex(Index):
         Default is None, which means the index is not fused.
     """
 
-    __slots__ = ("_num_charges", "_charge_size", "_dual", "_subinfo")
+    __slots__ = ("_charge_size", "_dual", "_num_charges", "_subinfo")
 
     def __init__(
         self,
@@ -229,11 +229,13 @@ class FlatIndex(Index):
 
     def __str__(self):
         lines = [
-            f"({self.size_total} = "
-            f"{self._num_charges} x {self._charge_size} "
-            f": {'-' if self.dual else '+'}"
-            ")"
-            f"{'' if self.subinfo is None else ', fused'}"
+            (
+                f"({self.size_total} = "
+                f"{self._num_charges} x {self._charge_size} "
+                f": {'-' if self.dual else '+'}"
+                ")"
+                f"{'' if self.subinfo is None else ', fused'}"
+            )
         ]
         return "\n".join(lines)
 
@@ -267,10 +269,10 @@ class FlatSubIndexInfo(SubInfo):
 
     __slots__ = (
         "_indices",
-        "_subkeys",
         "_ncharge",
         "_nsectors",
         "_nsubcharges",
+        "_subkeys",
     )
 
     def __init__(self, indices, subkeys):

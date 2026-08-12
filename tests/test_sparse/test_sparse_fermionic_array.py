@@ -400,7 +400,7 @@ def test_einsum_vs_tensordot(symm, seed):
     )
     y.randomize_phases(rng, inplace=True)
     z1 = sr.tensordot(x, y, [(1, 0, 3), (0, 1, 3)]).transpose()
-    xy = xy = sr.tensordot(x, y, ((), ()))
+    xy = sr.tensordot(x, y, ((), ()))
     seq = eq.replace(",", "")
     z2 = xy.einsum(seq)
     assert z1.allclose(z2)

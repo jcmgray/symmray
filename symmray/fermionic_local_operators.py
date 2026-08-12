@@ -39,7 +39,7 @@ class FermionicOperator:
     flag, and a parity 'switch' indicating whether the fermion is present.
     """
 
-    __slots__ = ("_label", "_dual", "_parity")
+    __slots__ = ("_dual", "_label", "_parity")
 
     def __init__(self, label, dual=False, parity=1):
         if label == ():

@@ -59,15 +59,15 @@ def parse_edges_to_site_info(
         infob.setdefault("shape", []).append(bond_dim)
 
     # create physical inds
-    for site in site_info:
-        site_info[site]["coordination"] = len(site_info[site]["inds"])
+    for site, sinfo in site_info.items():
+        sinfo["coordination"] = len(sinfo["inds"])
 
         if starmap_tag:
             site_tag = site_tag_id.format(*site)
         else:
             site_tag = site_tag_id.format(site)
 
-        site_info[site]["tags"] = (site_tag,)
+        sinfo["tags"] = (site_tag,)
 
         if phys_dim is not None:
             if starmap_ind:
@@ -75,9 +75,9 @@ def parse_edges_to_site_info(
             else:
                 site_ind = site_ind_id.format(site)
 
-            site_info[site]["inds"].append(site_ind)
-            site_info[site]["duals"].append(0)
-            site_info[site]["shape"].append(phys_dim)
+            sinfo["inds"].append(site_ind)
+            sinfo["duals"].append(0)
+            sinfo["shape"].append(phys_dim)
 
     # put in canonical sorted by site order
     site_info = {k: site_info[k] for k in sorted(site_info)}

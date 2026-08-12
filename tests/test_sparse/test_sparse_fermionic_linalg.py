@@ -754,7 +754,7 @@ def test_svd_projector_identity(symm, seed):
     x.randomize_phases(inplace=True)
     xf = x.fuse((0, 1), (2, 3))
 
-    u, s, vh = ar.do("linalg.svd", xf)
+    u, _s, vh = ar.do("linalg.svd", xf)
     udag = u.dagger_project_left()
     vhdag = vh.dagger_project_right()
 

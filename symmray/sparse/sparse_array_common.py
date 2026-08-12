@@ -85,7 +85,7 @@ def calc_fuse_group_info(axes_groups, duals):
 
     # the permutation will be the same for every block: precalculate
     # n.b. all new groups will be inserted at the *first fused axis*:
-    position = min((min(gaxes) for gaxes in axes_groups))
+    position = min(min(gaxes) for gaxes in axes_groups)
     axes_before = tuple(ax for ax in range(position) if ax2group[ax] is None)
     axes_after = tuple(
         ax for ax in range(position, ndim) if ax2group[ax] is None
@@ -742,8 +742,6 @@ class SparseArrayCommon:
 
         if charge is None:
             charge = symmetry.combine()
-        else:
-            charge = charge
 
         new = cls(indices=indices, charge=charge, symmetry=symmetry, **kwargs)
 
@@ -1501,7 +1499,6 @@ class SparseArrayCommon:
                 new_blocks[new_key] = _reshape(new_array, new_shape)
 
         new_indices = replace_with_seq(self.indices, axis, subinfo.indices)
-        new_blocks = new_blocks
 
         return self._modify_or_copy(
             indices=new_indices, blocks=new_blocks, inplace=inplace
@@ -1878,9 +1875,8 @@ class SparseArrayCommon:
             )
 
         # if max_bond is supplied make sure it is parsed
-        if "max_bond" in kwargs:
-            if kwargs["max_bond"] is None:
-                kwargs["max_bond"] = -1
+        if ("max_bond" in kwargs) and (kwargs["max_bond"] is None):
+            kwargs["max_bond"] = -1
 
         need_full_spectrum = (
             (kwargs.get("cutoff", -1.0) > 0.0)
@@ -2186,7 +2182,7 @@ def truncate_svd_result_blocksparse(
     max_bond: int,
     absorb: int | str | None,
     renorm: int,
-    backend: str = None,
+    backend: str | None = None,
     use_abs: bool = False,
 ) -> tuple[SparseArrayCommon, BlockVector, SparseArrayCommon]:
     absorb = Absorb.parse(absorb)
@@ -2234,8 +2230,7 @@ def truncate_svd_result_blocksparse(
         if 0 < max_bond < ar.size(sall):
             # also take into account a total maximum bond
             max_bond_cutoff = sall[-max_bond]
-            if max_bond_cutoff > abs_cutoff:
-                abs_cutoff = max_bond_cutoff
+            abs_cutoff = max(abs_cutoff, max_bond_cutoff)
 
         # now find number of values to keep per sector
         sub_max_bonds = [
