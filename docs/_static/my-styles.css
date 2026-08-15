@@ -54,3 +54,8 @@ div.cell div.cell_input {
 	padding-right: 0em;
 	margin-top: 0em;
 }
+
+code.literal {
+	color: hsl(224, 33%, 55%);
+	font-weight: 450;
+}

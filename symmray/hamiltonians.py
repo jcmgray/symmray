@@ -181,8 +181,8 @@ def ham_fermi_hubbard_from_edges(
     """Return a dict of local 2-body Hamiltonian terms for the Fermi-Hubbard
     model on the given lattice defined by `edges`. The indices are ordered as
     (a, b, a', b'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
-    spin respectively and similar for site b.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
+    down (ad) spin respectively and similar for site b.
 
     Parameters
     ----------

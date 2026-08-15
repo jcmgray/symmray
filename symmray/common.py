@@ -56,7 +56,7 @@ class SymmrayCommon:
             Explicitly supplied `backend`, `dtype` or `device` override this.
         backend : str, optional
             Target backend.
-        dtype : str or dtype, optional
+        dtype : str or numpy.dtype, optional
             Target floating point or complex dtype.
         device : str or device_like, optional
             Target device.

@@ -175,7 +175,7 @@ def rand_matrix(
     subsizes : str or None
         Passed to `rand_index`. If "equal", all sectors will have equal size,
         required for flat arrays.
-    dtype : str or dtype
+    dtype : str or numpy.dtype
         Data type of the array.
     fermionic : bool
         Whether the array should be fermionic.

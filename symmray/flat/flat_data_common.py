@@ -68,10 +68,12 @@ class FlatCommon:
 
     @property
     def blocks(self):
-        """The stack of array blocks, with shape (num_blocks, *shape_block),
-        i.e. `ndim + 1` dimensions, where the first dimension is the block
-        index, which should match the first dimension of `sectors`, and the
-        rest are the dimensions of individual blocks."""
+        """The stack of array blocks, with shape
+        ``(num_blocks, *shape_block)``, i.e. ``ndim + 1`` dimensions, where the
+        first dimension is the block index, which should match the first
+        dimension of `sectors`, and the rest are the dimensions of individual
+        blocks.
+        """
         return self._blocks
 
     @property

@@ -210,8 +210,9 @@ def tfim_local_array(
     like="numpy",
     flat=False,
 ):
-    """Build an abelian symmetric local operator for the transverse field
-    Ising model::
+    """Build a local symmetric transverse-field Ising operator.
+
+    The Hamiltonian is::
 
         H = jx * sum_ij X_i X_j + hz * sum_i Z_i
 
@@ -271,7 +272,9 @@ def heisenberg_local_array(
     like="numpy",
     flat=False,
 ):
-    """Build an abelian symmetric local operator for the Heisenberg model::
+    """Build a local symmetric Heisenberg operator.
+
+    The Hamiltonian is::
 
         H = sum_ij (jx Sx_i Sx_j + jy Sy_i Sy_j + jz Sz_i Sz_j)
             - sum_i bz Sz_i

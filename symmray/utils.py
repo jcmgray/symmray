@@ -144,7 +144,7 @@ def rand_partition(d, n, seed=None):
 @functools.cache
 def get_zn_charges(ncharge, order):
     """Get a list of ``ncharge`` distinct ZN charges that are as close to
-    0 or |G| as possible, with a slight bias towards positive charges.
+    ``0`` or ``|G|`` as possible, with a slight bias towards positive charges.
 
     Parameters
     ----------
@@ -531,7 +531,7 @@ def get_array_cls(symmetry, fermionic=False, flat=False) -> type:
 
     if symmetry in ("Z2", "U1", "Z2Z2", "U1U1"):
         # statically defined array classes
-        return {
+        classes = {
             # blocksparse abelian arrays
             ("Z2", 0, 0): sr.Z2Array,
             ("U1", 0, 0): sr.U1Array,
@@ -546,7 +546,17 @@ def get_array_cls(symmetry, fermionic=False, flat=False) -> type:
             ("Z2", 0, 1): sr.Z2ArrayFlat,
             # flat fermionic arrays
             ("Z2", 1, 1): sr.Z2FermionicArrayFlat,
-        }[str(symmetry), fermionic, flat]
+        }
+        try:
+            return classes[str(symmetry), fermionic, flat]
+        except KeyError:
+            if flat:
+                raise ValueError(
+                    f"Couldn't get array class for symmetry {symmetry}, "
+                    f"fermionic={fermionic}, flat={flat}. Note that only "
+                    "cyclic symmetries are supported for flat arrays."
+                ) from None
+            raise
     else:
         # symmetry is defined dynamically, and should be supplied as kwarg
         return {

@@ -148,10 +148,10 @@ class FermionicArrayFlat(
         represents a sector of a corresponding block, and each column
         represents a charge in a given axis.
     blocks : array_like
-        The stack of array blocks, with shape (num_blocks, *shape_block), i.e.
-        `ndim + 1` dimensions, where the first dimension is the block index,
-        which should match the first dimension of `sectors`, and the rest are
-        the dimensions of individual blocks.
+        The stack of array blocks, with shape ``(num_blocks, *shape_block)``,
+        i.e. ``ndim + 1`` dimensions, where the first dimension is the block
+        index, which should match the first dimension of `sectors`, and the
+        rest are the dimensions of individual blocks.
     indices : sequence[FlatIndex]
         Indices describing the dualness and any subindex information for each
         dimension of the array. If bools are supplied, they will be converted

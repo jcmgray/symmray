@@ -443,8 +443,8 @@ def fermi_hubbard_local_array(
 ):
     """Construct the fermionic local tensor for the Fermi-Hubbard model. The
     indices are ordered as (a, b, a', b'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
-    spin respectively and similar for site b.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
+    down (ad) spin respectively and similar for site b.
 
     Parameters
     ----------
@@ -543,8 +543,8 @@ def fermi_number_operator_spinless_local_array(
     flat=False,
 ):
     """Construct the fermionic number operator for the spinless Fermi-Hubbard
-    model. The indices are ordered as (a, a'). The local basis is like
-    (|0>, a+|0>) for single site a.
+    model. The indices are ordered as (a, a'). The local basis is
+    ``(|0>, a+|0>)`` for single site a.
 
     Parameters
     ----------
@@ -583,8 +583,8 @@ def fermi_number_operator_spinful_local_array(
 ):
     """Construct the fermionic number operator for the Fermi-Hubbard model. The
     indices are ordered as (a, a'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
-    spin respectively for single site `a`.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
+    down (ad) spin respectively for single site `a`.
 
     Parameters
     ----------
@@ -622,8 +622,8 @@ def fermi_number_operator_spinful_local_array(
 def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
     """Construct the 'up' fermionic number operator for the Fermi-Hubbard
     model. The indices are ordered as (a, a'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
-    spin respectively for single site `a`.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
+    down (ad) spin respectively for single site `a`.
 
     Parameters
     ----------
@@ -661,8 +661,8 @@ def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
 def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
     """Construct the 'down' fermionic number operator for the Fermi-Hubbard
     model. The indices are ordered as (a, a'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
-    spin respectively for single site `a`.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
+    down (ad) spin respectively for single site `a`.
 
     Parameters
     ----------
@@ -700,8 +700,8 @@ def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
 def fermi_spin_z_local_array(symmetry, like="numpy", flat=False):
     """Construct the fermionic ``S^z`` operator for the Fermi-Hubbard model.
     The indices are ordered as (a, a'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for site a with up (au) and down (ad)
-    spin respectively for single site `a`.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
+    down (ad) spin respectively for single site `a`.
 
     Parameters
     ----------
@@ -835,8 +835,8 @@ def fermi_double_occupancy_local_array(symmetry, like="numpy", flat=False):
     """Construct the on-site double occupancy operator ``D = n↑ n↓`` for the
     Fermi-Hubbard model, i.e. the projector onto the doubly occupied state. The
     indices are ordered as (a, a'), with the local basis like
-    (|00>, ad+|00>, au+|00>, au+ad+|00>) for single site `a`. Useful as the
-    ``<U>`` interaction-energy observable.
+    ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for single site `a`. Useful as
+    the ``<U>`` interaction-energy observable.
 
     Parameters
     ----------
@@ -877,7 +877,7 @@ def fermi_pairing_onsite_local_array(symmetry, like="numpy", flat=False):
     parameter whose expectation ``<Δ>`` is non-zero only in a number
     non-conserving state. Use ``.dagger()`` for the pair creation operator
     ``Δ† = c↓† c↑†``. The indices are ordered as (a, a'), with the local basis
-    like (|00>, ad+|00>, au+|00>, au+ad+|00>) for single site `a`.
+    like ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for single site `a`.
 
     The operator removes two fermions, so it conserves fermion parity but not
     particle number: it is only an identity-charge (measurable) operator under

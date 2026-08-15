@@ -14,9 +14,13 @@ Please also read the
 Things to check if new functionality is added:
 
 1. Ensure functions are unit tested. Heavy use of `@pytest.mark.parametrize`
-   over symmetry types (`Z2`, `ZN`, `U1`, `Z2Z2`, `U1U1`), shapes, and seeds is
-   the standard pattern. After any mutating op, call `x.check()` for internal
-   consistency — it is a no-op unless `SYMMRAY_DEBUG=1` is set (the `test` and
+   over symmetry types ([`Z2`](#symmray.symmetries.Z2),
+   [`ZN`](#symmray.symmetries.ZN), [`U1`](#symmray.symmetries.U1),
+   [`Z2Z2`](#symmray.symmetries.Z2Z2), and
+   [`U1U1`](#symmray.symmetries.U1U1)), shapes, and seeds is the standard
+   pattern. After any mutating op, call
+   [`x.check()`](#symmray.sparse.sparse_array_common.SparseArrayCommon.check) for
+   internal consistency — it is a no-op unless `SYMMRAY_DEBUG=1` is set (the `test` and
    `pytest` pixi tasks set it automatically).
 2. New method names must not collide across the MRO of any user-facing class.
    The single-definition MRO rule is enforced by
@@ -94,6 +98,16 @@ pixi run -e testpymid test
 pixi run -e testpynew test
 ```
 
+Backend-specific suites run in the JAX and PyTorch environments:
+
+```bash
+pixi run -e testjax test
+pixi run -e testtorch test
+```
+
+Use `pixi run build-test` after changing dependencies, versioning, or package
+configuration.
+
 If you invoke pytest directly (without pixi), set `SYMMRAY_DEBUG=1` yourself to
 enable `check()` calls throughout the library.
 
@@ -150,6 +164,24 @@ References should either use the full path or a short suffix-matching form:
 
 Keep enough trailing components to be unambiguous. If a bare name still
 matches several objects, qualify it further or give an explicit title.
+
+
+## Architecture
+
+`symmray` assembles its public array classes from common and storage-specific
+mixins. For example, sparse and flat abelian arrays share
+[`ArrayCommon`](#symmray.array_common.ArrayCommon),
+[`BosonicCommon`](#symmray.bosonic_common.BosonicCommon), and
+[`SymmrayCommon`](#symmray.common.SymmrayCommon), while their storage operations
+live in [`SparseArrayCommon`](#symmray.sparse.sparse_array_common.SparseArrayCommon)
+and [`FlatArrayCommon`](#symmray.flat.flat_array_common.FlatArrayCommon).
+
+<img width="640" alt="symmray array class hierarchy" src="https://github.com/user-attachments/assets/33c0999c-9cb9-4551-bc92-39e63855e1f5" />
+
+Each method name may be defined only once along a public class's MRO. The test
+`tests/test_no_method_overrides.py` enforces this rule. Shared public behavior
+belongs in the most general applicable mixin. Storage-specific work should use
+private delegators such as `_copy_abelian` rather than override a public method.
 
 
 ## Minting a Release
