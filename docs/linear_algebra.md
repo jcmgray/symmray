@@ -66,3 +66,10 @@ factor.
 
 The sparse and flat layouts share this interface. Their numerical behavior can
 differ because flat algorithms operate on stacked blocks.
+
+For fermionic arrays, [`eigh_truncated`](#symmray.linalg.eigh_truncated) and
+Cholesky factorizations drop `dummy_modes` and the array label from returned
+factors by default. These factors are normally used as projectors, *added* to
+the network with the tensors they were decomposed from still present, as such
+the dummy modes should not be duplicated. Pass `drop_dummy_modes=False` to
+change this behavior.
