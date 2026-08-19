@@ -65,6 +65,15 @@ def isfinite(x):
         return ar.do("isfinite", x)
 
 
+def finfo(dtype):
+    """Return machine limits for a common floating-point dtype."""
+    # backend-specific dtypes like bfloat16 are not yet supported
+    # but symmray arrays return their dtype as str -> use numpy
+    import numpy as np
+
+    return np.finfo(dtype)
+
+
 def abs(x):
     """Return the absolute value of a `symmray` array."""
     try:

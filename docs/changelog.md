@@ -17,6 +17,8 @@ Release notes for `symmray`. See also the
 
 **Enhancements:**
 
+- Added {func}`~symmray.interface.finfo` for querying the machine limits of
+  common NumPy floating-point and complex dtypes.
 - Symmetric arrays support scalar exponentiation with `x ** p`.
 - Added {meth}`~symmray.common.SymmrayCommon.to` for changing the array backend,
   dtype, and device, including in place. This method requires `autoray>=0.9.0`.
