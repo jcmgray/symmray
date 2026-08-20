@@ -6,6 +6,61 @@ import symmray as sr
 all_symmetries = ["Z2", "Z4", "U1"]
 
 
+class TestConjProject:
+    @pytest.mark.parametrize("dual0", (False, True))
+    @pytest.mark.parametrize("dual1", (False, True))
+    @pytest.mark.parametrize("dual2", (False, True))
+    @pytest.mark.parametrize("charge", (0, 1))
+    @pytest.mark.parametrize("axis", (0, 1, -1))
+    @pytest.mark.parametrize("inplace", (False, True))
+    def test_phase_rule(
+        self,
+        dual0,
+        dual1,
+        dual2,
+        charge,
+        axis,
+        inplace,
+    ):
+        x = sr.utils.get_rand(
+            "Z2",
+            (2, 2, 2),
+            duals=(dual0, dual1, dual2),
+            charge=charge,
+            fermionic=True,
+            label="x",
+            subsizes="maximal",
+            seed=42,
+        )
+        x.randomize_phases(43, inplace=True)
+        original = x.copy()
+
+        expected = original.conj()
+        normalized_axis = axis % expected.ndim
+        bond_dual = expected.indices[normalized_axis].dual
+        axes_flip = tuple(
+            ax
+            for ax, ix in enumerate(expected.indices)
+            if (ax != normalized_axis) and (ix.dual is bond_dual)
+        )
+        expected.phase_flip(*axes_flip, inplace=True)
+        if bond_dual and sum(mode.parity for mode in expected.dummy_modes) % 2:
+            expected.phase_global(inplace=True)
+
+        actual = x.conj_project(axis=axis, inplace=inplace)
+        assert (actual is x) is inplace
+        actual.check()
+        actual.test_allclose(expected)
+        if not inplace:
+            x.test_allclose(original)
+
+    @pytest.mark.parametrize("axis", (-4, 3))
+    def test_invalid_axis(self, axis):
+        x = sr.utils.get_rand("Z2", (2, 2, 2), fermionic=True, seed=42)
+        with pytest.raises(ValueError, match="out of bounds"):
+            x.conj_project(axis=axis)
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("subsizes", ["equal", "maximal", None])
 @pytest.mark.parametrize("seed", range(3))

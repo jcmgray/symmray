@@ -755,18 +755,29 @@ def test_svd_projector_identity(symm, seed):
     xf = x.fuse((0, 1), (2, 3))
 
     u, _s, vh = ar.do("linalg.svd", xf)
-    udag = u.dagger_project_left()
-    vhdag = vh.dagger_project_right()
+    udag = u.dagger_project_left().unfuse_all()
+    vhdag = vh.dagger_project_right().unfuse_all()
+    u = u.unfuse_all()
+    vh = vh.unfuse_all()
+    uconj = u.conj_project(axis=-1)
+    vhconj = vh.conj_project(axis=0)
 
-    udag = udag.unfuse_all()
-    vhdag = vhdag.unfuse_all()
+    zl = ctg.einsum("abc,dec,defg->abfg", u, uconj, x)
+    zl.test_allclose(x)
+    zl = ctg.einsum("abc,cde,defg->abfg", u, udag, x)
+    zl.test_allclose(x)
+
+    zr = ctg.einsum("defg,hfg,hij->deij", x, vhconj, vh)
+    zr.test_allclose(x)
+    zr = ctg.einsum("defg,fgh,hij->deij", x, vhdag, vh)
+    zr.test_allclose(x)
 
     z = ctg.einsum(
         "abc,cde,defg,fgh,hij->abij",
-        u.unfuse_all(),
+        u,
         udag,
         x,
         vhdag,
-        vh.unfuse_all(),
+        vh,
     )
     z.test_allclose(x)

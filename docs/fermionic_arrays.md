@@ -55,6 +55,13 @@ indices are all ket-like. If a network has both ket-like and bra-like open
 indices, the dual open indices of the conjugated network may need explicit
 phase flips.
 
+Use
+[`x.conj_project(axis=...)`](#symmray.fermionic_common.FermionicCommon.conj_project)
+when inserting an array together with its conjugate as a projector. `axis`
+selects the uncontracted bond. The method handles the dualities of every
+contracted axis and the global sign of odd-parity arrays for both sparse and
+flat storage.
+
 ![Conjugation with one open dual index that needs a phase flip](images/tn-conjugate-phase.png)
 
 ## Odd-parity arrays

@@ -48,7 +48,7 @@ class BlockVector(BlockCommon, VectorCommon, SymmrayCommon):
     def check(self):
         """Check that the block vector is well formed."""
         ndims = {ar.ndim(x) for x in self.get_all_blocks()}
-        if len(ndims) != 1:
+        if len(ndims) > 1:
             raise ValueError(f"blocks have different ndims: {ndims}")
         assert self.size == sum(ar.size(s) for s in self.get_all_blocks())
 

@@ -434,10 +434,8 @@ class FermionicCommon:
         assuming we are going to use to project from the left on another
         operator.
         """
-        new = self._dagger_abelian()
-        if new.indices[-1].dual:
-            new.phase_flip(-1, inplace=True)
-        return new
+        new = self.dagger()
+        return new._phase_project_fermionic(0, inplace=True)
 
     def dagger_compose_right(self) -> "FermionicCommon":
         """Take the dagger (conjugate transpose) of this fermionic array,
@@ -455,10 +453,36 @@ class FermionicCommon:
         assuming we are going to use to project from the right on another
         operator.
         """
-        new = self._dagger_abelian()
-        if not new.indices[0].dual:
-            new.phase_flip(0, inplace=True)
-        return new
+        new = self.dagger()
+        return new._phase_project_fermionic(new.ndim - 1, inplace=True)
+
+    def conj_project(self, axis=-1, inplace=False) -> "FermionicCommon":
+        """Conjugate this array for use with itself as a projector.
+
+        The selected axis carries the uncontracted bond. All other axes are
+        contracted back into the tensor network.
+
+        Parameters
+        ----------
+        axis : int, optional
+            The axis carrying the uncontracted bond.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        FermionicCommon
+        """
+        if axis < 0:
+            axis += self.ndim
+        if not 0 <= axis < self.ndim:
+            raise ValueError(
+                f"axis {axis} is out of bounds for an array with "
+                f"{self.ndim} dimensions"
+            )
+
+        new = self.conj(inplace=inplace)
+        return new._phase_project_fermionic(axis, inplace=True)
 
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a
