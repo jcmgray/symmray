@@ -33,6 +33,21 @@ def test_z2symmetric_array_basics():
     x.test_allclose(x.copy())
 
 
+class TestConjProject:
+    def test_matches_conj(self):
+        x = sr.utils.get_rand("Z2", (2, 3, 4), seed=42)
+        expected = x.conj()
+        actual = x.conj_project(axis=1)
+        actual.test_allclose(expected)
+
+    def test_inplace(self):
+        x = sr.utils.get_rand("Z2", (2, 3, 4), seed=42)
+        expected = x.conj()
+        actual = x.conj_project(axis=1, inplace=True)
+        assert actual is x
+        actual.test_allclose(expected)
+
+
 all_symmetries = ("Z2", "Z3", "Z5", "U1", "Z2Z2", "U1U1")
 multi_symmetries = ("Z2Z2", "U1U1")
 

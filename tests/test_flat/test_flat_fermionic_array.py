@@ -10,6 +10,61 @@ from symmray.flat.flat_fermionic_array import (
 from .test_flat_abelian_array import get_zn_blocksparse_flat_compat
 
 
+class TestConjProject:
+    @pytest.mark.parametrize("dual0", (False, True))
+    @pytest.mark.parametrize("dual1", (False, True))
+    @pytest.mark.parametrize("dual2", (False, True))
+    @pytest.mark.parametrize("charge", (0, 1))
+    @pytest.mark.parametrize("axis", (0, 1, -1))
+    @pytest.mark.parametrize("inplace", (False, True))
+    def test_matches_sparse(
+        self,
+        dual0,
+        dual1,
+        dual2,
+        charge,
+        axis,
+        inplace,
+    ):
+        sparse = get_zn_blocksparse_flat_compat(
+            "Z2",
+            (2, 2, 2),
+            duals=(dual0, dual1, dual2),
+            charge=charge,
+            fermionic=True,
+            label="x",
+            seed=42,
+        )
+        sparse.randomize_phases(43, inplace=True)
+        expected = sparse.conj_project(axis=axis)
+        flat = sparse.to_flat()
+
+        actual = flat.conj_project(axis=axis, inplace=inplace)
+        assert (actual is flat) is inplace
+        actual.check()
+        actual.to_blocksparse().test_allclose(expected)
+
+    @pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+    def test_backend(self, backend, require_backend):
+        require_backend(backend)
+        sparse = get_zn_blocksparse_flat_compat(
+            "Z2",
+            (2, 2, 2),
+            duals=(False, False, True),
+            charge=1,
+            fermionic=True,
+            label="x",
+            seed=42,
+        )
+        sparse.randomize_phases(43, inplace=True)
+        expected = sparse.conj_project(axis=1)
+
+        actual = sparse.to_flat().to(backend).conj_project(axis=1)
+        assert actual.backend == backend
+        actual.check()
+        actual.to("numpy").to_blocksparse().test_allclose(expected)
+
+
 @pytest.mark.parametrize("symmetry", ("Z2", "Z4"))
 @pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize("ndim", [1, 2, 3, 4, 5])

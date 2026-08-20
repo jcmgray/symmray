@@ -17,6 +17,8 @@ Release notes for `symmray`. See also the
 
 **Enhancements:**
 
+- Added `conj_project(axis=...)` for inserting an array and its conjugate as a
+  projector with arbitrary rank, bond duality, and fermionic parity.
 - Added {func}`~symmray.interface.finfo` for querying the machine limits of
   common NumPy floating-point and complex dtypes.
 - Symmetric arrays support scalar exponentiation with `x ** p`.

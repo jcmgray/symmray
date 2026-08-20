@@ -56,6 +56,23 @@ class BosonicCommon:
         """
         return self._conj_abelian(inplace=inplace)
 
+    def conj_project(self, axis=-1, inplace=False) -> "BosonicCommon":
+        """Conjugate this array for use with itself as a projector.
+
+        Parameters
+        ----------
+        axis : int, optional
+            The axis carrying the uncontracted bond. This has no effect for
+            bosonic arrays.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        BosonicCommon
+        """
+        return self.conj(inplace=inplace)
+
     def dagger(self, inplace=False) -> "BosonicCommon":
         """Return the adjoint of this abelian array, including the
         indices and any subindex fusing information.
@@ -71,8 +88,16 @@ class BosonicCommon:
         """
         return self._dagger_abelian(inplace=inplace)
 
-    dagger_project_left = dagger
-    dagger_project_right = dagger
+    def dagger_project_left(self, inplace=False) -> "BosonicCommon":
+        """Return the adjoint for use as a left projector."""
+        new = self.conj_project(axis=-1, inplace=inplace)
+        return new.transpose(inplace=True)
+
+    def dagger_project_right(self, inplace=False) -> "BosonicCommon":
+        """Return the adjoint for use as a right projector."""
+        new = self.conj_project(axis=0, inplace=inplace)
+        return new.transpose(inplace=True)
+
     dagger_compose_left = dagger
     dagger_compose_right = dagger
 

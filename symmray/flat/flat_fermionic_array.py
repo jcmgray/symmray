@@ -844,6 +844,38 @@ class FermionicArrayFlat(
 
         return new
 
+    def _phase_project_fermionic(self, axis, inplace=False):
+        """Apply the phase-only correction for a fermionic projector.
+
+        ``conj_project`` calls this after ``conj``. The dagger projector
+        wrappers call it after ``dagger``, using the bond axis after reversal.
+        Thus ``axis`` must be normalized for the current array and identifies
+        the only axis not contracted back into the tensor network.
+        """
+        new = self if inplace else self.copy()
+        bond_dual = new.indices[axis].dual
+
+        # contracted axes matching the bond duality contribute their parity
+        mask = ar.do(
+            "asarray",
+            tuple(
+                int((ax != axis) and (ix.dual is bond_dual))
+                for ax, ix in enumerate(new.indices)
+            ),
+            like=new._sectors,
+        )
+
+        # a dual bond also picks up the parity of any dummy modes
+        const = bond_dual * sum(mode.parity for mode in new.dummy_modes)
+        exponents = ar.do(
+            "matmul",
+            new._sectors % 2,
+            mask,
+            like=new.backend,
+        )
+        phase_change = ((exponents + const) % 2) * -2 + 1
+        return new.modify(phases=new.phases * phase_change)
+
     def dagger(self, phase_dual=False, inplace=False):
         """Fermionic conjugate transpose."""
         new = self._conj_abelian(inplace=inplace)
