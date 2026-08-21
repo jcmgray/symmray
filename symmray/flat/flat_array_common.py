@@ -102,11 +102,16 @@ def lexsort_sectors(sectors, order=None, stable=True):
 
     if use_int_packing:
         # pack the charges into a single integer key when order is small enough
-        if not is_array:
-            sectors = xp.stack(sectors, axis=1)
-        sectors = xp.asarray(sectors)
-        powers = xp.arange(sectors.shape[1] - 1, -1, -1)
-        key = xp.sum(sectors * (order ** powers[None, :]), axis=1)
+        if is_array:
+            cols = [sectors[:, c] for c in range(ncol)]
+        else:
+            cols = sectors
+
+        key = functools.reduce(
+            operator.add,
+            (col * order ** (ncol - 1 - c) for c, col in enumerate(cols)),
+        )
+
         return xp.argsort(key, stable=stable)
 
     if xp._backend in ("numpy", "jax", "cupy"):
@@ -854,21 +859,34 @@ class FlatArrayCommon:
         # combine into single array
         new_sectors = ar.do("stack", tuple(new_sectors), axis=1)
 
-        # then we find the correct order to sort the new keys
+        # then we find the correct order to sort the new keys.
+        # charge conservation fixes 1 + 1 per group -> can simply drop them
+        axes_unfused = (*axes_before, *axes_after)
+        # overall charge is either locked in last unfused, or last fused
+        num_fused_kept = num_groups - (0 if axes_unfused else 1)
         sortingcols = (
             # first we sort by fused charge
-            *(new_sectors[:, pos + g] for g in range(num_groups)),
+            *(new_sectors[:, pos + g] for g in range(num_fused_kept)),
             # then we sort by the unfused axes
-            *(self._sectors[:, ax] for ax in axes_before),
-            *(self._sectors[:, ax] for ax in axes_after),
+            *(self._sectors[:, ax] for ax in axes_unfused[:-1]),
             # and finally by the fused charges within each group
-            *(self._sectors[:, ax] for group in axes_groups for ax in group),
+            *(
+                self._sectors[:, ax]
+                for group in axes_groups
+                for ax in group[:-1]
+            ),
         )
-        kord = lexsort_sectors(sortingcols, self.order)
-        new_blocks = self._blocks[kord]
-        new_sectors = new_sectors[kord]
-        # XXX: only optionally store the fusing information
-        old_sectors = self._sectors[kord]
+
+        if sortingcols:
+            kord = lexsort_sectors(sortingcols, self.order)
+            new_blocks = self._blocks[kord]
+            new_sectors = new_sectors[kord]
+            # XXX: only optionally store the fusing information
+            old_sectors = self._sectors[kord]
+        else:
+            # 1D -> 1-block -> no sorting needed
+            new_blocks = self._blocks
+            old_sectors = self._sectors
 
         # get the einops rearrangement pattern for the new blocks
         pattern, unmerged_batch_sizes = _calc_fuse_rearrange_pattern(
@@ -1862,8 +1880,9 @@ def tensordot_flat_direct(
     lkord = lexsort_sectors(
         (
             lcon_sectors,
-            *(a.sectors[:, ax] for ax in left_axes),
-            *(a.sectors[:, ax] for ax in axes_a),
+            # last kept and contracted charges are fixed, can drop from sort
+            *(a.sectors[:, ax] for ax in left_axes[:-1]),
+            *(a.sectors[:, ax] for ax in axes_a[:-1]),
         ),
         a.order,
     )
@@ -1879,8 +1898,9 @@ def tensordot_flat_direct(
     rkord = lexsort_sectors(
         (
             rcon_sectors,
-            *(b.sectors[:, ax] for ax in right_axes),
-            *(b.sectors[:, ax] for ax in axes_b),
+            # last kept and contracted charges are fixed, can drop from sort
+            *(b.sectors[:, ax] for ax in right_axes[:-1]),
+            *(b.sectors[:, ax] for ax in axes_b[:-1]),
         ),
         b.order,
     )

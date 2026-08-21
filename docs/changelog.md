@@ -49,9 +49,11 @@ Release notes for `symmray`. See also the
   sorting. This reduces `jax.jit` and `torch.compile` graph size and supports
   compiled, vectorized amplitudes and gradients ({pull}`36`).
 - Matmul-shaped flat contractions use the faster direct batched-matmul path.
+- Flat contraction and fusion no longer sort on certain redundant columns
 
 **Bug Fixes:**
 
+- Flat sector sorting more friendly to backend device selection
 - Fermionic eigendecomposition and Cholesky accept `drop_dummy_modes` and again
   drop dummy modes and labels by default, avoiding unwanted phases when their
   factors are used as projectors.

@@ -272,6 +272,130 @@ def test_vecmat(symmetry, seed, charge_x, charge_y):
     fz.to_blocksparse().allclose(sz)
 
 
+class TestSortingColumnsAreRedundant:
+    """Charge conservation fixes some of the columns a sector sort is keyed
+    on, and the contraction and fusion routines drop them. Sorting without
+    them must give exactly the same order.
+    """
+
+    @pytest.mark.parametrize("order", [2, 3, 4, 5])
+    @pytest.mark.parametrize("ndim", [2, 3, 4])
+    def test_tensordot_columns(self, order, ndim):
+        import itertools
+
+        import numpy as np
+
+        from symmray.flat.flat_array_common import (
+            build_cyclic_keys_conserve,
+            lexsort_sectors,
+            zn_combine,
+        )
+
+        for duals in itertools.product([False, True], repeat=ndim):
+            sectors = build_cyclic_keys_conserve(
+                ndim, order=order, duals=duals, flat=True
+            )
+            for ncon in range(1, ndim):
+                for axes_con in itertools.permutations(range(ndim), ncon):
+                    axes_keep = tuple(
+                        ax for ax in range(ndim) if ax not in axes_con
+                    )
+                    if not axes_keep:
+                        continue
+                    d0 = duals[axes_con[0]]
+                    ccon = zn_combine(
+                        order,
+                        sectors[:, axes_con],
+                        duals=[duals[ax] != d0 for ax in axes_con],
+                    )
+                    full = (
+                        ccon,
+                        *(sectors[:, ax] for ax in axes_keep),
+                        *(sectors[:, ax] for ax in axes_con),
+                    )
+                    # the last kept and contracted charges are fixed
+                    dropped = (
+                        ccon,
+                        *(sectors[:, ax] for ax in axes_keep[:-1]),
+                        *(sectors[:, ax] for ax in axes_con[:-1]),
+                    )
+                    assert np.array_equal(
+                        lexsort_sectors(full, order),
+                        lexsort_sectors(dropped, order),
+                    )
+
+    @pytest.mark.parametrize("order", [2, 3, 4])
+    @pytest.mark.parametrize("ndim", [3, 4])
+    def test_fuse_columns(self, order, ndim):
+        import itertools
+
+        import numpy as np
+
+        from symmray.flat.flat_array_common import (
+            build_cyclic_keys_conserve,
+            calc_fuse_group_info,
+            lexsort_sectors,
+            zn_combine,
+        )
+
+        pairs = list(itertools.combinations(range(ndim), 2))
+        groupings = [(g,) for g in pairs]
+        groupings += [
+            (g1, g2)
+            for g1, g2 in itertools.combinations(pairs, 2)
+            if not set(g1) & set(g2)
+        ]
+
+        for duals in itertools.product([False, True], repeat=ndim):
+            sectors = build_cyclic_keys_conserve(
+                ndim, order=order, duals=duals, flat=True
+            )
+            for axes_groups in groupings:
+                (
+                    num_groups,
+                    _,
+                    _,
+                    _,
+                    _,
+                    axes_before,
+                    axes_after,
+                    _,
+                    group_duals,
+                    _,
+                ) = calc_fuse_group_info(axes_groups, duals)
+
+                fused = [
+                    zn_combine(
+                        order,
+                        sectors[:, axs],
+                        [duals[ax] != dg for ax in axs],
+                    )
+                    for axs, dg in zip(axes_groups, group_duals)
+                ]
+                axes_unfused = (*axes_before, *axes_after)
+                full = (
+                    *fused,
+                    *(sectors[:, ax] for ax in axes_unfused),
+                    *(sectors[:, ax] for group in axes_groups for ax in group),
+                )
+                # one charge per group is fixed, plus one overall, which
+                # falls on the last fused charge if no axis is unfused
+                nkept = num_groups - (0 if axes_unfused else 1)
+                dropped = (
+                    *fused[:nkept],
+                    *(sectors[:, ax] for ax in axes_unfused[:-1]),
+                    *(
+                        sectors[:, ax]
+                        for group in axes_groups
+                        for ax in group[:-1]
+                    ),
+                )
+                assert np.array_equal(
+                    lexsort_sectors(full, order),
+                    lexsort_sectors(dropped, order),
+                )
+
+
 @pytest.mark.parametrize("ndim", [1, 2, 3, 4])
 @pytest.mark.parametrize("order", [2, 3, 4])
 @pytest.mark.parametrize("seed", range(5))
