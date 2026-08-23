@@ -3,7 +3,7 @@
 Release notes for `symmray`. See also the
 [GitHub releases page](https://github.com/jcmgray/symmray/releases).
 
-## Unreleased
+## v0.3.0 (2026-08-22)
 
 **Breaking Changes:**
 
@@ -49,11 +49,15 @@ Release notes for `symmray`. See also the
   sorting. This reduces `jax.jit` and `torch.compile` graph size and supports
   compiled, vectorized amplitudes and gradients ({pull}`36`).
 - Matmul-shaped flat contractions use the faster direct batched-matmul path.
-- Flat contraction and fusion no longer sort on certain redundant columns
+- Flat contraction and fusion skip redundant charge columns when sorting,
+  reducing sorting overhead.
 
 **Bug Fixes:**
 
-- Flat sector sorting more friendly to backend device selection
+- Flat sector sorting no longer creates temporary backend arrays on the
+  default device when packing integer keys.
+- Empty {class}`~symmray.sparse.sparse_vector.BlockVector` objects now pass
+  structural validation.
 - Fermionic eigendecomposition and Cholesky accept `drop_dummy_modes` and again
   drop dummy modes and labels by default, avoiding unwanted phases when their
   factors are used as projectors.
@@ -88,7 +92,7 @@ Release notes for `symmray`. See also the
   setup-python, and PyPI publishing actions ({pull}`33`, {pull}`34`,
   {pull}`35`, {pull}`37`, and {pull}`43`).
 
-**Full Changelog**: [v0.2.1...main](https://github.com/jcmgray/symmray/compare/v0.2.1...main)
+**Full Changelog**: [v0.2.1...v0.3.0](https://github.com/jcmgray/symmray/compare/v0.2.1...v0.3.0)
 
 ## v0.2.1 (2026-04-28)
 
