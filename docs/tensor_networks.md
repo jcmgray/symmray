@@ -17,8 +17,12 @@ Convenience wrappers create common geometries:
   [`MPS_fermionic_rand`](#symmray.networks.MPS_fermionic_rand)
 - [`PEPS_abelian_rand`](#symmray.networks.PEPS_abelian_rand) and
   [`PEPS_fermionic_rand`](#symmray.networks.PEPS_fermionic_rand)
+- [`TN2D_abelian_rand`](#symmray.networks.TN2D_abelian_rand) and
+  [`TN2D_fermionic_rand`](#symmray.networks.TN2D_fermionic_rand)
 - [`PEPS3D_abelian_rand`](#symmray.networks.PEPS3D_abelian_rand) and
   [`PEPS3D_fermionic_rand`](#symmray.networks.PEPS3D_fermionic_rand)
+- [`TN3D_abelian_rand`](#symmray.networks.TN3D_abelian_rand) and
+  [`TN3D_fermionic_rand`](#symmray.networks.TN3D_fermionic_rand)
 
 The constructors assign consistent bond orientations and choose charge sectors
 from the requested symmetry, dimensions, and total charges. Pass `flat=True`

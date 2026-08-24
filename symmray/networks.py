@@ -418,6 +418,151 @@ def MPS_abelian_rand(
     )
 
 
+def TN2D_abelian_rand(
+    symmetry,
+    Lx,
+    Ly,
+    bond_dim,
+    phys_dim=None,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{},{}",
+    site_ind_id="k{},{}",
+    x_tag_id="X{}",
+    y_tag_id="Y{}",
+    fermionic=False,
+    flat=False,
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random 2D symmetric tensor network.
+
+    This returns a scalar-valued :class:`quimb.tensor.TensorNetwork2D` when
+    ``phys_dim=None`` and a :class:`quimb.tensor.PEPS` otherwise.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the network.
+    Lx : int
+        The number of rows.
+    Ly : int
+        The number of columns.
+    bond_dim : int or dict
+        The total bond dimension, or an explicit bond charge map.
+    phys_dim : None, int or dict, optional
+        The physical dimension of each site. If None, construct a scalar
+        network without physical indices.
+    cyclic : bool, optional
+        Whether to make the network cyclic in the x-direction.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use.
+    dtype : str, optional
+        The data type of the tensors.
+    site_tag_id : str, optional
+        The tag format for each site tensor.
+    site_ind_id : str, optional
+        The index format for each physical site index.
+    x_tag_id : str, optional
+        The tag format for each x-coordinate.
+    y_tag_id : str, optional
+        The tag format for each y-coordinate.
+    fermionic : bool, optional
+        Whether to generate fermionic tensors.
+    flat : bool, optional
+        Whether to generate flat backend arrays.
+    site_charge : callable, optional
+        A function mapping each site coordinate to its total charge.
+    subsizes : {"maximal", "equal"}, optional
+        The sizes of the charge sectors.
+    kwargs
+        Additional arguments to pass to :func:`symmray.utils.get_rand`.
+
+    Returns
+    -------
+    quimb.tensor.TensorNetwork2D or quimb.tensor.PEPS
+    """
+    import quimb.tensor as qtn
+
+    edges = qtn.edges_2d_square(Lx, Ly, cyclic=cyclic)
+    tn = TN_abelian_from_edges_rand(
+        symmetry=symmetry,
+        edges=edges,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        fermionic=fermionic,
+        flat=flat,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
+    )
+
+    starmap_tag = site_tag_id.count("{}") > 1
+    for i in range(Lx):
+        for j in range(Ly):
+            if starmap_tag:
+                site_tag = site_tag_id.format(i, j)
+            else:
+                site_tag = site_tag_id.format((i, j))
+            tn[site_tag].add_tag(x_tag_id.format(i))
+            tn[site_tag].add_tag(y_tag_id.format(j))
+
+    if phys_dim is None:
+        cls = qtn.TensorNetwork2D
+    else:
+        cls = qtn.PEPS
+
+    return tn.view_as_(cls, Lx=Lx, Ly=Ly, x_tag_id=x_tag_id, y_tag_id=y_tag_id)
+
+
+def TN2D_fermionic_rand(
+    symmetry,
+    Lx,
+    Ly,
+    bond_dim,
+    phys_dim=None,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{},{}",
+    site_ind_id="k{},{}",
+    x_tag_id="X{}",
+    y_tag_id="Y{}",
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random 2D fermionic symmetric tensor network.
+
+    This is a wrapper around :func:`TN2D_abelian_rand` with
+    ``fermionic=True``.
+    """
+    return TN2D_abelian_rand(
+        symmetry=symmetry,
+        Lx=Lx,
+        Ly=Ly,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        cyclic=cyclic,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        x_tag_id=x_tag_id,
+        y_tag_id=y_tag_id,
+        fermionic=True,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
+    )
+
+
 def PEPS_abelian_rand(
     symmetry,
     Lx,
@@ -438,6 +583,9 @@ def PEPS_abelian_rand(
     **kwargs,
 ):
     """Create a random 2D PEPS with abelian symmetry.
+
+    This is a wrapper around :func:`TN2D_abelian_rand` with a default
+    physical dimension of 2.
 
     Parameters
     ----------
@@ -482,21 +630,21 @@ def PEPS_abelian_rand(
 
     Returns
     -------
-    quimb.tensor.PEPS
+    quimb.tensor.PEPS or quimb.tensor.TensorNetwork2D
     """
-    import quimb.tensor as qtn
-
-    edges = qtn.edges_2d_square(Lx, Ly, cyclic=cyclic)
-
-    peps = TN_abelian_from_edges_rand(
-        symmetry,
-        edges,
+    return TN2D_abelian_rand(
+        symmetry=symmetry,
+        Lx=Lx,
+        Ly=Ly,
         bond_dim=bond_dim,
         phys_dim=phys_dim,
+        cyclic=cyclic,
         seed=seed,
         dtype=dtype,
-        site_ind_id=site_ind_id,
         site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        x_tag_id=x_tag_id,
+        y_tag_id=y_tag_id,
         fermionic=fermionic,
         flat=flat,
         site_charge=site_charge,
@@ -504,14 +652,169 @@ def PEPS_abelian_rand(
         **kwargs,
     )
 
+
+def TN3D_abelian_rand(
+    symmetry,
+    Lx,
+    Ly,
+    Lz,
+    bond_dim,
+    phys_dim=None,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{},{},{}",
+    site_ind_id="k{},{},{}",
+    x_tag_id="X{}",
+    y_tag_id="Y{}",
+    z_tag_id="Z{}",
+    fermionic=False,
+    flat=False,
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random 3D symmetric tensor network.
+
+    This returns a scalar-valued :class:`quimb.tensor.TensorNetwork3D` when
+    ``phys_dim=None`` and a :class:`quimb.tensor.PEPS3D` otherwise.
+
+    Parameters
+    ----------
+    symmetry : str or Symmetry
+        The symmetry of the network.
+    Lx : int
+        The size of the network in the x-direction.
+    Ly : int
+        The size of the network in the y-direction.
+    Lz : int
+        The size of the network in the z-direction.
+    bond_dim : int or dict
+        The total bond dimension, or an explicit bond charge map.
+    phys_dim : None, int or dict, optional
+        The physical dimension of each site. If None, construct a scalar
+        network without physical indices.
+    cyclic : bool, optional
+        Whether to make the network cyclic in the x-direction.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use.
+    dtype : str, optional
+        The data type of the tensors.
+    site_tag_id : str, optional
+        The tag format for each site tensor.
+    site_ind_id : str, optional
+        The index format for each physical site index.
+    x_tag_id : str, optional
+        The tag format for each x-coordinate.
+    y_tag_id : str, optional
+        The tag format for each y-coordinate.
+    z_tag_id : str, optional
+        The tag format for each z-coordinate.
+    fermionic : bool, optional
+        Whether to generate fermionic tensors.
+    flat : bool, optional
+        Whether to generate flat backend arrays.
+    site_charge : callable, optional
+        A function mapping each site coordinate to its total charge.
+    subsizes : {"maximal", "equal"}, optional
+        The sizes of the charge sectors.
+    kwargs
+        Additional arguments to pass to :func:`symmray.utils.get_rand`.
+
+    Returns
+    -------
+    quimb.tensor.TensorNetwork3D or quimb.tensor.PEPS3D
+    """
+    import quimb.tensor as qtn
+
+    edges = qtn.edges_3d_cubic(Lx, Ly, Lz, cyclic=cyclic)
+    tn = TN_abelian_from_edges_rand(
+        symmetry=symmetry,
+        edges=edges,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        fermionic=fermionic,
+        flat=flat,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
+    )
+
+    starmap_tag = site_tag_id.count("{}") > 1
     for i in range(Lx):
         for j in range(Ly):
-            t = peps[site_tag_id.format(i, j)]
-            t.add_tag(x_tag_id.format(i))
-            t.add_tag(y_tag_id.format(j))
+            for k in range(Lz):
+                if starmap_tag:
+                    site_tag = site_tag_id.format(i, j, k)
+                else:
+                    site_tag = site_tag_id.format((i, j, k))
+                tn[site_tag].add_tag(x_tag_id.format(i))
+                tn[site_tag].add_tag(y_tag_id.format(j))
+                tn[site_tag].add_tag(z_tag_id.format(k))
 
-    return peps.view_as_(
-        qtn.PEPS, Lx=Lx, Ly=Ly, x_tag_id=x_tag_id, y_tag_id=y_tag_id
+    if phys_dim is None:
+        cls = qtn.TensorNetwork3D
+    else:
+        cls = qtn.PEPS3D
+
+    return tn.view_as_(
+        cls,
+        Lx=Lx,
+        Ly=Ly,
+        Lz=Lz,
+        x_tag_id=x_tag_id,
+        y_tag_id=y_tag_id,
+        z_tag_id=z_tag_id,
+    )
+
+
+def TN3D_fermionic_rand(
+    symmetry,
+    Lx,
+    Ly,
+    Lz,
+    bond_dim,
+    phys_dim=None,
+    cyclic=False,
+    seed=None,
+    dtype="float64",
+    site_tag_id="I{},{},{}",
+    site_ind_id="k{},{},{}",
+    x_tag_id="X{}",
+    y_tag_id="Y{}",
+    z_tag_id="Z{}",
+    site_charge=None,
+    subsizes="maximal",
+    **kwargs,
+):
+    """Create a random 3D fermionic symmetric tensor network.
+
+    This is a wrapper around :func:`TN3D_abelian_rand` with
+    ``fermionic=True``.
+    """
+    return TN3D_abelian_rand(
+        symmetry=symmetry,
+        Lx=Lx,
+        Ly=Ly,
+        Lz=Lz,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        cyclic=cyclic,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
+        x_tag_id=x_tag_id,
+        y_tag_id=y_tag_id,
+        z_tag_id=z_tag_id,
+        fermionic=True,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
     )
 
 
@@ -531,11 +834,15 @@ def PEPS3D_abelian_rand(
     y_tag_id="Y{}",
     z_tag_id="Z{}",
     fermionic=False,
+    flat=False,
     site_charge=None,
     subsizes="maximal",
     **kwargs,
 ):
     """Create a random 3D PEPS with abelian symmetry.
+
+    This is a wrapper around :func:`TN3D_abelian_rand` with a default
+    physical dimension of 2.
 
     Parameters
     ----------
@@ -566,6 +873,8 @@ def PEPS3D_abelian_rand(
         The index format for each site tensor, if physical sites are included.
     fermionic : bool, optional
         Whether to generate fermionic tensors.
+    flat : bool, optional
+        Whether to generate flat backend arrays.
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
@@ -579,43 +888,28 @@ def PEPS3D_abelian_rand(
 
     Returns
     -------
-    quimb.tensor.PEPS3D
+    quimb.tensor.PEPS3D or quimb.tensor.TensorNetwork3D
     """
-    import quimb.tensor as qtn
-
-    edges = qtn.edges_3d_cubic(Lx, Ly, Lz, cyclic=cyclic)
-
-    peps = TN_abelian_from_edges_rand(
-        symmetry,
-        edges,
-        bond_dim=bond_dim,
-        phys_dim=phys_dim,
-        seed=seed,
-        dtype=dtype,
-        site_ind_id=site_ind_id,
-        site_tag_id=site_tag_id,
-        fermionic=fermionic,
-        site_charge=site_charge,
-        subsizes=subsizes,
-        **kwargs,
-    )
-
-    for i in range(Lx):
-        for j in range(Ly):
-            for k in range(Lz):
-                t = peps[site_tag_id.format(i, j, k)]
-                t.add_tag(x_tag_id.format(i))
-                t.add_tag(y_tag_id.format(j))
-                t.add_tag(z_tag_id.format(k))
-
-    return peps.view_as_(
-        qtn.PEPS3D,
+    return TN3D_abelian_rand(
+        symmetry=symmetry,
         Lx=Lx,
         Ly=Ly,
         Lz=Lz,
+        bond_dim=bond_dim,
+        phys_dim=phys_dim,
+        cyclic=cyclic,
+        seed=seed,
+        dtype=dtype,
+        site_tag_id=site_tag_id,
+        site_ind_id=site_ind_id,
         x_tag_id=x_tag_id,
         y_tag_id=y_tag_id,
         z_tag_id=z_tag_id,
+        fermionic=fermionic,
+        flat=flat,
+        site_charge=site_charge,
+        subsizes=subsizes,
+        **kwargs,
     )
 
 
@@ -709,7 +1003,7 @@ def PEPS_fermionic_rand(
     **kwargs,
 ):
     """Create a random 2D fermionic PEPS. This is a wrapper around
-    :func:`PEPS_abelian_rand` with `fermionic=True`.
+    :func:`TN2D_fermionic_rand` with a default physical dimension of 2.
 
     Parameters
     ----------
@@ -749,9 +1043,9 @@ def PEPS_fermionic_rand(
 
     Returns
     -------
-    quimb.tensor.PEPS
+    quimb.tensor.PEPS or quimb.tensor.TensorNetwork2D
     """
-    return PEPS_abelian_rand(
+    return TN2D_fermionic_rand(
         symmetry=symmetry,
         Lx=Lx,
         Ly=Ly,
@@ -764,7 +1058,6 @@ def PEPS_fermionic_rand(
         site_ind_id=site_ind_id,
         x_tag_id=x_tag_id,
         y_tag_id=y_tag_id,
-        fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
         **kwargs,
@@ -791,7 +1084,7 @@ def PEPS3D_fermionic_rand(
     **kwargs,
 ):
     """Create a random 3D fermionic PEPS. This is a wrapper around
-    :func:`PEPS3D_abelian_rand` with `fermionic=True`.
+    :func:`TN3D_fermionic_rand` with a default physical dimension of 2.
 
     Parameters
     ----------
@@ -833,9 +1126,9 @@ def PEPS3D_fermionic_rand(
 
     Returns
     -------
-    quimb.tensor.PEPS3D
+    quimb.tensor.PEPS3D or quimb.tensor.TensorNetwork3D
     """
-    return PEPS3D_abelian_rand(
+    return TN3D_fermionic_rand(
         symmetry=symmetry,
         Lx=Lx,
         Ly=Ly,
@@ -850,7 +1143,6 @@ def PEPS3D_fermionic_rand(
         x_tag_id=x_tag_id,
         y_tag_id=y_tag_id,
         z_tag_id=z_tag_id,
-        fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
         **kwargs,
