@@ -205,16 +205,24 @@ class BosonicCommon:
         """
         return self._trace_abelian()
 
-    def to_dense(self):
+    def to_dense(self, index_maps=None):
         """Convert this abelian array to a dense array, by combining all the
         blocks into a single large array, filling in zeros where necessary.
+
+        Parameters
+        ----------
+        index_maps : Sequence[Sequence[hashable]], optional
+            For each dimension, a sequence mapping each output linear index
+            to a charge sector. Repeated charges select degeneracy offsets in
+            occurrence order. If not supplied, charge sectors are packed in
+            sorted contiguous order.
 
         Returns
         -------
         array_like
             A dense array with the same shape as this abelian array.
         """
-        return self._to_dense_abelian()
+        return self._to_dense_abelian(index_maps=index_maps)
 
     def allclose(self, other, **allclose_opts):
         """Test whether this abelian array is close to another, that is,

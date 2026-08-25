@@ -69,6 +69,35 @@ The concrete classes [`Z2Array`](#symmray.sparse.sparse_abelian_array.Z2Array),
 Use [`AbelianArray`](#AbelianArray) with an explicit symmetry for a dynamic
 symmetry such as [`ZN`](#ZN).
 
+## Dense conversion
+
+[`from_dense`](#SparseArrayCommon.from_dense) uses `index_maps` to assign each
+dense axis position to a charge sector, then packs those sectors contiguously 
+internally. Passing the same maps to `to_dense` restores the original basis 
+positions, so the dense array roundtrips without storing its ordering as tensor 
+metadata.
+
+For example, consider a merged spinful-fermion basis ordered as `(empty, down,
+up, double)`, with Z2 charges `(0, 1, 1, 0)`:
+
+```python
+array = np.diag([1.0, 2.0, 3.0, 4.0])
+index_maps = ((0, 1, 1, 0),) * array.ndim
+
+x = sr.utils.from_dense(
+    array,
+    symmetry="Z2",
+    index_maps=index_maps,
+    duals=(False, True),
+)
+
+np.testing.assert_allclose(x.to_dense(index_maps=index_maps), array)
+```
+
+Repeated charges select degeneracy offsets in occurrence order. Calling
+`to_dense()` without `index_maps` instead returns the canonical representation
+with charge sectors packed in sorted contiguous order.
+
 ## Operations
 
 The main NumPy-like operations are

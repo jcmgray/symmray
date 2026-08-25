@@ -67,6 +67,65 @@ def test_AbelianArray_to_dense(symmetry):
     )
 
 
+@pytest.mark.parametrize(
+    "symmetry,index_map",
+    [
+        ("Z2", (0, 1, 1, 0)),
+        ("U1", (0, 1, 0, 1)),
+        ("U1U1", ((0, 0), (1, 0), (0, 0), (1, 0))),
+    ],
+)
+def test_AbelianArray_to_dense_index_maps_roundtrip(symmetry, index_map):
+    import numpy as np
+
+    array = np.diag([1.0, 2.0, 3.0, 4.0])
+    index_maps = (index_map, index_map)
+    x = sr.utils.from_dense(
+        array,
+        symmetry=symmetry,
+        index_maps=index_maps,
+        duals=(False, True),
+    )
+    assert_allclose(x.to_dense(index_maps=index_maps), array)
+
+
+def test_AbelianArray_to_dense_index_maps_default_packed_order():
+    import numpy as np
+
+    array = np.diag([1.0, 2.0, 3.0, 4.0])
+    index_maps = ((0, 1, 1, 0),) * 2
+    x = sr.utils.from_dense(
+        array,
+        symmetry="Z2",
+        index_maps=index_maps,
+        duals=(False, True),
+    )
+    assert_allclose(x.to_dense(), np.diag([1.0, 4.0, 2.0, 3.0]))
+
+
+@pytest.mark.parametrize(
+    "index_maps,match",
+    [
+        (((0, 1, 1, 0),), "Expected 2 index maps"),
+        (((0, 1, 1), (0, 1, 1, 0)), "axis 0 has length 3"),
+        (((0, 1, 1, 1), (0, 1, 1, 0)), "axis 0.*multiplicities"),
+        (((0, 1, 1, 2), (0, 1, 1, 0)), "axis 0.*multiplicities"),
+    ],
+)
+def test_AbelianArray_to_dense_index_maps_invalid(index_maps, match):
+    import numpy as np
+
+    valid_index_maps = ((0, 1, 1, 0),) * 2
+    x = sr.utils.from_dense(
+        np.eye(4),
+        symmetry="Z2",
+        index_maps=valid_index_maps,
+        duals=(False, True),
+    )
+    with pytest.raises(ValueError, match=match):
+        x.to_dense(index_maps=index_maps)
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("missing", (False, True))
 @pytest.mark.parametrize("mode", ["insert", "concat"])

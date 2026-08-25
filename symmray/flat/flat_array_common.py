@@ -616,8 +616,10 @@ class FlatArrayCommon:
             **kwargs,
         )
 
-    def _to_dense_abelian(self):
-        return self._to_blocksparse_abelian()._to_dense_abelian()
+    def _to_dense_abelian(self, index_maps=None):
+        return self._to_blocksparse_abelian()._to_dense_abelian(
+            index_maps=index_maps
+        )
 
     def _map_blocks_abelian(self, fn_sector=None, fn_block=None):
         if fn_sector is not None:

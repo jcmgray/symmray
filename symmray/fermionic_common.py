@@ -367,11 +367,19 @@ class FermionicCommon:
 
         return c
 
-    def to_dense(self):
+    def to_dense(self, index_maps=None):
         """Return dense representation of the fermionic array, with lazy phases
         multiplied in.
+
+        Parameters
+        ----------
+        index_maps : Sequence[Sequence[hashable]], optional
+            For each dimension, a sequence mapping each output linear index
+            to a charge sector. Repeated charges select degeneracy offsets in
+            occurrence order. If not supplied, charge sectors are packed in
+            sorted contiguous order.
         """
-        return self.phase_sync()._to_dense_abelian()
+        return self.phase_sync()._to_dense_abelian(index_maps=index_maps)
 
     def squeeze(self, axis=None, inplace=False) -> "FermionicCommon":
         """Squeeze the fermionic array, removing axes of size 1. If those axes
