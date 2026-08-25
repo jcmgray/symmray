@@ -10,6 +10,23 @@ from symmray.flat.flat_fermionic_array import (
 from .test_flat_abelian_array import get_zn_blocksparse_flat_compat
 
 
+def test_fermi_to_dense_index_maps_roundtrip():
+    import numpy as np
+
+    array = np.diag([1.0, 2.0, 3.0, 4.0])
+    index_maps = ((0, 1, 1, 0),) * 2
+    x = sr.utils.from_dense(
+        array,
+        symmetry="Z2",
+        index_maps=index_maps,
+        duals=(False, True),
+        fermionic=True,
+        flat=True,
+    )
+
+    np.testing.assert_allclose(x.to_dense(index_maps=index_maps), array)
+
+
 class TestConjProject:
     @pytest.mark.parametrize("dual0", (False, True))
     @pytest.mark.parametrize("dual1", (False, True))

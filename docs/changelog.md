@@ -2,6 +2,12 @@
 
 Release notes for `symmray`. See also the [GitHub releases page](https://github.com/jcmgray/symmray/releases).
 
+## Unreleased
+
+**Enhancements:**
+
+- {meth}`~symmray.bosonic_common.BosonicCommon.to_dense` accepts explicit index maps to restore the dense basis ordering supplied to {func}`~symmray.utils.from_dense`.
+
 ## v0.3.0 (2026-08-22)
 
 **Breaking Changes:**

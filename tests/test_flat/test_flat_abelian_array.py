@@ -5,6 +5,41 @@ import pytest
 import symmray as sr
 
 
+def test_to_dense_index_maps_roundtrip():
+    import numpy as np
+
+    array = np.diag([1.0, 2.0, 3.0, 4.0])
+    index_maps = ((0, 1, 1, 0),) * 2
+    x = sr.utils.from_dense(
+        array,
+        symmetry="Z2",
+        index_maps=index_maps,
+        duals=(False, True),
+        flat=True,
+    )
+    np.testing.assert_allclose(x.to_dense(index_maps=index_maps), array)
+
+
+@pytest.mark.parametrize("backend", ("numpy", "jax", "torch"))
+def test_to_dense_index_maps_backend(backend, require_backend):
+    import autoray as ar
+    import numpy as np
+
+    require_backend(backend)
+    array = np.diag([1.0, 2.0, 3.0, 4.0])
+    index_maps = ((0, 1, 1, 0),) * 2
+    x = sr.utils.from_dense(
+        array,
+        symmetry="Z2",
+        index_maps=index_maps,
+        duals=(False, True),
+        flat=True,
+    ).to(backend)
+    actual = x.to_dense(index_maps=index_maps)
+    assert ar.infer_backend(actual) == backend
+    np.testing.assert_allclose(ar.to_numpy(actual), array)
+
+
 def get_zn_blocksparse_flat_compat(
     symmetry,
     shape,

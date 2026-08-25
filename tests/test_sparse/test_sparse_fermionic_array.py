@@ -6,6 +6,19 @@ import symmray as sr
 all_symmetries = ["Z2", "Z4", "U1"]
 
 
+def test_fermi_to_dense_index_maps_roundtrip():
+    array = np.diag([1.0, 2.0, 3.0, 4.0])
+    index_maps = ((0, 1, 1, 0),) * 2
+    x = sr.utils.from_dense(
+        array,
+        symmetry="Z2",
+        index_maps=index_maps,
+        duals=(False, True),
+        fermionic=True,
+    )
+    np.testing.assert_allclose(x.to_dense(index_maps=index_maps), array)
+
+
 class TestConjProject:
     @pytest.mark.parametrize("dual0", (False, True))
     @pytest.mark.parametrize("dual1", (False, True))

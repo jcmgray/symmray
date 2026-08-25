@@ -47,6 +47,53 @@ def replace_with_seq(it, index, seq):
     return (*it[:index], *seq, *it[index + 1 :])
 
 
+def calc_to_dense_permutations(indices, index_maps):
+    """Compute permutations from packed to explicitly mapped index order."""
+    index_maps = tuple(index_maps)
+    if len(index_maps) != len(indices):
+        raise ValueError(
+            f"Expected {len(indices)} index maps, got {len(index_maps)}."
+        )
+
+    permutations = []
+    for axis, (index, index_map) in enumerate(zip(indices, index_maps)):
+        index_map = tuple(index_map)
+        if len(index_map) != index.size_total:
+            raise ValueError(
+                f"Index map for axis {axis} has length {len(index_map)}, "
+                f"expected {index.size_total}."
+            )
+
+        # the multiplicity of each charge is its intra-sector dimension
+        multiplicities = defaultdict(int)
+        for charge in index_map:
+            multiplicities[charge] += 1
+
+        if dict(multiplicities) != index.chargemap:
+            raise ValueError(
+                f"Index map for axis {axis} has charge multiplicities "
+                f"{dict(multiplicities)}, expected {index.chargemap}."
+            )
+
+        # get the linearized starting indices of current contiguous sectors
+        starts = {}
+        start = 0
+        for charge, size in index.chargemap.items():
+            starts[charge] = start
+            start += size
+
+        # map contiguous index to supplied index_map order
+        offsets = defaultdict(int)
+        permutation = []
+        for charge in index_map:
+            permutation.append(starts[charge] + offsets[charge])
+            offsets[charge] += 1
+
+        permutations.append(permutation)
+
+    return permutations
+
+
 def accum_for_split(sizes):
     """Take a sequence of block sizes and return the sequence of linear
     partitions, suitable for use with the ``split`` function.
@@ -1737,8 +1784,16 @@ class SparseArrayCommon:
             preserve_array=preserve_array,
         )
 
-    def _to_dense_abelian(self):
+    def _to_dense_abelian(self, index_maps=None):
         """Convert this block array to a dense array."""
+        if index_maps is None:
+            permutations = None
+        else:
+            permutations = calc_to_dense_permutations(
+                self.indices,
+                index_maps,
+            )
+
         backend = self.backend
         _ex_array = self.get_any_array()
         _concat = ar.get_lib_fn(backend, "concatenate")
@@ -1764,7 +1819,14 @@ class SparseArrayCommon:
                 # then concatenate along the current axis
                 return _concat(arrays, axis=i)
 
-        return _recurse_all_charges()
+        array = _recurse_all_charges()
+
+        if permutations is not None:
+            for axis, permutation in enumerate(permutations):
+                permutation = ar.do("asarray", permutation, like=array)
+                array = ar.do("take", array, permutation, axis=axis)
+
+        return array
 
     def to_flat(self):
         """Convert this block sparse backend abelian or fermionic array to a
