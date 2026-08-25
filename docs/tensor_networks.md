@@ -24,9 +24,12 @@ Convenience wrappers create common geometries:
 - [`TN3D_abelian_rand`](#symmray.networks.TN3D_abelian_rand) and
   [`TN3D_fermionic_rand`](#symmray.networks.TN3D_fermionic_rand)
 
-The constructors assign consistent bond orientations and choose charge sectors
-from the requested symmetry, dimensions, and total charges. Pass `flat=True`
-with compatible equal sector sizes to use flat storage.
+The constructors assign opposite dualnesses to the two ends of each internal
+bond and choose charge sectors from the requested symmetry, dimensions, and
+total charges. Use `duals="reversed"` for the backwards-compatible default,
+`duals="canonical"` to flip every bond, `duals="random"` to randomize each
+bond, or pass a mapping for explicit per-bond overrides. Pass `flat=True` with
+compatible equal sector sizes to use flat storage.
 
 ## Hamiltonian terms
 
@@ -37,7 +40,7 @@ Graph Hamiltonian helpers return dictionaries of local terms keyed by edges:
 - [`ham_fermi_hubbard_from_edges`](#ham_fermi_hubbard_from_edges)
 - [`ham_fermi_hubbard_spinless_from_edges`](#ham_fermi_hubbard_spinless_from_edges)
 
-[`parse_edges_to_site_info`](#parse_edges_to_site_info) computes canonical bond
+[`parse_edges_to_site_info`](#parse_edges_to_site_info) computes bond
 orientations, site dimensions, tags, and coordination numbers. The Hamiltonian
 builders use those coordination numbers to distribute one-site terms across
 edges without overcounting.

@@ -1,5 +1,7 @@
 """Functions to create full tensor networks backed by `symmray`."""
 
+from collections.abc import Mapping
+
 import autoray as ar
 
 
@@ -10,11 +12,14 @@ def parse_edges_to_site_info(
     site_ind_id="k{}",
     bond_ind_id="b{}-{}",
     site_tag_id="I{}",
+    duals="reversed",
+    seed=None,
 ):
     """Given a list of edges, return a dictionary of site information, each
     specifying the local shape, index identifiers, index dualnesses, and tags.
-    The dualnesses of the bonds are set in a canonical order corresponding to
-    sorting all the sites and the edges.
+    The dualnesses of the bonds can be set in reversed, canonical, random, or
+    explicitly mapped orientations. The default is reversed for backwards
+    compatibility.
 
     Parameters
     ----------
@@ -30,12 +35,32 @@ def parse_edges_to_site_info(
         The identifier for the bond indices.
     site_tag_id : str, optional
         The identifier for the site tags.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
+    seed : None, int or np.random.Generator, optional
+        The random seed or generator to use when ``duals="random"``.
 
     Returns
     -------
     Dict[hashable, Dict[str, Any]]
     """
     site_info = {}
+
+    if isinstance(duals, Mapping):
+        duals_unused = set(duals)
+    elif duals not in ("reversed", "canonical", "random"):
+        raise ValueError(f"Unrecognized duals: {duals}.")
+
+    if duals == "random":
+        from symmray.utils import get_rng
+
+        rng = get_rng(seed)
 
     starmap_ind = site_ind_id.count("{}") > 1
     starmap_tag = site_tag_id.count("{}") > 1
@@ -52,11 +77,28 @@ def parse_edges_to_site_info(
         infoa.setdefault("inds", []).append(ind)
         infob.setdefault("inds", []).append(ind)
 
-        infoa.setdefault("duals", []).append(0)
-        infob.setdefault("duals", []).append(1)
+        if duals == "reversed":
+            duala = False
+        elif duals == "canonical":
+            duala = True
+        elif duals == "random":
+            duala = bool(rng.choice([False, True]))
+        else:
+            duala = False
+            for key in (ind, (sitea, siteb), (siteb, sitea)):
+                if key in duals:
+                    duala = bool(duals[key])
+                    duals_unused.discard(key)
+                    break
+
+        infoa.setdefault("duals", []).append(duala)
+        infob.setdefault("duals", []).append(not duala)
 
         infoa.setdefault("shape", []).append(bond_dim)
         infob.setdefault("shape", []).append(bond_dim)
+
+    if isinstance(duals, Mapping) and duals_unused:
+        raise ValueError(f"Duals keys matched no bond: {duals_unused}.")
 
     # create physical inds
     for site, sinfo in site_info.items():
@@ -104,10 +146,12 @@ def TN_abelian_from_edges_rand(
     dtype="float64",
     site_tag_id="I{}",
     site_ind_id="k{}",
+    bond_ind_id="b{}-{}",
     fermionic=False,
     flat=False,
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Build a random abelian symmetric `quimb.tensor` amplitude or PEPS from
@@ -136,6 +180,8 @@ def TN_abelian_from_edges_rand(
     site_ind_id : str, optional
         The index format for each site tensor, if physical sites are included.
         Default is "k{}".
+    bond_ind_id : str, optional
+        The index format for each bond, default is "b{}-{}".
     fermionic : bool, optional
         Whether to generate fermionic tensors, default is False.
     flat : bool, optional
@@ -149,6 +195,14 @@ def TN_abelian_from_edges_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -160,12 +214,17 @@ def TN_abelian_from_edges_rand(
 
     import symmray as sr
 
+    rng = sr.utils.get_rng(seed)
+
     site_info = parse_edges_to_site_info(
         edges,
         bond_dim=bond_dim,
         phys_dim=phys_dim,
         site_ind_id=site_ind_id,
         site_tag_id=site_tag_id,
+        bond_ind_id=bond_ind_id,
+        duals=duals,
+        seed=rng,
     )
     sites = tuple(site_info.keys())
 
@@ -213,20 +272,18 @@ def TN_abelian_from_edges_rand(
                 + "`site_charge`. Please provide one."
             )
 
-    rng = sr.utils.get_rng(seed)
-
     index_store = {}
     for site, info in site_info.items():
         if phys_dim is None:
             shape = info["shape"]
         else:
             shape = info["shape"][:-1] + [phys_chargemap]
-        duals = info["duals"]
+        site_duals = info["duals"]
 
         # resolve shape sizes into explicit indices ahead of time so that we
         # can build them in conj-pairs with matching subsizes even if random
         shape_parsed = []
-        for ix, size, dual in zip(info["inds"], shape, duals):
+        for ix, size, dual in zip(info["inds"], shape, site_duals):
             if ix in index_store:
                 shape_parsed.append(index_store[ix].conj())
             else:
@@ -242,7 +299,7 @@ def TN_abelian_from_edges_rand(
         tn |= qtn.Tensor(
             data=sr.utils.get_rand(
                 shape=shape_parsed,
-                duals=duals,
+                duals=site_duals,
                 symmetry=symmetry,
                 charge=site_charge(site),
                 fermionic=fermionic,
@@ -272,6 +329,7 @@ def TN_fermionic_from_edges_rand(
     site_ind_id="k{}",
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random fermionic tensor network from edges. This is a wrapper
@@ -326,6 +384,7 @@ def TN_fermionic_from_edges_rand(
         fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -344,6 +403,7 @@ def MPS_abelian_rand(
     flat=False,
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random MPS with abelian symmetry.
@@ -384,6 +444,14 @@ def MPS_abelian_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -408,6 +476,7 @@ def MPS_abelian_rand(
         flat=flat,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -435,6 +504,7 @@ def TN2D_abelian_rand(
     flat=False,
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 2D symmetric tensor network.
@@ -477,6 +547,14 @@ def TN2D_abelian_rand(
         A function mapping each site coordinate to its total charge.
     subsizes : {"maximal", "equal"}, optional
         The sizes of the charge sectors.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -500,6 +578,7 @@ def TN2D_abelian_rand(
         flat=flat,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -536,6 +615,7 @@ def TN2D_fermionic_rand(
     y_tag_id="Y{}",
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 2D fermionic symmetric tensor network.
@@ -559,6 +639,7 @@ def TN2D_fermionic_rand(
         fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -580,6 +661,7 @@ def PEPS_abelian_rand(
     flat=False,
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 2D PEPS with abelian symmetry.
@@ -625,6 +707,14 @@ def PEPS_abelian_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -649,6 +739,7 @@ def PEPS_abelian_rand(
         flat=flat,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -672,6 +763,7 @@ def TN3D_abelian_rand(
     flat=False,
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 3D symmetric tensor network.
@@ -718,6 +810,14 @@ def TN3D_abelian_rand(
         A function mapping each site coordinate to its total charge.
     subsizes : {"maximal", "equal"}, optional
         The sizes of the charge sectors.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -741,6 +841,7 @@ def TN3D_abelian_rand(
         flat=flat,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -789,6 +890,7 @@ def TN3D_fermionic_rand(
     z_tag_id="Z{}",
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 3D fermionic symmetric tensor network.
@@ -814,6 +916,7 @@ def TN3D_fermionic_rand(
         fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -837,6 +940,7 @@ def PEPS3D_abelian_rand(
     flat=False,
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 3D PEPS with abelian symmetry.
@@ -883,6 +987,14 @@ def PEPS3D_abelian_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -909,6 +1021,7 @@ def PEPS3D_abelian_rand(
         flat=flat,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -925,6 +1038,7 @@ def MPS_fermionic_rand(
     site_ind_id="k{}",
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random fermionic MPS. This is a wrapper around
@@ -961,6 +1075,14 @@ def MPS_fermionic_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -981,6 +1103,7 @@ def MPS_fermionic_rand(
         fermionic=True,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -1000,6 +1123,7 @@ def PEPS_fermionic_rand(
     y_tag_id="Y{}",
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 2D fermionic PEPS. This is a wrapper around
@@ -1038,6 +1162,14 @@ def PEPS_fermionic_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -1060,6 +1192,7 @@ def PEPS_fermionic_rand(
         y_tag_id=y_tag_id,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
 
@@ -1081,6 +1214,7 @@ def PEPS3D_fermionic_rand(
     z_tag_id="Z{}",
     site_charge=None,
     subsizes="maximal",
+    duals="reversed",
     **kwargs,
 ):
     """Create a random 3D fermionic PEPS. This is a wrapper around
@@ -1121,6 +1255,14 @@ def PEPS3D_fermionic_rand(
         The sizes of the charge sectors. If None, the sizes are randomly
         determined. If "equal", the sizes are equal (up to remainders). If
         "maximal", as many charges as possible will be chosen.
+    duals : {"reversed", "canonical", "random"} or dict, optional
+        The bond orientation convention. "reversed" assigns the lower
+        site a non-dual index and is the backwards-compatible default;
+        "canonical" assigns it a dual index; "random" chooses each
+        bond orientation independently; and a mapping can override individual
+        bonds, keyed by bond index name or by the edge in either order. Bonds
+        the mapping does not name use "reversed", and keys matching no bond
+        raise a `ValueError`.
     kwargs
         Additional arguments to pass to :func:`symmray.utils.get_rand`.
 
@@ -1145,5 +1287,6 @@ def PEPS3D_fermionic_rand(
         z_tag_id=z_tag_id,
         site_charge=site_charge,
         subsizes=subsizes,
+        duals=duals,
         **kwargs,
     )
