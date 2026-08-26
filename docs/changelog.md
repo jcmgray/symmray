@@ -2,12 +2,15 @@
 
 Release notes for `symmray`. See also the [GitHub releases page](https://github.com/jcmgray/symmray/releases).
 
-## Unreleased
+## v0.3.1 (2026-08-25)
 
 **Enhancements:**
 
+- Added scalar 2D and 3D tensor-network builders: {func}`~symmray.networks.TN2D_abelian_rand`, {func}`~symmray.networks.TN2D_fermionic_rand`, {func}`~symmray.networks.TN3D_abelian_rand`, and {func}`~symmray.networks.TN3D_fermionic_rand`.
 - Network builders accept `duals` to choose, randomize, or override bond orientations.
 - {meth}`~symmray.bosonic_common.BosonicCommon.to_dense` accepts explicit index maps to restore the dense basis ordering supplied to {func}`~symmray.utils.from_dense`.
+
+**Full Changelog**: [v0.3.0...v0.3.1](https://github.com/jcmgray/symmray/compare/v0.3.0...v0.3.1)
 
 ## v0.3.0 (2026-08-22)
 
