@@ -691,8 +691,7 @@ class FermionicArrayFlat(
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
             #                     <--
             # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            dummy_parity = sum(m.parity for m in self.dummy_modes) % 2
-            sign = (self.parity * dummy_parity) * -2 + 1
+            sign = (self.parity * self.dummy_parity) * -2 + 1
             self.modify(phases=self.phases * sign)
 
     def _resolve_dummy_modes_combine(self, a, b):
@@ -712,8 +711,7 @@ class FermionicArrayFlat(
         # 1. initially we have:
         # l-dummy modes | l-real modes | r-dummy modes | r-real modes
         # so calc phase from moving r-dummy modes past l-real modes
-        r_dummy_parity = sum(m.parity for m in r_dummy_modes) % 2
-        phase = (a.parity * r_dummy_parity) * -2 + 1
+        phase = (a.parity * b.dummy_parity) * -2 + 1
 
         # 2. sort the merged dummy modes into canonical label order; the
         # fermionic sign of that sort is the Koszul sign (computed vectorized,
@@ -867,7 +865,7 @@ class FermionicArrayFlat(
         )
 
         # a dual reference also picks up the parity of any dummy modes
-        const = reference_dual * sum(mode.parity for mode in new.dummy_modes)
+        const = reference_dual * new.dummy_parity
         exponents = ar.do(
             "matmul",
             new._sectors % 2,

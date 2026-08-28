@@ -6,8 +6,11 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 
 **Breaking Changes:**
 
-- `conj_project` now takes `axes=` instead of `axis=`. It accepts either a
-  single integer or an ordered sequence of axes to keep uncontracted.
+- `conj_project` now takes `axes=` instead of `axis=`. It accepts either a single integer or an ordered sequence of axes to keep uncontracted.
+
+**Enhancements:**
+
+- Fermionic arrays expose `dummy_parity`, the combined parity of their dummy modes, while preserving traced backend scalar types for flat arrays.
 
 ## v0.3.1 (2026-08-25)
 

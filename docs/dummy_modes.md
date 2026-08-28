@@ -39,7 +39,9 @@ x.dummy_modes
 ```
 
 The dummy mode is metadata. It does not add an array axis or change the block
-shapes.
+shapes. [`array.dummy_parity`](#FermionicCommon.dummy_parity) gives the
+combined parity of all dummy modes. For flat arrays it preserves backend scalar
+types, so it can be used inside traced or compiled computations.
 
 ## Contraction
 

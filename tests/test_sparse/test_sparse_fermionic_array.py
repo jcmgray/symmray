@@ -2,8 +2,24 @@ import numpy as np
 import pytest
 
 import symmray as sr
+from symmray.fermionic_local_operators import FermionicOperator
 
 all_symmetries = ["Z2", "Z4", "U1"]
+
+
+@pytest.mark.parametrize(
+    "parities, expected",
+    (((), 0), ((1,), 1), ((1, 1), 0), ((0, 1, 0), 1)),
+)
+def test_dummy_parity(parities, expected):
+    x = sr.utils.get_rand("Z2", (2,), fermionic=True, seed=42)
+    x.modify(
+        dummy_modes=tuple(
+            FermionicOperator(k, parity=parity)
+            for k, parity in enumerate(parities)
+        )
+    )
+    assert x.dummy_parity == expected
 
 
 def test_fermi_to_dense_index_maps_roundtrip():
@@ -70,8 +86,7 @@ class TestConjProject:
             if (ax not in normalized_axes) and (ix.dual is reference_dual)
         )
         expected.phase_flip(*axes_flip, inplace=True)
-        dummy_parity = sum(mode.parity for mode in expected.dummy_modes)
-        if reference_dual and dummy_parity % 2:
+        if reference_dual and expected.dummy_parity:
             expected.phase_global(inplace=True)
 
         actual = x.conj_project(axes=axes, inplace=inplace)
