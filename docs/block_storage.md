@@ -1,4 +1,4 @@
-# Storage backends
+# Block storage
 
 `symmray` has two storage layouts. Both can hold numerical blocks from NumPy,
 PyTorch, JAX, or another Autoray backend.

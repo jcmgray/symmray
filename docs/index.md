@@ -67,7 +67,7 @@ operators, and tensor-network helpers.
 installation.md
 getting_started.md
 abelian_arrays.md
-storage_backends.md
+block_storage.md
 fermionic_arrays.md
 dummy_modes.md
 fermionic_operators.md

@@ -76,5 +76,4 @@ x_torch = x.to("torch-float32-cuda:0")
 x_jax = x.to(backend="jax", dtype="complex128")
 ```
 
-This conversion is separate from choosing `symmray`'s sparse or flat
-[storage layout](storage_backends.md).
+This conversion is separate from choosing `symmray`'s sparse or flat [block storage](block storage.md).
