@@ -78,7 +78,7 @@ class TestConjProject:
             seed=42,
         )
         expected = x.conj()
-        actual = x.conj_project(axis=1)
+        actual = x.conj_project(axes=(0, 2))
         actual.test_allclose(expected)
 
     def test_inplace(self):
@@ -90,7 +90,7 @@ class TestConjProject:
             seed=42,
         )
         expected = x.conj()
-        actual = x.conj_project(axis=1, inplace=True)
+        actual = x.conj_project(axes=(0, 2), inplace=True)
         assert actual is x
         actual.test_allclose(expected)
 

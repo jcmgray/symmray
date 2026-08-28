@@ -2,6 +2,13 @@
 
 Release notes for `symmray`. See also the [GitHub releases page](https://github.com/jcmgray/symmray/releases).
 
+## v0.4.0 (unreleased)
+
+**Breaking Changes:**
+
+- `conj_project` now takes `axes=` instead of `axis=`. It accepts either a
+  single integer or an ordered sequence of axes to keep uncontracted.
+
 ## v0.3.1 (2026-08-25)
 
 **Enhancements:**

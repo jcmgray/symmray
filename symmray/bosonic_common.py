@@ -1,5 +1,6 @@
 """Common methods for any 'bosonic' (non-fermionic) arrays."""
 
+from .array_common import _normalize_axes
 from .linalg_common import Absorb
 
 
@@ -56,14 +57,14 @@ class BosonicCommon:
         """
         return self._conj_abelian(inplace=inplace)
 
-    def conj_project(self, axis=-1, inplace=False) -> "BosonicCommon":
+    def conj_project(self, axes=-1, inplace=False) -> "BosonicCommon":
         """Conjugate this array for use with itself as a projector.
 
         Parameters
         ----------
-        axis : int, optional
-            The axis carrying the uncontracted bond. This has no effect for
-            bosonic arrays.
+        axes : int or sequence of int, optional
+            The axes carrying the uncontracted bonds. This has no effect for
+            bosonic arrays apart from validating the axes.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -71,6 +72,7 @@ class BosonicCommon:
         -------
         BosonicCommon
         """
+        _normalize_axes(axes, self.ndim)
         return self.conj(inplace=inplace)
 
     def dagger(self, inplace=False) -> "BosonicCommon":
@@ -90,12 +92,12 @@ class BosonicCommon:
 
     def dagger_project_left(self, inplace=False) -> "BosonicCommon":
         """Return the adjoint for use as a left projector."""
-        new = self.conj_project(axis=-1, inplace=inplace)
+        new = self.conj_project(axes=-1, inplace=inplace)
         return new.transpose(inplace=True)
 
     def dagger_project_right(self, inplace=False) -> "BosonicCommon":
         """Return the adjoint for use as a right projector."""
-        new = self.conj_project(axis=0, inplace=inplace)
+        new = self.conj_project(axes=0, inplace=inplace)
         return new.transpose(inplace=True)
 
     dagger_compose_left = dagger

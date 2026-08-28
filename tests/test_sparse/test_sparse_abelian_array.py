@@ -37,15 +37,20 @@ class TestConjProject:
     def test_matches_conj(self):
         x = sr.utils.get_rand("Z2", (2, 3, 4), seed=42)
         expected = x.conj()
-        actual = x.conj_project(axis=1)
+        actual = x.conj_project(axes=(0, 2))
         actual.test_allclose(expected)
 
     def test_inplace(self):
         x = sr.utils.get_rand("Z2", (2, 3, 4), seed=42)
         expected = x.conj()
-        actual = x.conj_project(axis=1, inplace=True)
+        actual = x.conj_project(axes=(0, 2), inplace=True)
         assert actual is x
         actual.test_allclose(expected)
+
+    def test_invalid_axes(self):
+        x = sr.utils.get_rand("Z2", (2, 3, 4), seed=42)
+        with pytest.raises(ValueError, match="duplicates"):
+            x.conj_project(axes=(0, -3))
 
 
 all_symmetries = ("Z2", "Z3", "Z5", "U1", "Z2Z2", "U1U1")
