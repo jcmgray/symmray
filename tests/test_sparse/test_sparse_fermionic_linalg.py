@@ -759,8 +759,8 @@ def test_svd_projector_identity(symm, seed):
     vhdag = vh.dagger_project_right().unfuse_all()
     u = u.unfuse_all()
     vh = vh.unfuse_all()
-    uconj = u.conj_project(axis=-1)
-    vhconj = vh.conj_project(axis=0)
+    uconj = u.conj_project(axes=-1)
+    vhconj = vh.conj_project(axes=0)
 
     zl = ctg.einsum("abc,dec,defg->abfg", u, uconj, x)
     zl.test_allclose(x)

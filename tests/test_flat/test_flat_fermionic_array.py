@@ -32,7 +32,7 @@ class TestConjProject:
     @pytest.mark.parametrize("dual1", (False, True))
     @pytest.mark.parametrize("dual2", (False, True))
     @pytest.mark.parametrize("charge", (0, 1))
-    @pytest.mark.parametrize("axis", (0, 1, -1))
+    @pytest.mark.parametrize("axes", (0, (0,), (0, 2), (2, 0), (0, -2)))
     @pytest.mark.parametrize("inplace", (False, True))
     def test_matches_sparse(
         self,
@@ -40,7 +40,7 @@ class TestConjProject:
         dual1,
         dual2,
         charge,
-        axis,
+        axes,
         inplace,
     ):
         sparse = get_zn_blocksparse_flat_compat(
@@ -53,10 +53,10 @@ class TestConjProject:
             seed=42,
         )
         sparse.randomize_phases(43, inplace=True)
-        expected = sparse.conj_project(axis=axis)
+        expected = sparse.conj_project(axes=axes)
         flat = sparse.to_flat()
 
-        actual = flat.conj_project(axis=axis, inplace=inplace)
+        actual = flat.conj_project(axes=axes, inplace=inplace)
         assert (actual is flat) is inplace
         actual.check()
         actual.to_blocksparse().test_allclose(expected)
@@ -74,9 +74,9 @@ class TestConjProject:
             seed=42,
         )
         sparse.randomize_phases(43, inplace=True)
-        expected = sparse.conj_project(axis=1)
+        expected = sparse.conj_project(axes=(1, 2))
 
-        actual = sparse.to_flat().to(backend).conj_project(axis=1)
+        actual = sparse.to_flat().to(backend).conj_project(axes=(1, 2))
         assert actual.backend == backend
         actual.check()
         actual.to("numpy").to_blocksparse().test_allclose(expected)

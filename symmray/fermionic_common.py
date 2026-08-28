@@ -2,7 +2,7 @@
 
 import autoray as ar
 
-from .array_common import parse_tensordot_axes
+from .array_common import _normalize_axes, parse_tensordot_axes
 from .fermionic_local_operators import FermionicOperator
 from .linalg_common import Absorb
 
@@ -443,7 +443,7 @@ class FermionicCommon:
         operator.
         """
         new = self.dagger()
-        return new._phase_project_fermionic(0, inplace=True)
+        return new._phase_project_fermionic((0,), inplace=True)
 
     def dagger_compose_right(self) -> "FermionicCommon":
         """Take the dagger (conjugate transpose) of this fermionic array,
@@ -462,18 +462,20 @@ class FermionicCommon:
         operator.
         """
         new = self.dagger()
-        return new._phase_project_fermionic(new.ndim - 1, inplace=True)
+        return new._phase_project_fermionic((new.ndim - 1,), inplace=True)
 
-    def conj_project(self, axis=-1, inplace=False) -> "FermionicCommon":
+    def conj_project(self, axes=-1, inplace=False) -> "FermionicCommon":
         """Conjugate this array for use with itself as a projector.
 
-        The selected axis carries the uncontracted bond. All other axes are
-        contracted back into the tensor network.
+        The selected axes carry the uncontracted bonds. All other axes are
+        contracted back into the tensor network. The first selected axis
+        sets the reference duality for the fermionic phase correction.
 
         Parameters
         ----------
-        axis : int, optional
-            The axis carrying the uncontracted bond.
+        axes : int or sequence of int, optional
+            The axes carrying the uncontracted bonds. A single integer can be
+            supplied when keeping one axis.
         inplace : bool, optional
             Whether to perform the operation inplace or return a new array.
 
@@ -481,16 +483,9 @@ class FermionicCommon:
         -------
         FermionicCommon
         """
-        if axis < 0:
-            axis += self.ndim
-        if not 0 <= axis < self.ndim:
-            raise ValueError(
-                f"axis {axis} is out of bounds for an array with "
-                f"{self.ndim} dimensions"
-            )
-
+        axes = _normalize_axes(axes, self.ndim)
         new = self.conj(inplace=inplace)
-        return new._phase_project_fermionic(axis, inplace=True)
+        return new._phase_project_fermionic(axes, inplace=True)
 
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a

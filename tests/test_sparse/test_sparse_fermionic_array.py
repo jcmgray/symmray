@@ -24,7 +24,17 @@ class TestConjProject:
     @pytest.mark.parametrize("dual1", (False, True))
     @pytest.mark.parametrize("dual2", (False, True))
     @pytest.mark.parametrize("charge", (0, 1))
-    @pytest.mark.parametrize("axis", (0, 1, -1))
+    @pytest.mark.parametrize(
+        "axes",
+        (
+            0,
+            (0,),
+            (0, 2),
+            (2, 0),
+            (0, -2),
+            (0, 1, 2),
+        ),
+    )
     @pytest.mark.parametrize("inplace", (False, True))
     def test_phase_rule(
         self,
@@ -32,7 +42,7 @@ class TestConjProject:
         dual1,
         dual2,
         charge,
-        axis,
+        axes,
         inplace,
     ):
         x = sr.utils.get_rand(
@@ -49,29 +59,49 @@ class TestConjProject:
         original = x.copy()
 
         expected = original.conj()
-        normalized_axis = axis % expected.ndim
-        bond_dual = expected.indices[normalized_axis].dual
+        if isinstance(axes, int):
+            normalized_axes = (axes % expected.ndim,)
+        else:
+            normalized_axes = tuple(ax % expected.ndim for ax in axes)
+        reference_dual = expected.indices[normalized_axes[0]].dual
         axes_flip = tuple(
             ax
             for ax, ix in enumerate(expected.indices)
-            if (ax != normalized_axis) and (ix.dual is bond_dual)
+            if (ax not in normalized_axes) and (ix.dual is reference_dual)
         )
         expected.phase_flip(*axes_flip, inplace=True)
-        if bond_dual and sum(mode.parity for mode in expected.dummy_modes) % 2:
+        dummy_parity = sum(mode.parity for mode in expected.dummy_modes)
+        if reference_dual and dummy_parity % 2:
             expected.phase_global(inplace=True)
 
-        actual = x.conj_project(axis=axis, inplace=inplace)
+        actual = x.conj_project(axes=axes, inplace=inplace)
         assert (actual is x) is inplace
         actual.check()
         actual.test_allclose(expected)
         if not inplace:
             x.test_allclose(original)
 
-    @pytest.mark.parametrize("axis", (-4, 3))
-    def test_invalid_axis(self, axis):
+    @pytest.mark.parametrize(
+        "axes, match",
+        (
+            (-4, "out of bounds"),
+            (3, "out of bounds"),
+            ((), "at least one"),
+            ((0, 3), "out of bounds"),
+            ((0, -3), "duplicates"),
+            ((0, 0), "duplicates"),
+        ),
+    )
+    def test_invalid_axes(self, axes, match):
         x = sr.utils.get_rand("Z2", (2, 2, 2), fermionic=True, seed=42)
-        with pytest.raises(ValueError, match="out of bounds"):
-            x.conj_project(axis=axis)
+        with pytest.raises(ValueError, match=match):
+            x.conj_project(axes=axes)
+
+    @pytest.mark.parametrize("axes", (None, 1.5, (0, 1.5)))
+    def test_invalid_axes_type(self, axes):
+        x = sr.utils.get_rand("Z2", (2, 2, 2), fermionic=True, seed=42)
+        with pytest.raises(TypeError, match="integer"):
+            x.conj_project(axes=axes)
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)

@@ -1139,6 +1139,41 @@ def without(it, remove):
     return tuple(el for i, el in enumerate(it) if i not in remove)
 
 
+def _normalize_axes(axes, ndim):
+    """Normalize a single axis or iterable of axes."""
+    if ar.is_scalar(axes):
+        axes = (axes,)
+    else:
+        try:
+            axes = tuple(axes)
+        except TypeError:
+            raise TypeError("axes must be an integer or iterable of integers")
+
+    if not axes:
+        raise ValueError("axes must contain at least one axis")
+
+    normalized_axes = []
+    for axis in axes:
+        try:
+            axis = operator.index(axis)
+        except TypeError:
+            raise TypeError("axes must contain only integers")
+
+        if axis < 0:
+            axis += ndim
+        if not 0 <= axis < ndim:
+            raise ValueError(
+                f"axis {axis} is out of bounds for an array with "
+                f"{ndim} dimensions"
+            )
+        normalized_axes.append(axis)
+
+    if len(set(normalized_axes)) != len(normalized_axes):
+        raise ValueError("axes cannot contain duplicates")
+
+    return tuple(normalized_axes)
+
+
 def parse_tensordot_axes(axes, ndim_a, ndim_b):
     """Parse the axes argument for single integer and also negative indices.
     Returning the 4 axes groups that can be used for fusing.

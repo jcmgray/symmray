@@ -844,29 +844,30 @@ class FermionicArrayFlat(
 
         return new
 
-    def _phase_project_fermionic(self, axis, inplace=False):
+    def _phase_project_fermionic(self, axes, inplace=False):
         """Apply the phase-only correction for a fermionic projector.
 
         ``conj_project`` calls this after ``conj``. The dagger projector
-        wrappers call it after ``dagger``, using the bond axis after reversal.
-        Thus ``axis`` must be normalized for the current array and identifies
-        the only axis not contracted back into the tensor network.
+        wrappers call it after ``dagger``, using the bond axes after reversal.
+        Thus ``axes`` must be normalized for the current array and identifies
+        the axes not contracted back into the tensor network.
         """
         new = self if inplace else self.copy()
-        bond_dual = new.indices[axis].dual
+        reference_dual = new.indices[axes[0]].dual
+        kept_axes = set(axes)
 
-        # contracted axes matching the bond duality contribute their parity
+        # contracted axes matching the reference duality contribute parity
         mask = ar.do(
             "asarray",
             tuple(
-                int((ax != axis) and (ix.dual is bond_dual))
+                int((ax not in kept_axes) and (ix.dual is reference_dual))
                 for ax, ix in enumerate(new.indices)
             ),
             like=new._sectors,
         )
 
-        # a dual bond also picks up the parity of any dummy modes
-        const = bond_dual * sum(mode.parity for mode in new.dummy_modes)
+        # a dual reference also picks up the parity of any dummy modes
+        const = reference_dual * sum(mode.parity for mode in new.dummy_modes)
         exponents = ar.do(
             "matmul",
             new._sectors % 2,
