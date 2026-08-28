@@ -27,6 +27,40 @@ def test_fermi_to_dense_index_maps_roundtrip():
     np.testing.assert_allclose(x.to_dense(index_maps=index_maps), array)
 
 
+def test_dummy_parity_under_jit():
+    jax = pytest.importorskip("jax")
+    import jax.numpy as jnp
+
+    x = sr.utils.get_rand("Z2", (2,), fermionic=True, flat=True, seed=42)
+
+    def f(parities):
+        y = x.copy()
+        y._dummy_modes = tuple(
+            FermionicOperator(k, parity=parities[k]) for k in range(3)
+        )
+        return y.dummy_parity
+
+    assert int(jax.jit(f)(jnp.asarray((1, 0, 1)))) == 0
+    assert int(jax.jit(f)(jnp.asarray((1, 0, 0)))) == 1
+
+
+def test_dummy_parity_under_torch_compile():
+    torch = pytest.importorskip("torch")
+
+    x = sr.utils.get_rand("Z2", (2,), fermionic=True, flat=True, seed=42)
+
+    def f(parities):
+        y = x.copy()
+        y._dummy_modes = tuple(
+            FermionicOperator(k, parity=parities[k]) for k in range(3)
+        )
+        return y.dummy_parity
+
+    compiled_f = torch.compile(f, fullgraph=True)
+    assert int(compiled_f(torch.tensor((1, 0, 1)))) == 0
+    assert int(compiled_f(torch.tensor((1, 0, 0)))) == 1
+
+
 class TestConjProject:
     @pytest.mark.parametrize("dual0", (False, True))
     @pytest.mark.parametrize("dual1", (False, True))

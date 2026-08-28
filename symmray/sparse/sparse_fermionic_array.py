@@ -412,9 +412,7 @@ class FermionicArray(
         new_dummy_modes = tuple(r.dag for r in reversed(self.dummy_modes))
         self.modify(dummy_modes=new_dummy_modes)
 
-        dummy_parity = sum(m.parity for m in new_dummy_modes) % 2
-
-        if phase_permutation and self.parity and dummy_parity:
+        if phase_permutation and self.parity and self.dummy_parity:
             # 2. moving dummy_modes charges back to left
             # after flipping might generate global sign
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
@@ -437,8 +435,7 @@ class FermionicArray(
         dummy_modes = [*l_dummy_modes, *r_dummy_modes]
 
         # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
-        r_dummy_parity = sum(m.parity for m in r_dummy_modes) % 2
-        if left.parity and r_dummy_parity:
+        if left.parity and right.dummy_parity:
             # moving r-dummy_modes charges over l-sectors generates sign
             phase = -1
         else:
@@ -662,7 +659,7 @@ class FermionicArray(
         )
 
         # a dual reference also picks up the parity of any dummy modes
-        const = reference_dual * sum(mode.parity for mode in new.dummy_modes)
+        const = reference_dual * new.dummy_parity
         phases = new.phases.copy()
 
         for sector in new.sectors:

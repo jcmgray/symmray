@@ -62,6 +62,11 @@ class FermionicCommon:
         """
         return self._dummy_modes
 
+    @property
+    def dummy_parity(self):
+        """The combined parity of the dummy modes."""
+        return sum(mode.parity for mode in self.dummy_modes) % 2
+
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations.
 
