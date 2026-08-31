@@ -696,8 +696,9 @@ class FermionicArrayFlat(
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
             #                     <--
             # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            sign = (self.parity * self.dummy_parity) * -2 + 1
-            self.modify(phases=self.phases * sign)
+            self.phase_global(
+                parity=self.parity * self.dummy_parity, inplace=True
+            )
 
     def _resolve_dummy_modes_combine(self, a, b):
         """Calculate the new combined dummy modes and any associated global

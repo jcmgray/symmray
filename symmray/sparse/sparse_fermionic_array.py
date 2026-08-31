@@ -418,13 +418,15 @@ class FermionicArray(
         new_dummy_modes = tuple(r.dag for r in reversed(self.dummy_modes))
         self.modify(dummy_modes=new_dummy_modes)
 
-        if phase_permutation and self.parity and self.dummy_parity:
+        if phase_permutation:
             # 2. moving dummy_modes charges back to left
             # after flipping might generate global sign
             # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
             #                     <--
             # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            self.phase_global(inplace=True)
+            self.phase_global(
+                parity=self.parity * self.dummy_parity, inplace=True
+            )
 
     def _resolve_dummy_modes_combine(self, left, right):
         """Calculate the new combined dummy odd modes and any associated global
