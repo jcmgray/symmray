@@ -22,6 +22,22 @@ def test_dummy_parity(parities, expected):
     assert x.dummy_parity == expected
 
 
+@pytest.mark.parametrize("parity", [0, 1, 2, 3])
+@pytest.mark.parametrize("inplace", [False, True])
+def test_phase_global_conditional(parity, inplace):
+    x = sr.utils.get_rand("Z2", (2, 4), fermionic=True, seed=42)
+    x.randomize_phases(43, inplace=True)
+    original = x.copy()
+    expected = original.phase_global() if parity % 2 else original
+
+    actual = x.phase_global(parity=parity, inplace=inplace)
+
+    assert (actual is x) is inplace
+    actual.test_allclose(expected)
+    if not inplace:
+        x.test_allclose(original)
+
+
 def test_fermi_to_dense_index_maps_roundtrip():
     array = np.diag([1.0, 2.0, 3.0, 4.0])
     index_maps = ((0, 1, 1, 0),) * 2
