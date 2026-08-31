@@ -25,13 +25,18 @@ shape `(num_blocks, *shape_block)`. Sector keys form a second array with shape
 `(num_blocks, ndim)`.
 
 All stored blocks must therefore have the same
-[`shape_block`](#symmray.flat.flat_data_common.FlatCommon.shape_block). In
-practice, each charge sector on an axis must have the same size. Flat storage
-is intended for cyclic symmetries. Its fixed-shape stacked arrays are designed
-for vectorized GPU execution and tracing or compilation, especially with
-[`jax.jit`](https://docs.jax.dev/en/latest/_autosummary/jax.jit.html) and
+[`shape_block`](#symmray.flat.flat_data_common.FlatCommon.shape_block).
+Equivalently, each charge sector on an axis must have the *same size*. Flat
+storage also requires all possible charge sectors to be present, which in
+practice mean using *cyclic symmetries*. Its fixed-shape stacked arrays are
+designed for vectorized GPU execution and tracing or compilation, especially
+with [`jax.jit`](https://docs.jax.dev/en/latest/_autosummary/jax.jit.html) and
 [`torch.compile`](https://docs.pytorch.org/docs/stable/generated/torch.compile.html).
 Block shapes and sector structure must remain static across compiled calls.
+
+For fermionic arrays, parity and phases are also handled in a branchless
+manner, allowing expressions involving dynamic parities, such as wavefunction
+amplitude contractions, to still be compiled and vectorized.
 
 [`Z2ArrayFlat`](#symmray.flat.flat_abelian_array.Z2ArrayFlat) and
 [`Z2FermionicArrayFlat`](#symmray.flat.flat_fermionic_array.Z2FermionicArrayFlat)
