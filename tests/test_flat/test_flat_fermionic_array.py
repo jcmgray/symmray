@@ -264,7 +264,9 @@ def test_phase_transpose(
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
 @pytest.mark.parametrize("charge", [0, 1])
 @pytest.mark.parametrize("seed", [42, 43, 44])
-def test_phase_global(symmetry, charge, seed):
+@pytest.mark.parametrize("parity", [0, 1, 2, 3])
+@pytest.mark.parametrize("inplace", [False, True])
+def test_phase_global(symmetry, charge, seed, parity, inplace):
     x = get_zn_blocksparse_flat_compat(
         symmetry,
         (2, 4, 6),
@@ -276,8 +278,46 @@ def test_phase_global(symmetry, charge, seed):
     # add some non-trivial phases
     x.randomize_phases(seed + 1, inplace=True)
     fx = x.to_flat()
-    fxg = fx.phase_global()
-    fxg.to_blocksparse().test_allclose(x.phase_global())
+    fxg = fx.phase_global(parity=parity, inplace=inplace)
+    assert (fxg is fx) is inplace
+    fxg.to_blocksparse().test_allclose(x.phase_global(parity=parity))
+
+
+def test_phase_global_under_jit():
+    jax = pytest.importorskip("jax")
+    import jax.numpy as jnp
+
+    x = (
+        get_zn_blocksparse_flat_compat("Z2", (2, 4), fermionic=True, seed=42)
+        .to_flat()
+        .to("jax")
+    )
+    phases = x.phases
+
+    def f(parity):
+        return x.phase_global(parity=parity).phases
+
+    compiled_f = jax.jit(f)
+    assert bool(jnp.all(compiled_f(jnp.asarray(0)) == phases))
+    assert bool(jnp.all(compiled_f(jnp.asarray(1)) == -phases))
+
+
+def test_phase_global_under_torch_compile():
+    torch = pytest.importorskip("torch")
+
+    x = (
+        get_zn_blocksparse_flat_compat("Z2", (2, 4), fermionic=True, seed=42)
+        .to_flat()
+        .to("torch")
+    )
+    phases = x.phases
+
+    def f(parity):
+        return x.phase_global(parity=parity).phases
+
+    compiled_f = torch.compile(f, fullgraph=True)
+    assert bool(torch.all(compiled_f(torch.tensor(0)) == phases))
+    assert bool(torch.all(compiled_f(torch.tensor(1)) == -phases))
 
 
 @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])

@@ -11,6 +11,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 **Enhancements:**
 
 - Fermionic arrays expose `dummy_parity`, the combined parity of their dummy modes, while preserving traced backend scalar types for flat arrays.
+- `phase_global(parity=...)` conditionally applies a global fermionic phase and supports traced parity scalars with the flat backend.
 
 ## v0.3.1 (2026-08-25)
 

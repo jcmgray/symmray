@@ -652,20 +652,25 @@ class FermionicArrayFlat(
             "Flat fermionic arrays do not support individual sector phasing."
         )
 
-    def phase_global(self, inplace=False):
-        """Flip the global phase of the array.
+    def phase_global(self, inplace=False, *, parity=1):
+        """Flip the global phase of the array, optionally conditioned on a
+        given `parity`.
 
         Parameters
         ----------
         inplace : bool, optional
             Whether to perform the operation in place.
+        parity : scalar, optional
+            Flip the phase when this is odd, and leave it unchanged when this
+            is even. This may be a traced backend scalar.
 
         Returns
         -------
-        FermionicArray
+        FermionicArrayFlat
         """
         new = self if inplace else self.copy()
-        new.modify(phases=-new.phases)
+        phase_change = (parity % 2) * -2 + 1
+        new.modify(phases=new.phases * phase_change)
         return new
 
     def _resolve_dummy_modes_conj(self, phase_permutation=True):

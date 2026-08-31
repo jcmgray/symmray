@@ -365,19 +365,25 @@ class FermionicArray(
             new._phases[sector] = -1
         return new
 
-    def phase_global(self, inplace=False):
-        """Flip the global phase of the array.
+    def phase_global(self, inplace=False, *, parity=1):
+        """Flip the global phase of the array, optionally conditioned on a
+        given `parity`.
 
         Parameters
         ----------
         inplace : bool, optional
             Whether to perform the operation in place.
+        parity : scalar, optional
+            Flip the phase when this is odd, and leave it unchanged when this
+            is even.
 
         Returns
         -------
         FermionicArray
         """
         new = self if inplace else self.copy()
+        if parity % 2 == 0:
+            return new
         for sector in new.sectors:
             phase = -new.phases.pop(sector, 1)
             if phase == -1:
