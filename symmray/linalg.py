@@ -25,10 +25,12 @@ def eigh_truncated(x: ArrayCommon, *args, **kwargs):
 
     Parameters
     ----------
+    x : ArrayCommon
+        The 2D symmetric array to decompose, assumed to be hermitian.
     cutoff : float, optional
-        Absolute eigenvalue cutoff threshold.
+        Absolute eigenvalue cutoff threshold. Default is 0.0.
     cutoff_mode : int or str, optional
-        How to perform the truncation:
+        How to perform the truncation. Defaults to ``"rel"``:
 
         - 1 or 'abs': trim values below ``cutoff``
         - 2 or 'rel': trim values below ``s[0] * cutoff``
@@ -39,6 +41,13 @@ def eigh_truncated(x: ArrayCommon, *args, **kwargs):
 
     max_bond : int
         An explicit maximum bond dimension, use -1 for none.
+    max_bond_mode : {"global", "eager"}, optional
+        How to apply ``max_bond`` to sparse arrays. ``"global"`` computes all
+        block spectra before selecting values globally. ``"eager"`` spreads
+        the bond dimension over sectors in proportion to their current sizes
+        before computing each block. Global mode keeps a degenerate multiplet
+        whole and may therefore exceed ``max_bond``. Eager mode supports only
+        absolute and relative cutoffs without renormalization.
     absorb : {-1, 0, 1, None}
         How to absorb the eigenvalues.
 
@@ -119,7 +128,7 @@ def svd_truncated(x: ArrayCommon, *args, **kwargs):
     cutoff : float, optional
         Singular value cutoff threshold.
     cutoff_mode : int or str, optional
-        How to perform the truncation:
+        How to perform the truncation. Defaults to ``"rel"``:
 
         - 1 or 'abs': trim values below ``cutoff``
         - 2 or 'rel': trim values below ``s[0] * cutoff``
@@ -130,6 +139,13 @@ def svd_truncated(x: ArrayCommon, *args, **kwargs):
 
     max_bond : int
         An explicit maximum bond dimension, use -1 for none.
+    max_bond_mode : {"global", "eager"}, optional
+        How to apply ``max_bond`` to sparse arrays. ``"global"`` computes all
+        block spectra before selecting values globally. ``"eager"`` spreads
+        the bond dimension over sectors in proportion to their current sizes
+        before computing each block. Global mode keeps a degenerate multiplet
+        whole and may therefore exceed ``max_bond``. Eager mode supports only
+        absolute and relative cutoffs without renormalization.
     absorb : {-1, 0, 1, None}
         How to absorb the singular values.
 
@@ -161,7 +177,8 @@ def svd_rand_truncated(x: ArrayCommon, *args, **kwargs):
     Parameters
     ----------
     max_bond : int
-        Target rank / maximum bond dimension.
+        Target rank / maximum bond dimension. With sparse storage this is
+        spread over sectors in proportion to their current sizes.
     absorb : {-1, 0, 1, None}
         How to absorb the singular values.
 
@@ -176,6 +193,20 @@ def svd_rand_truncated(x: ArrayCommon, *args, **kwargs):
         Number of power iterations for accuracy. Default is 2.
     seed : int, Generator or None, optional
         Random seed or generator for reproducibility.
+    cutoff : float or "auto", optional
+        Singular value cutoff threshold. Dynamic cutoffs are currently only
+        supported by the sparse backend. ``"auto"`` means no cutoff.
+    cutoff_mode : int or str, optional
+        How to perform the truncation. Defaults to ``"rel"``, so that only the
+        low-rank spectra are required. Cumulative modes are not compatible with
+        eager truncation.
+    max_bond_mode : {"global", "eager"}, optional
+        How to apply ``max_bond`` to sparse arrays. ``"eager"`` spreads the
+        bond dimension over sectors in proportion to their current sizes
+        before computing each block. ``"global"`` computes all block spectra
+        before selecting values globally. Global mode keeps a degenerate
+        multiplet whole and may therefore exceed ``max_bond``. Eager mode
+        supports only absolute and relative cutoffs without renormalization.
 
     Returns
     -------
@@ -199,7 +230,7 @@ def svd_via_eig_truncated(x: ArrayCommon, *args, **kwargs):
     cutoff : float, optional
         Singular value cutoff threshold.
     cutoff_mode : int or str, optional
-        How to perform the truncation:
+        How to perform the truncation. Defaults to ``"rel"``:
 
         - 1 or 'abs': trim values below ``cutoff``
         - 2 or 'rel': trim values below ``s[0] * cutoff``
@@ -210,6 +241,13 @@ def svd_via_eig_truncated(x: ArrayCommon, *args, **kwargs):
 
     max_bond : int
         An explicit maximum bond dimension, use -1 for none.
+    max_bond_mode : {"global", "eager"}, optional
+        How to apply ``max_bond`` to sparse arrays. ``"global"`` computes all
+        block spectra before selecting values globally. ``"eager"`` spreads
+        the bond dimension over sectors in proportion to their current sizes
+        before computing each block. Global mode keeps a degenerate multiplet
+        whole and may therefore exceed ``max_bond``. Eager mode supports only
+        absolute and relative cutoffs without renormalization.
     absorb : {-1, 0, 1, None}
         How to absorb the singular values.
 

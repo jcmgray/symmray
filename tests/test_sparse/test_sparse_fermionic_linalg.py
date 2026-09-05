@@ -1,3 +1,5 @@
+import warnings
+
 import autoray as ar
 import pytest
 
@@ -210,7 +212,7 @@ def test_svd_truncated_cutoff_max_bond(symmetry, seed):
     _, s, _ = ar.do(
         "svd_truncated",
         x,
-        cutoff=3e-2,
+        cutoff=3e-1,
         absorb=None,
     )
     assert s.size < 80
@@ -355,6 +357,46 @@ def test_svd_via_eig_truncated_max_bond(symmetry, seed):
     assert s.size <= 2
 
 
+@pytest.mark.parametrize("absorb", [None, -1, 0, 1])
+def test_svd_rand_truncated_max_bond(absorb):
+    x = sr.utils.get_rand(
+        "Z3",
+        shape=({0: 8, 1: 2, 2: 1}, {0: 8, 1: 2, 2: 1}),
+        duals=(False, True),
+        fermionic=True,
+        seed=42,
+    )
+    x.randomize_phases(seed=43, inplace=True)
+
+    with warnings.catch_warnings():
+        # every blockwise randomized SVD should receive a finite max_bond
+        warnings.filterwarnings(
+            "error",
+            message="Using 'svd:rand' without `max_bond`",
+        )
+        u, s, vh = x.svd_rand_truncated(
+            max_bond=3,
+            absorb=absorb,
+            seed=42,
+        )
+
+    u.check()
+    vh.check()
+    assert u.indices[1].chargemap == {0: 1, 1: 1, 2: 1}
+    assert vh.indices[0].chargemap == {0: 1, 1: 1, 2: 1}
+
+    if absorb is None:
+        s.check()
+        xr = sr.einsum("ij,j,jk->ik", u, s, vh)
+    else:
+        assert s is None
+        xr = u @ vh
+
+    xr.check()
+    assert xr.shape == x.shape
+    assert xr.charge == x.charge
+
+
 @pytest.mark.parametrize("symm", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("seed", range(10))
 @pytest.mark.parametrize("dtype", ("float64", "complex128"))
@@ -440,7 +482,7 @@ def test_eigh_truncated_fermionic_cutoff_max_bond(symmetry, seed):
     # cutoff only
     _, s, _ = sr.linalg.eigh_truncated(
         x,
-        cutoff=3e-2,
+        cutoff=3e-1,
         absorb=None,
     )
     assert s.size < x.shape[0]
