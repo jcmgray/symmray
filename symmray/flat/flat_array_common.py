@@ -1556,6 +1556,7 @@ class FlatArrayCommon:
         *,
         fn=None,
         charge_side="auto",
+        max_bond_mode="global",
         **kwargs,
     ):
         """Main driver method for decomposing flat abelian arrays. This
@@ -1591,6 +1592,12 @@ class FlatArrayCommon:
             raise NotImplementedError(
                 "split only implemented for 2D FlatArrayCommon,"
                 f" got {self.ndim}D. Consider fusing first."
+            )
+
+        if max_bond_mode not in ("global", "eager"):
+            raise ValueError(
+                "max_bond_mode must be 'global' or 'eager', "
+                f"got {max_bond_mode!r}"
             )
         if kwargs.get("cutoff", 0.0) > 0.0:
             raise NotImplementedError(

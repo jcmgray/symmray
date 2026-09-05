@@ -1837,33 +1837,51 @@ class SparseArrayCommon:
 
     # --------------------------- linalg methods ---------------------------- #
 
-    def _split_abelian_full_spectrum(
+    def _split_abelian_dynamic(
         self,
         *,
         fn=None,
         charge_side="auto",
+        max_bond_mode="global",
         **kwargs,
     ):
-        """Helper method for decomposition methods involving dynamic
-        truncation, which require the full spectrum to be computed first since
-        truncation sizes will depend on all blocks.
+        """Helper method for decomposition methods involving global dynamic
+        truncation. Absolute and relative cutoffs can operate on pre-truncated
+        spectra, while cumulative cutoffs require the full spectra.
         """
         # pop out truncation and absorb options
         cutoff = kwargs.pop("cutoff", 0.0)
-        cutoff_mode = kwargs.pop("cutoff_mode", "rsum2")
+        cutoff_mode = _CUTOFF_MODE_MAP[kwargs.pop("cutoff_mode", "rel")]
         renorm = kwargs.pop("renorm", False)
         max_bond = kwargs.pop("max_bond", -1)
         absorb = kwargs.pop("absorb", "both")
         use_abs = kwargs.pop("use_abs", None)
 
-        # 1. compute full decomposition
+        if max_bond_mode == "eager":
+            if renorm:
+                raise ValueError(
+                    "renorm is not compatible with max_bond_mode='eager'"
+                )
+            if (cutoff > 0.0) and (cutoff_mode not in (1, 2)):
+                raise ValueError(
+                    "cumulative cutoff modes are not compatible with "
+                    "max_bond_mode='eager'"
+                )
+            initial_max_bond = max_bond
+            final_max_bond = -1
+        else:
+            initial_max_bond = -1
+            final_max_bond = max_bond
+
+        # 1. compute the required spectrum without absorbing
         left, s, right = self._split_abelian(
             fn=fn,
             charge_side=charge_side,
             cutoff=0.0,
             renorm=False,
-            max_bond=-1,
+            max_bond=initial_max_bond,
             absorb=None,
+            max_bond_mode=max_bond_mode,
             **kwargs,
         )
 
@@ -1888,8 +1906,8 @@ class SparseArrayCommon:
             s,
             right,
             cutoff=cutoff,
-            cutoff_mode=_CUTOFF_MODE_MAP[cutoff_mode],
-            max_bond=max_bond,
+            cutoff_mode=cutoff_mode,
+            max_bond=final_max_bond,
             absorb=absorb,
             renorm=renorm,
             use_abs=use_abs,
@@ -1901,6 +1919,7 @@ class SparseArrayCommon:
         *,
         fn=None,
         charge_side="auto",
+        max_bond_mode="global",
         **kwargs,
     ):
         """Main driver method for decomposing sparse abelian arrays. This
@@ -1936,23 +1955,29 @@ class SparseArrayCommon:
                 f" got {self.ndim}D. Consider fusing first."
             )
 
+        if max_bond_mode not in ("global", "eager"):
+            raise ValueError(
+                "max_bond_mode must be 'global' or 'eager', "
+                f"got {max_bond_mode!r}"
+            )
+
         # if max_bond is supplied make sure it is parsed
         if ("max_bond" in kwargs) and (kwargs["max_bond"] is None):
             kwargs["max_bond"] = -1
 
-        need_full_spectrum = (
+        max_bond = kwargs.get("max_bond", -1)
+        eager_max_bond = (max_bond_mode == "eager") and (max_bond > 0)
+        need_dynamic_truncation = (
             (kwargs.get("cutoff", -1.0) > 0.0)
             or (kwargs.get("renorm", 0) > 0)
-            or
-            # XXX: currently need full spectrum even for fixed max_bond
-            # as it may not be evenly distributed across blocks
-            (kwargs.get("max_bond", -1) > 0)
+            or ((max_bond > 0) and (max_bond_mode == "global"))
         )
-        if need_full_spectrum:
-            # must compute full spectrum first, *then* truncate / absorb
-            return self._split_abelian_full_spectrum(
+        if need_dynamic_truncation:
+            # compute the required spectrum first, *then* truncate / absorb
+            return self._split_abelian_dynamic(
                 fn=fn,
                 charge_side=charge_side,
+                max_bond_mode=max_bond_mode,
                 **kwargs,
             )
 
@@ -1968,8 +1993,28 @@ class SparseArrayCommon:
         if fn is None:
             fn = array_split
 
-        for sector, array in self.get_sector_block_pairs():
-            left, s, right = fn(array, **kwargs)
+        sector_block_pairs = tuple(self.get_sector_block_pairs())
+        if eager_max_bond and sector_block_pairs:
+            sector_ranks = tuple(
+                min(xp.shape(array)) for _, array in sector_block_pairs
+            )
+            sub_max_bonds = calc_sub_max_bonds(sector_ranks, max_bond)
+        else:
+            sub_max_bonds = itertools.repeat(None)
+
+        for (sector, array), sub_max_bond in zip(
+            sector_block_pairs, sub_max_bonds
+        ):
+            if sub_max_bond == 0:
+                # the total max bond cannot accommodate this sector
+                continue
+
+            if sub_max_bond is None:
+                split_kwargs = kwargs
+            else:
+                split_kwargs = {**kwargs, "max_bond": sub_max_bond}
+
+            left, s, right = fn(array, **split_kwargs)
 
             bond_charge = sector[1] if charge_side == "left" else sector[0]
             bond_charge_size = None
@@ -2191,29 +2236,51 @@ class SparseArrayCommon:
         return x
 
 
-def argsort(seq):
-    return sorted(range(len(seq)), key=seq.__getitem__)
-
-
 @functools.lru_cache(maxsize=2**14)
 def calc_sub_max_bonds(sizes, max_bond):
+    """Spread a total maximum bond over sectors based on their sizes."""
     if max_bond < 0:
         # no limit
         return sizes
 
-    # overall fraction of the total bond dimension to use
-    frac = max_bond / sum(sizes)
-    if frac >= 1.0:
+    total_size = sum(sizes)
+    if max_bond >= total_size:
         # keep all singular values
         return sizes
 
-    # number of singular values to keep in each sector
-    sub_max_bonds = [int(frac * sz) for sz in sizes]
+    num_sectors = len(sizes)
+    sub_max_bonds = [0] * num_sectors
+    if max_bond < num_sectors:
+        # some sectors have to be removed, so retain the largest ones
+        largest = sorted(
+            range(num_sectors),
+            key=lambda i: sizes[i],
+            reverse=True,
+        )
+        for i in largest[:max_bond]:
+            sub_max_bonds[i] = 1
+        return tuple(sub_max_bonds)
 
-    # distribute any remaining singular values to the smallest sectors
-    rem = max_bond - sum(sub_max_bonds)
+    # preserve every sector when the total max bond allows it
+    sub_max_bonds = [1] * num_sectors
+    capacities = [sz - 1 for sz in sizes]
+    remaining = max_bond - num_sectors
+    total_capacity = sum(capacities)
 
-    for i in argsort(sub_max_bonds)[:rem]:
+    # distribute the remaining modes proportionally to sector capacity
+    quotas = [remaining * capacity / total_capacity for capacity in capacities]
+    additions = [int(quota) for quota in quotas]
+    for i, addition in enumerate(additions):
+        sub_max_bonds[i] += addition
+
+    remainder = remaining - sum(additions)
+    largest_remainders = sorted(
+        range(num_sectors),
+        key=lambda i: quotas[i] - additions[i],
+        reverse=True,
+    )
+
+    for i in largest_remainders[:remainder]:
         sub_max_bonds[i] += 1
 
     return tuple(sub_max_bonds)
@@ -2252,58 +2319,66 @@ def truncate_svd_result_blocksparse(
     if renorm:
         raise NotImplementedError("renorm not implemented yet.")
 
-    if cutoff > 0.0:
+    if (cutoff > 0.0) or (max_bond > 0):
+        xp = s.get_namespace()
+
         # first combine all singular values into a single, sorted array
         sall = s.to_dense()
         if use_abs:
-            sall = ar.do("abs", sall, like=backend)
-        sall = ar.do("sort", sall, like=backend)
+            sall = xp.abs(sall)
+        sall = xp.sort(sall)
 
-        cutoff_mode = _CUTOFF_MODE_MAP[cutoff_mode]
+        abs_cutoff = None
+        if cutoff > 0.0:
+            cutoff_mode = _CUTOFF_MODE_MAP[cutoff_mode]
 
-        if cutoff_mode == 1:
-            # absolute cutoff
-            abs_cutoff = cutoff
-        elif cutoff_mode == 2:
-            # relative cutoff
-            abs_cutoff = sall[-1] * cutoff
-        else:
-            # possibly square singular values
-            power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
-            if power == 1:
-                # sum1 or rsum1
-                cum_spow = ar.do("cumsum", sall, 0, like=backend)
+            if cutoff_mode == 1:
+                # absolute cutoff
+                abs_cutoff = cutoff
+            elif cutoff_mode == 2:
+                # relative cutoff
+                abs_cutoff = sall[-1] * cutoff
             else:
-                # sum2 or rsum2
-                cum_spow = ar.do("cumsum", sall**power, 0, like=backend)
+                # possibly square singular values
+                power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
+                if power == 1:
+                    # sum1 or rsum1
+                    cum_spow = xp.cumsum(sall, 0)
+                else:
+                    # sum2 or rsum2
+                    cum_spow = xp.cumsum(sall**power, 0)
 
-            if cutoff_mode in (4, 6):
-                # rsum1 or rsum2: relative cumulative cutoff
-                cond = cum_spow >= cutoff * cum_spow[-1]
-            else:
-                # sum1 or sum2: absolute cumulative cutoff
-                cond = cum_spow >= cutoff
+                if cutoff_mode in (4, 6):
+                    # rsum1 or rsum2: relative cumulative cutoff
+                    cond = cum_spow >= cutoff * cum_spow[-1]
+                else:
+                    # sum1 or sum2: absolute cumulative cutoff
+                    cond = cum_spow >= cutoff
 
-            # translate to total number of singular values to keep
-            n_chi_all = ar.do("count_nonzero", cond, like=backend)
-            # and then to an absolute cutoff value
-            abs_cutoff = sall[-n_chi_all]
+                # translate to total number of singular values to keep
+                n_chi_all = xp.count_nonzero(cond)
+                # and then to an absolute cutoff value
+                abs_cutoff = sall[-n_chi_all]
 
         if 0 < max_bond < ar.size(sall):
             # also take into account a total maximum bond
             max_bond_cutoff = sall[-max_bond]
-            abs_cutoff = max(abs_cutoff, max_bond_cutoff)
+            if abs_cutoff is None:
+                abs_cutoff = max_bond_cutoff
+            else:
+                abs_cutoff = max(abs_cutoff, max_bond_cutoff)
 
-        # now find number of values to keep per sector
-        sub_max_bonds = [
-            int(ar.do("count_nonzero", ss >= abs_cutoff, like=backend))
-            for ss in s.get_all_blocks()
-        ]
+        if abs_cutoff is None:
+            sub_max_bonds = tuple(map(ar.size, s.get_all_blocks()))
+        else:
+            # now find number of values to keep per sector
+            sub_max_bonds = []
+            for ss in s.get_all_blocks():
+                if use_abs:
+                    ss = xp.abs(ss)
+                sub_max_bonds.append(int(xp.count_nonzero(ss >= abs_cutoff)))
     else:
-        # size of each sector
-        sector_sizes = tuple(map(ar.size, s.get_all_blocks()))
-        # distribute max_bond proportionally to sector sizes
-        sub_max_bonds = calc_sub_max_bonds(sector_sizes, max_bond)
+        sub_max_bonds = tuple(map(ar.size, s.get_all_blocks()))
 
     new_inner_chargemap = {}
     for (c0, c1), n_chi in zip(U.sectors, sub_max_bonds):

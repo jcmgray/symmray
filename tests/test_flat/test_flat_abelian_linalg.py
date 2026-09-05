@@ -352,6 +352,38 @@ def test_flat_svd_rand_truncated_ar_dispatch(symmetry, d1, d2, seed=42):
     assert s.size <= 8
 
 
+@pytest.mark.parametrize("max_bond_mode", ["global", "eager"])
+def test_flat_svd_rand_truncated_max_bond_mode(max_bond_mode):
+    fx = get_zn_blocksparse_flat_compat(
+        "Z2",
+        shape=[8, 8],
+        seed=42,
+    ).to_flat()
+
+    u, s, vh = fx.svd_rand_truncated(
+        max_bond=4,
+        max_bond_mode=max_bond_mode,
+        absorb=None,
+        seed=42,
+    )
+
+    u.check()
+    s.check()
+    vh.check()
+    assert s.size <= 4
+
+
+def test_flat_svd_truncated_invalid_max_bond_mode():
+    fx = get_zn_blocksparse_flat_compat(
+        "Z2",
+        shape=[8, 8],
+        seed=42,
+    ).to_flat()
+
+    with pytest.raises(ValueError, match="max_bond_mode"):
+        fx.svd_truncated(max_bond=4, max_bond_mode="invalid")
+
+
 @pytest.mark.parametrize("symmetry", ["Z2", "Z3", "Z4"])
 @pytest.mark.parametrize("d", [2, 3])
 @pytest.mark.parametrize("dtype", ["float64", "complex128", "complex64"])

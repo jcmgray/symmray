@@ -676,12 +676,13 @@ class ArrayCommon:
 
     def eigh_truncated(
         self,
-        cutoff=-1.0,
-        cutoff_mode="rsum2",
+        cutoff=0.0,
+        cutoff_mode="rel",
         max_bond=-1,
         absorb=0,
         renorm=False,
         positive=False,
+        max_bond_mode="global",
         **kwargs,
     ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
         """Truncated hermitian eigen-decomposition of this assumed hermitian
@@ -690,9 +691,9 @@ class ArrayCommon:
         Parameters
         ----------
         cutoff : float, optional
-            Absolute eigenvalue cutoff threshold.
+            Absolute eigenvalue cutoff threshold. Default is 0.0.
         cutoff_mode : int or str, optional
-            How to perform the truncation:
+            How to perform the truncation. Defaults to ``"rel"``:
 
             - 1 or 'abs': trim values below ``cutoff``
             - 2 or 'rel': trim values below ``s[0] * cutoff``
@@ -703,6 +704,14 @@ class ArrayCommon:
 
         max_bond : int
             An explicit maximum bond dimension, use -1 for none.
+        max_bond_mode : {"global", "eager"}, optional
+            How to apply ``max_bond`` to sparse arrays. ``"global"`` computes
+            all block spectra before selecting values globally. ``"eager"``
+            spreads the bond dimension over sectors in proportion to their
+            current sizes before computing each block. Global mode keeps a
+            degenerate multiplet whole and may therefore exceed ``max_bond``.
+            Eager mode supports only absolute and relative cutoffs without
+            renormalization.
         absorb : {-1, 0, 1, None}
             How to absorb the eigenvalues.
 
@@ -734,6 +743,7 @@ class ArrayCommon:
         kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("renorm", renorm)
         kwargs.setdefault("positive", positive)
+        kwargs.setdefault("max_bond_mode", max_bond_mode)
         return self._split(**kwargs)
 
     def svd(
@@ -759,10 +769,11 @@ class ArrayCommon:
     def svd_truncated(
         self,
         cutoff=0.0,
-        cutoff_mode="rsum2",
+        cutoff_mode="rel",
         max_bond=None,
         absorb="both",
         renorm=False,
+        max_bond_mode="global",
         **kwargs,
     ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
         """Truncated singular value decomposition of this array.
@@ -772,7 +783,7 @@ class ArrayCommon:
         cutoff : float, optional
             Singular value cutoff threshold.
         cutoff_mode : int or str, optional
-            How to perform the truncation:
+            How to perform the truncation. Defaults to ``"rel"``:
 
             - 1 or 'abs': trim values below ``cutoff``
             - 2 or 'rel': trim values below ``s[0] * cutoff``
@@ -783,6 +794,14 @@ class ArrayCommon:
 
         max_bond : int
             An explicit maximum bond dimension, use -1 for none.
+        max_bond_mode : {"global", "eager"}, optional
+            How to apply ``max_bond`` to sparse arrays. ``"global"`` computes
+            all block spectra before selecting values globally. ``"eager"``
+            spreads the bond dimension over sectors in proportion to their
+            current sizes before computing each block. Global mode keeps a
+            degenerate multiplet whole and may therefore exceed ``max_bond``.
+            Eager mode supports only absolute and relative cutoffs without
+            renormalization.
         absorb : {-1, 0, 1, None}
             How to absorb the singular values.
 
@@ -810,6 +829,7 @@ class ArrayCommon:
         kwargs.setdefault("max_bond", max_bond)
         kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("renorm", renorm)
+        kwargs.setdefault("max_bond_mode", max_bond_mode)
         return self._split(**kwargs)
 
     def svd_via_eig(self, **kwargs):
@@ -826,10 +846,11 @@ class ArrayCommon:
     def svd_via_eig_truncated(
         self,
         cutoff=0.0,
-        cutoff_mode="rsum2",
+        cutoff_mode="rel",
         max_bond=None,
         absorb="both",
         renorm=False,
+        max_bond_mode="global",
         **kwargs,
     ):
         """Truncated singular value decomposition of this array, using
@@ -841,7 +862,7 @@ class ArrayCommon:
         cutoff : float, optional
             Singular value cutoff threshold.
         cutoff_mode : int or str, optional
-            How to perform the truncation:
+            How to perform the truncation. Defaults to ``"rel"``:
 
             - 1 or 'abs': trim values below ``cutoff``
             - 2 or 'rel': trim values below ``s[0] * cutoff``
@@ -852,6 +873,14 @@ class ArrayCommon:
 
         max_bond : int
             An explicit maximum bond dimension, use -1 for none.
+        max_bond_mode : {"global", "eager"}, optional
+            How to apply ``max_bond`` to sparse arrays. ``"global"`` computes
+            all block spectra before selecting values globally. ``"eager"``
+            spreads the bond dimension over sectors in proportion to their
+            current sizes before computing each block. Global mode keeps a
+            degenerate multiplet whole and may therefore exceed ``max_bond``.
+            Eager mode supports only absolute and relative cutoffs without
+            renormalization.
         absorb : {-1, 0, 1, None}
             How to absorb the singular values.
 
@@ -878,6 +907,7 @@ class ArrayCommon:
         kwargs.setdefault("max_bond", max_bond)
         kwargs.setdefault("absorb", absorb)
         kwargs.setdefault("renorm", renorm)
+        kwargs.setdefault("max_bond_mode", max_bond_mode)
         return self._split(**kwargs)
 
     def svd_rand_truncated(
@@ -887,6 +917,9 @@ class ArrayCommon:
         oversample=10,
         num_iterations=2,
         seed=None,
+        cutoff="auto",
+        cutoff_mode="rel",
+        max_bond_mode="eager",
         **kwargs,
     ) -> tuple["ArrayCommon", VectorCommon, "ArrayCommon"]:
         """Truncated singular value decomposition of this array, using
@@ -896,7 +929,8 @@ class ArrayCommon:
         Parameters
         ----------
         max_bond : int
-            Target rank / maximum bond dimension.
+            Target rank / maximum bond dimension. With sparse storage this is
+            spread over sectors in proportion to their current sizes.
         absorb : {-1, 0, 1, None}
             How to absorb the singular values.
 
@@ -911,6 +945,21 @@ class ArrayCommon:
             Number of power iterations for accuracy. Default is 2.
         seed : int, Generator or None, optional
             Random seed or generator for reproducibility.
+        cutoff : float or "auto", optional
+            Singular value cutoff threshold. Dynamic cutoffs are currently
+            only supported by the sparse backend. ``"auto"`` means no cutoff.
+        cutoff_mode : int or str, optional
+            How to perform the truncation. Defaults to ``"rel"``, so that
+            only the low-rank spectra are required. Cumulative modes are not
+            compatible with eager truncation.
+        max_bond_mode : {"global", "eager"}, optional
+            How to apply ``max_bond`` to sparse arrays. ``"eager"`` spreads
+            the bond dimension over sectors in proportion to their current
+            sizes before computing each block. ``"global"`` computes all
+            block spectra before selecting values globally. Global mode keeps
+            a degenerate multiplet whole and may therefore exceed
+            ``max_bond``. Eager mode supports only absolute and relative
+            cutoffs without renormalization.
 
         Returns
         -------
@@ -927,6 +976,12 @@ class ArrayCommon:
         kwargs.setdefault("oversample", oversample)
         kwargs.setdefault("num_iterations", num_iterations)
         kwargs.setdefault("seed", seed)
+        kwargs.setdefault("cutoff", 0.0 if cutoff == "auto" else cutoff)
+        kwargs.setdefault(
+            "cutoff_mode",
+            "rel" if cutoff_mode == "auto" else cutoff_mode,
+        )
+        kwargs.setdefault("max_bond_mode", max_bond_mode)
         return self._split(**kwargs)
 
     def qr(

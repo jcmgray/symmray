@@ -12,6 +12,9 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 
 - Fermionic arrays expose `dummy_parity`, the combined parity of their dummy modes, while preserving traced backend scalar types for flat arrays.
 - `phase_global(parity=...)` conditionally applies a global fermionic phase and supports traced parity scalars with the flat backend.
+- Sparse {func}`~symmray.linalg.svd_rand_truncated`: spread finite `max_bond` over charge sectors in proportion to their current sizes *before* computing block decompositions (otherwise no speedup) and also supports abs and rel cutoffs.
+- Sparse truncated SVD and eigendecomposition accept `max_bond_mode="eager"` for the same size-based allocation. Their default `max_bond_mode="global"` now selects the largest values across full block spectra even when `cutoff=0.0`, preserving degenerate multiplets that cross the threshold.
+- Truncated SVD and eigendecomposition methods now default to `cutoff_mode="rel"`.
 
 ## v0.3.1 (2026-08-25)
 

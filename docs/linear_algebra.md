@@ -3,8 +3,11 @@
 `symmray` applies linear algebra block by block while preserving charge and
 fermionic metadata.
 
-The decomposition routines currently use
-[`quimb`](https://quimb.readthedocs.io/) and require it to be installed.
+The decomposition routines currently use the
+[`array_split`](https://quimb.readthedocs.io/en/latest/autoapi/quimb/tensor/decomp/index.html#quimb.tensor.decomp.array_split)
+function from [`quimb`](https://quimb.readthedocs.io/) and require it to be
+installed.
+
 
 ## Standard decompositions
 
@@ -41,14 +44,16 @@ SVD and eigendecomposition return their spectrum as a
 charges to one-dimensional blocks and can be applied with
 [`multiply_diagonal`](#symmray.interface.multiply_diagonal).
 
+
 ## Tensor-network variants
 
 The following variants trade accuracy, stability, or setup cost for properties
 useful in tensor-network calculations:
 
-- [`svd_truncated`](#symmray.linalg.svd_truncated) and
-  [`eigh_truncated`](#symmray.linalg.eigh_truncated) truncate by `max_bond`,
+- [`svd_truncated`](#symmray.linalg.svd_truncated) truncate by `max_bond`,
   `cutoff`, and `cutoff_mode`
+- [`eigh_truncated`](#symmray.linalg.eigh_truncated) the same for an assumed
+  Hermitian matrix
 - [`svd_rand_truncated`](#symmray.linalg.svd_rand_truncated) uses a randomized
   low-rank approximation
 - [`svd_via_eig_truncated`](#symmray.linalg.svd_via_eig_truncated) computes an
@@ -61,11 +66,55 @@ useful in tensor-network calculations:
   Cholesky factorization
 
 Decompositions with singular or eigenvalues accept `absorb` to control where
-the spectrum is placed. For example, `absorb="left"` returns an isometric right
-factor.
+the spectrum is 'placed'. For example, `absorb="left"` returns an isometric
+right factor.
 
-The sparse and flat layouts share this interface. Their numerical behavior can
-differ because flat algorithms operate on stacked blocks.
+The integer value or any of its listed string aliases can be supplied:
+
+| `absorb` value | String aliases | Returned factors |
+| --- | --- | --- |
+| `None` | `"U,s,VH"` | `U`, `s`, and `VH` separately |
+| `2` | `"s"` | `s` only |
+| `-12` | `"lsqrt"` | `U * sqrt(s)` only |
+| `-11` | `"VH"`, `"rorthog"` | `VH` only |
+| `-10` | `"Us"`, `"lfactor"` | `U * s` only |
+| `-1` | `"Us,VH"`, `"left"` | `U * s` and `VH` |
+| `0` | `"Usq,sqVH"`, `"both"` | `U * sqrt(s)` and `sqrt(s) * VH` |
+| `1` | `"U,sVH"`, `"right"` | `U` and `s * VH` |
+| `10` | `"U"`, `"lorthog"` | `U` only |
+| `11` | `"sVH"`, `"rfactor"` | `s * VH` only |
+| `12` | `"sqVH"`, `"rsqrt"` | `sqrt(s) * VH` only |
+
+In many cases, specifying the minimally required `absorb` allows various faster
+shortcuts.
+
+
+## Sector truncation
+
+Sparse truncated decompositions accept `max_bond_mode`. With `"global"`, all
+block spectra are computed before the largest values are selected globally.
+This is the default for exact SVD and eigendecomposition. A degenerate
+multiplet crossing the threshold is kept whole, so the resulting bond may
+slightly exceed `max_bond`.
+
+The default `cutoff_mode="rel"` truncates values relative to the largest value
+across all retained sectors.
+
+With `max_bond_mode="eager"`, `max_bond` is spread over charge sectors in
+proportion to their current sizes *before* the block decompositions are
+computed. Each sector receives at least one mode when `max_bond` allows;
+otherwise the largest sectors are retained. This is the default for
+[`svd_rand_truncated`](#symmray.linalg.svd_rand_truncated), since otherwise
+there is no low-rank speedup. An `abs` or `rel` cutoff can further truncate the
+retained spectra globally. Cumulative cutoff modes and renormalization are not
+compatible with eager mode because they require the discarded spectra.
+
+For flat arrays, both `max_bond_mode` values currently use the equivalent of
+`"eager"` truncation. Their sectors have uniform sizes by construction, so
+`max_bond` is divided uniformly across the stacked blocks before decomposition.
+
+
+## Fermionic arrays
 
 For fermionic arrays, [`eigh_truncated`](#symmray.linalg.eigh_truncated) and
 Cholesky factorizations drop `dummy_modes` and the array label from returned
