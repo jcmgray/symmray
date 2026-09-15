@@ -348,7 +348,13 @@ class FlatSubIndexInfo(SubInfo):
         )
 
     def select_charge(self, charge):
-        charge = ar.do("full", (1,), charge, like=self.subkeys)
+        # this specific form is to support torch.vmap
+        #     ("full" or "array" would call `.item()`)
+        charge = ar.do(
+            "reshape",
+            ar.do("asarray", charge, like=self.subkeys),
+            (1,),
+        )
         new_subkeys = ar.do("take", self.subkeys, charge, axis=0)
         return FlatSubIndexInfo(
             indices=self.indices,

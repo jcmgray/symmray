@@ -137,6 +137,62 @@ class TestVectorizedFermionicAmplitudes:
         av = torch.vmap(amplitude, in_dims=(0, None))(txs, tparams)
         assert list(map(float, av)) == pytest.approx(refs, rel=1e-10)
 
+    def test_torch_boundary_mps_vmap(self, convert_backend):
+        torch = pytest.importorskip("torch")
+
+        peps = sr.networks.PEPS_fermionic_rand(
+            "Z2",
+            4,
+            4,
+            bond_dim=4,
+            phys_dim=2,
+            seed=42,
+            flat=True,
+            subsizes="equal",
+            dtype="float32",
+            site_charge=lambda site: 0,
+        )
+        peps.apply_to_arrays(lambda x: convert_backend(x, "torch"))
+
+        configs = np.zeros((2, peps.nsites), dtype=np.int64)
+        configs[1, :2] = 1
+        configs = convert_backend(configs, "torch")
+
+        class BoundaryAmplitude(torch.nn.Module):
+            def forward(self, config):
+                tn = peps.isel(
+                    {
+                        peps.site_ind(*site): config[i]
+                        for i, site in enumerate(peps.sites)
+                    }
+                )
+                # saturate the boundary bond to exercise fused-index alignment
+                tn.contract_boundary_from_xmin_(
+                    max_bond=10,
+                    cutoff=0.0,
+                    xrange=[0, 1],
+                    mode="mps",
+                    canonize=True,
+                )
+                tn.contract_boundary_from_xmax_(
+                    max_bond=10,
+                    cutoff=0.0,
+                    xrange=[2, 3],
+                    mode="mps",
+                    canonize=True,
+                )
+                return tn.contract()
+
+        with torch.no_grad():
+            model = torch.export.export(
+                BoundaryAmplitude(),
+                (configs[0],),
+            ).module()
+
+        expected = torch.stack([model(config) for config in configs])
+        actual = torch.vmap(model)(configs)
+        torch.testing.assert_close(actual, expected)
+
     def test_jax_hotrg_jit_vmap(self, convert_backend):
         jax = pytest.importorskip("jax")
 
