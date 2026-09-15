@@ -253,11 +253,11 @@ class BlockCommon:
 
         return xy
 
-    def _do_reduction(self, fn):
+    def _do_reduction_blockwise(self, fn):
         """Perform (associative) reduction operation on blocks of the array."""
         if isinstance(fn, str):
             fn = ar.get_lib_fn(self.backend, fn)
-            _stack = ar.get_lib_fn(self.backend, "stack")
+        _stack = ar.get_lib_fn(self.backend, "stack")
         block_results = tuple(map(fn, self.get_all_blocks()))
         return fn(_stack(block_results))
 

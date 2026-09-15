@@ -67,6 +67,22 @@ class FermionicCommon:
         """The combined parity of the dummy modes."""
         return sum(mode.parity for mode in self.dummy_modes) % 2
 
+    def _do_unary_op(self, fn, inplace=False) -> "FermionicCommon":
+        """Need to sync phases before applying an elementwise function, which
+        does not generally commute with them.
+
+        This is used by `abs`, `sqrt`, `clip` and others.
+        """
+        new = self.phase_sync(inplace=inplace)
+        return new._do_unary_op_blockwise(fn, inplace=True)
+
+    def _do_reduction(self, fn):
+        """Need to sync phases before reducing over all elements.
+
+        This is used by `sum`, `max`, `min` and others.
+        """
+        return self.phase_sync()._do_reduction_blockwise(fn)
+
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations.
 

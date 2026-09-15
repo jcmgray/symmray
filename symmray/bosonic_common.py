@@ -13,6 +13,12 @@ class BosonicCommon:
         """
         return self._to_pytree_abelian()
 
+    def _do_unary_op(self, fn, inplace=False) -> "BosonicCommon":
+        return self._do_unary_op_blockwise(fn, inplace=inplace)
+
+    def _do_reduction(self, fn):
+        return self._do_reduction_blockwise(fn)
+
     def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
         return self._binary_blockwise_op_abelian(
             other, fn, missing=missing, inplace=inplace

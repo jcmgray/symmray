@@ -150,7 +150,7 @@ class FlatCommon:
         xy.modify(blocks=fn(xy._blocks, other._blocks))
         return xy
 
-    def _do_reduction(self, fn):
+    def _do_reduction_blockwise(self, fn):
         if isinstance(fn, str):
             fn = ar.get_lib_fn(self.backend, fn)
         return fn(self._blocks)

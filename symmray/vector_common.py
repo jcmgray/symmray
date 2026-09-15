@@ -9,6 +9,12 @@ from .utils import DEBUG
 
 
 class VectorCommon:
+    def _do_unary_op(self, fn, inplace=False) -> "VectorCommon":
+        return self._do_unary_op_blockwise(fn, inplace=inplace)
+
+    def _do_reduction(self, fn):
+        return self._do_reduction_blockwise(fn)
+
     def __add__(self, other, inplace=False):
         if isinstance(other, self.__class__):
             # can directly add matching vectors

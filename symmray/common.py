@@ -106,7 +106,7 @@ class SymmrayCommon:
         new.apply_to_arrays(operator.neg)
         return new
 
-    def _do_unary_op(self, fn, inplace=False) -> "SymmrayCommon":
+    def _do_unary_op_blockwise(self, fn, inplace=False) -> "SymmrayCommon":
         """Perform a unary operation on blocks of the array."""
         new = self if inplace else self.copy()
         if isinstance(fn, str):
@@ -128,10 +128,8 @@ class SymmrayCommon:
 
     def clip(self, a_min, a_max):
         """Clip the values in the array."""
-        new = self.copy()
         _clip = ar.get_lib_fn(self.backend, "clip")
-        new.apply_to_arrays(lambda x: _clip(x, a_min, a_max))
-        return new
+        return self._do_unary_op(lambda x: _clip(x, a_min, a_max))
 
     def max(self):
         """Get the maximum element from any block in the array."""

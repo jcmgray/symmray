@@ -1136,3 +1136,53 @@ def test_koszul_sort_phase_mixed_explicit_torch():
     ]
     res = _koszul_sort_phase(pruned, "torch")
     assert isinstance(res, int) and res == 1
+
+
+class TestReductionsAndUnaryOps:
+    """Lazy phases must be resolved before any reduction or elementwise op,
+    else the results silently disagree with the dense array.
+    """
+
+    @staticmethod
+    def get_phased(symmetry, seed=42):
+        x = get_zn_blocksparse_flat_compat(
+            symmetry, (4, 4, 4), fermionic=True, seed=seed
+        )
+        x.randomize_phases(seed + 1, inplace=True)
+        fx = x.to_flat()
+        assert fx._phases is not None
+        return fx
+
+    @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+    @pytest.mark.parametrize("fn", ["sum", "max", "min"])
+    def test_reduction_matches_dense(self, symmetry, fn):
+        x = self.get_phased(symmetry)
+        expected = getattr(x.to_dense(), fn)()
+        assert getattr(x, fn)() == pytest.approx(expected)
+        # the reduction should not have consumed the lazy phases
+        assert x._phases is not None
+
+    @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+    def test_abs_matches_dense(self, symmetry):
+        import numpy as np
+
+        x = self.get_phased(symmetry)
+        np.testing.assert_allclose(x.abs().to_dense(), np.abs(x.to_dense()))
+        assert x._phases is not None
+
+    @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+    def test_clip_matches_dense(self, symmetry):
+        import numpy as np
+
+        x = self.get_phased(symmetry)
+        np.testing.assert_allclose(
+            x.clip(-0.5, 0.5).to_dense(), np.clip(x.to_dense(), -0.5, 0.5)
+        )
+
+    @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+    def test_isfinite_has_no_outstanding_phases(self, symmetry):
+        # a boolean result can't absorb a -1 phase later on
+        x = self.get_phased(symmetry)
+        finite = x.isfinite()
+        assert finite._phases is None
+        assert bool(finite.all())

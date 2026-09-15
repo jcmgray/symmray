@@ -580,3 +580,44 @@ def test_to_pytree_and_back(symmetry, shape, charge):
         yf = type(xf).from_pytree(tree)
         xf.test_allclose(yf)
         yf.unfuse_all().test_allclose(x)
+
+
+class TestReductionsAndUnaryOps:
+    """Lazy phases must be resolved before any reduction or elementwise op,
+    else the results silently disagree with the dense array.
+    """
+
+    @pytest.mark.parametrize("symmetry", all_symmetries)
+    @pytest.mark.parametrize("fn", ["sum", "max", "min"])
+    def test_reduction_matches_dense(self, symmetry, fn):
+        x = sr.utils.get_rand(symmetry, (4, 4, 4), fermionic=True, seed=42)
+        x.randomize_phases(43, inplace=True)
+        assert x.phases
+        expected = getattr(x.to_dense(), fn)()
+        assert getattr(x, fn)() == pytest.approx(expected)
+        # the reduction should not have consumed the lazy phases
+        assert x.phases
+
+    @pytest.mark.parametrize("symmetry", all_symmetries)
+    def test_abs_matches_dense(self, symmetry):
+        x = sr.utils.get_rand(symmetry, (4, 4, 4), fermionic=True, seed=42)
+        x.randomize_phases(43, inplace=True)
+        np.testing.assert_allclose(x.abs().to_dense(), np.abs(x.to_dense()))
+        assert x.phases
+
+    @pytest.mark.parametrize("symmetry", all_symmetries)
+    def test_clip_matches_dense(self, symmetry):
+        x = sr.utils.get_rand(symmetry, (4, 4, 4), fermionic=True, seed=42)
+        x.randomize_phases(43, inplace=True)
+        np.testing.assert_allclose(
+            x.clip(-0.5, 0.5).to_dense(), np.clip(x.to_dense(), -0.5, 0.5)
+        )
+
+    @pytest.mark.parametrize("symmetry", all_symmetries)
+    def test_isfinite_has_no_outstanding_phases(self, symmetry):
+        # a boolean result can't absorb a -1 phase later on
+        x = sr.utils.get_rand(symmetry, (4, 4, 4), fermionic=True, seed=42)
+        x.randomize_phases(43, inplace=True)
+        finite = x.isfinite()
+        assert not finite.phases
+        assert bool(finite.all())
