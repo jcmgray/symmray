@@ -714,3 +714,47 @@ def test_subinfo_select_charge_backend_charge(
         # raises here
         got = jax.jit(lambda c: subinfo.select_charge(c).subkeys)(1)
         np.testing.assert_array_equal(np.asarray(got), expected)
+
+
+def test_subinfo_select_charge_torch_vmap(
+    require_backend,
+    convert_backend,
+):
+    import numpy as np
+
+    require_backend("torch")
+    import torch
+
+    subinfo = _get_fused_subinfo(_get_rand_3d().to("torch"))
+    charges = convert_backend(np.asarray([0, 1]), "torch")
+
+    actual = torch.vmap(lambda c: subinfo.select_charge(c).subkeys)(charges)
+    expected = subinfo.subkeys[:, None, :, :]
+
+    torch.testing.assert_close(actual, expected)
+
+
+def test_select_charge_fused_axis_torch_vmap(
+    require_backend,
+    convert_backend,
+):
+    import numpy as np
+
+    require_backend("torch")
+    import torch
+
+    x = _get_rand_3d().to("torch").fuse((1, 2))
+
+    def select(charge):
+        y = x.select_charge(axis=1, charge=charge)
+        return y.sectors, y.blocks, y.indices[1].subinfo.subkeys
+
+    charges = convert_backend(np.asarray([0, 1]), "torch")
+    actual = torch.vmap(select)(charges)
+    expected = tuple(
+        torch.stack(values)
+        for values in zip(*(select(charge) for charge in (0, 1)))
+    )
+
+    for got, want in zip(actual, expected):
+        torch.testing.assert_close(got, want)

@@ -16,6 +16,11 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Sparse truncated SVD and eigendecomposition accept `max_bond_mode="eager"` for the same size-based allocation. Their default `max_bond_mode="global"` now selects the largest values across full block spectra even when `cutoff=0.0`, preserving degenerate multiplets that cross the threshold.
 - Truncated SVD and eigendecomposition methods now default to `cutoff_mode="rel"`.
 
+**Bug Fixes:**
+
+- Flat fused-index charge selection supports traced scalar charges, fixing batched index selection under `torch.vmap`, for example in truncated boundary contractions ({issue}`52`).
+
+
 ## v0.3.1 (2026-08-25)
 
 **Enhancements:**
