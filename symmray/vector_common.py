@@ -15,6 +15,14 @@ class VectorCommon:
     def _do_reduction(self, fn):
         return self._do_reduction_blockwise(fn)
 
+    def get_scalar_element(self):
+        """Assuming the vector is a scalar, get that scalar element."""
+        return self._get_scalar_element_blockwise()
+
+    def item(self):
+        """Convert this vector to a scalar, if it is a scalar vector."""
+        return self._item_blockwise()
+
     def __add__(self, other, inplace=False):
         if isinstance(other, self.__class__):
             # can directly add matching vectors

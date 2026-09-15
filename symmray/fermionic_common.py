@@ -83,6 +83,18 @@ class FermionicCommon:
         """
         return self.phase_sync()._do_reduction_blockwise(fn)
 
+    def get_scalar_element(self):
+        """Assuming the array is a scalar, get that scalar element, with any
+        lazy phase resolved first.
+        """
+        return self.phase_sync()._get_scalar_element_blockwise()
+
+    def item(self):
+        """Convert this array to a scalar, if it is a scalar array, with any
+        lazy phase resolved first.
+        """
+        return self.phase_sync()._item_blockwise()
+
     def _binary_blockwise_op(self, other, fn, inplace=False, **kwargs):
         """Need to sync phases before performing blockwise operations.
 
@@ -353,7 +365,6 @@ class FermionicCommon:
         c._resolve_dummy_modes_combine(a, b)
 
         if (c.ndim == 0) and (not preserve_array):
-            c.phase_sync(inplace=True)
             return c.get_scalar_element()
 
         return c
@@ -383,7 +394,6 @@ class FermionicCommon:
         c._resolve_dummy_modes_combine(a, b)
 
         if c.ndim == 0 and (not preserve_array):
-            c.phase_sync(inplace=True)
             return c.get_scalar_element()
 
         return c

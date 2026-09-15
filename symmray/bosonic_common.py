@@ -19,6 +19,14 @@ class BosonicCommon:
     def _do_reduction(self, fn):
         return self._do_reduction_blockwise(fn)
 
+    def get_scalar_element(self):
+        """Assuming the array is a scalar, get that scalar element."""
+        return self._get_scalar_element_blockwise()
+
+    def item(self):
+        """Convert this array to a scalar, if it is a scalar array."""
+        return self._item_blockwise()
+
     def _binary_blockwise_op(self, other, fn, missing=None, inplace=False):
         return self._binary_blockwise_op_abelian(
             other, fn, missing=missing, inplace=inplace

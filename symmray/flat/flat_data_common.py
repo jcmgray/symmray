@@ -109,7 +109,7 @@ class FlatCommon:
         """Get the array namespace for the underlying blocks."""
         return ar.get_namespace(self._blocks)
 
-    def get_scalar_element(self):
+    def _get_scalar_element_blockwise(self):
         """Get the scalar element from a scalar block array."""
         if self.shape_block != ():
             raise ValueError("Array does not have scalar blocks.")
@@ -136,7 +136,7 @@ class FlatCommon:
     def apply_to_arrays(self, fn):
         self._blocks = fn(self._blocks)
 
-    def item(self):
+    def _item_blockwise(self):
         """Convert block array to a scalar if it is a scalar block array."""
         return self._blocks.item()
 

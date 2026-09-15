@@ -20,6 +20,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 
 - Flat fused-index charge selection supports traced scalar charges, fixing batched index selection under `torch.vmap`, for example in truncated boundary contractions ({issue}`52`).
 - 'Fermionic reductions' (`sum`, `max`, `min`, `all`, `any`) and elementwise operations (`abs`, `sqrt`, `clip`, `isfinite`, `real`, `imag`) now `phase_sync` (note some of these are not well-defined but its useful to match the equivalent `to_dense`)
+- Fermionic `item` and `get_scalar_element` now `phase_sync`, including `float`, `complex`, `int` and `bool` conversions.
 
 
 ## v0.3.1 (2026-08-25)

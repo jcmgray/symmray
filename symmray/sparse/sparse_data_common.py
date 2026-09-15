@@ -107,7 +107,7 @@ class BlockCommon:
         """Get the array namespace for the underlying blocks."""
         return ar.get_namespace(self.get_any_array())
 
-    def get_scalar_element(self):
+    def _get_scalar_element_blockwise(self):
         """Assuming the block array is a scalar, get that scalar element."""
         sectors = self.sectors
 
@@ -173,7 +173,7 @@ class BlockCommon:
         for sector, array in self.get_sector_block_pairs():
             self.set_block(sector, fn(array))
 
-    def item(self):
+    def _item_blockwise(self):
         """Convert block array to a scalar if it is a scalar block array."""
         (array,) = self.get_all_blocks()
         return array.item()

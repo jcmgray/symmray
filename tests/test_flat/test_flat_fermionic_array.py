@@ -1186,3 +1186,34 @@ class TestReductionsAndUnaryOps:
         finite = x.isfinite()
         assert finite._phases is None
         assert bool(finite.all())
+
+
+class TestScalarElement:
+    """Extracting a scalar must resolve any lazy phase, else the sign is
+    silently dropped.
+    """
+
+    @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+    def test_item_matches_dense(self, symmetry):
+        x = get_zn_blocksparse_flat_compat(
+            symmetry, (4, 4), fermionic=True, seed=42
+        ).to_flat()
+        s = x.tensordot(x.conj(), axes=2, preserve_array=True)
+        s.phase_global(inplace=True)
+        assert s._phases is not None
+        expected = s.to_dense().item()
+        assert s.item() == pytest.approx(expected)
+        assert s.get_scalar_element() == pytest.approx(expected)
+        assert float(s) == pytest.approx(expected)
+        # extracting the scalar should not have consumed the lazy phases
+        assert s._phases is not None
+
+    @pytest.mark.parametrize("symmetry", ["Z2", "Z4"])
+    def test_tensordot_scalar_matches_dense(self, symmetry):
+        x = get_zn_blocksparse_flat_compat(
+            symmetry, (4, 4), fermionic=True, seed=42
+        ).to_flat()
+        s = x.tensordot(x.conj(), axes=2, preserve_array=True)
+        assert x.tensordot(x.conj(), axes=2) == pytest.approx(
+            s.to_dense().item()
+        )
