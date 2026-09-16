@@ -439,6 +439,27 @@ class FlatArrayCommon:
             self._indices = indices
         return self
 
+    def _mark_empty_fused(self, axis):
+        """Mark the size-1 ``axis`` as the fusion of no indices at all, so that
+        unfusing it removes the axis again.
+        """
+        ix = self._indices[axis]
+        # one overall charge, one subsector, no subcharges within it: take an
+        # empty column so the dtype and device follow the sectors
+        subkeys = ar.do(
+            "reshape",
+            self._sectors[:1, axis:axis],
+            (1, 1, 0),
+            like=self.backend,
+        )
+        subinfo = FlatSubIndexInfo(indices=(), subkeys=subkeys)
+        self._indices = (
+            *self._indices[:axis],
+            ix.copy_with(subinfo=subinfo),
+            *self._indices[axis + 1 :],
+        )
+        return self
+
     def _set_params_abelian(self, params):
         """Set the underlying array blocks."""
         self._set_params_flatcommon(params)

@@ -11,6 +11,18 @@ def conj(x, **kwargs):
     return x.conj(**kwargs)
 
 
+def gram(x, axes=-1):
+    """Form ``dag(x) @ x``, leaving ``axes`` open in both copies.
+
+    See :meth:`~symmray.fermionic_common.FermionicCommon.gram` for the
+    fermionic sign convention.
+    """
+    return x.gram(axes=axes)
+
+
+ar.register_function("symmray", "gram", gram)
+
+
 def max(x):
     """Return the maximum value of a `symmray` array."""
     try:

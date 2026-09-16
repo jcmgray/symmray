@@ -88,6 +88,15 @@ The integer value or any of its listed string aliases can be supplied:
 In many cases, specifying the minimally required `absorb` allows various faster
 shortcuts.
 
+### Forming $X^\dagger X$ like objects
+
+Use `x.gram(axes=-1)` or `sr.gram(x, axes=-1)` to form `dag(x) @ x`,
+contracting every other axis against the conjugate and leaving `axes` open in
+both copies. The open bra axes come first, then the open ket axes. For
+fermionic arrays the result is positive as a fermionic operator, so its
+`eigh()` spectrum is nonnegative, although the dense matrix it stores can
+include negative odd-sector signs. Conjugate dummy modes cancel, and only a
+single open axis is currently implemented.
 
 ## Sector truncation
 

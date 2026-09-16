@@ -17,12 +17,14 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Sparse truncated SVD and eigendecomposition accept `max_bond_mode="eager"` for the same size-based allocation. Their default `max_bond_mode="global"` now selects the largest values across full block spectra even when `cutoff=0.0`, preserving degenerate multiplets that cross the threshold.
 - Truncated SVD and eigendecomposition methods now default to `cutoff_mode="rel"`.
 - Contraction now traces out conjugate `dummy_modes` pairs in a second pass over the sorted modes, so both backends fully reduce them and agree. The flat backend previously only sorted them.
+- Add `gram(axes=-1)` and `symmray.gram` to form `dag(x) @ x`, contracting every other axis against the conjugate. Sparse and flat fermionic arrays use the positive fermionic operator convention, and currently support a single open axis.
 
 **Bug Fixes:**
 
 - Flat fused-index charge selection supports traced scalar charges, fixing batched index selection under `torch.vmap`, for example in truncated boundary contractions ({issue}`52`).
 - 'Fermionic reductions' (`sum`, `max`, `min`, `all`, `any`) and elementwise operations (`abs`, `sqrt`, `clip`, `isfinite`, `real`, `imag`) now `phase_sync` (note some of these are not well-defined but its useful to match the equivalent `to_dense`)
 - Fermionic `item` and `get_scalar_element` now `phase_sync`, including `float`, `complex`, `int` and `bool` conversions.
+- Fusing an empty group of axes now records subindex information for the expanded axis, so that `unfuse` removes it again and the fuse/unfuse round trip is total. Fermionic unfusing also normalizes negative axes before computing phases.
 
 
 ## v0.3.1 (2026-08-25)

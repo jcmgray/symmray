@@ -140,6 +140,19 @@ def _reduce_parity_terms(K, singles, parities_i, parities_j, backend):
     return (K % 2) * -2 + 1
 
 
+def _combine_phases(*phases):
+    """Multiply phases together, skipping statically trivial ones so that a
+    pairless contraction adds no ops. Returns ``None`` if there is nothing to
+    apply, so callers can skip the multiplication entirely.
+    """
+    combined = None
+    for p in phases:
+        if isinstance(p, int) and p == 1:
+            continue
+        combined = p if combined is None else combined * p
+    return combined
+
+
 def _annihilate_sorted_phase(modes, backend):
     """Trace out conjugate pairs from an already sorted sequence of ``modes``,
     returning the surviving modes and the fermionic sign this produces.
@@ -349,10 +362,13 @@ class FermionicCommon:
         axis : int
             The axis to unfuse.
         """
+        (axis,) = _normalize_axes((axis,), self.ndim)
         index = self.indices[axis]
+        if index.subinfo is None:
+            raise ValueError(f"Axis {axis} is not fused in this array.")
 
         if index.dual:
-            sub_indices = self.indices[axis].subinfo.indices
+            sub_indices = index.subinfo.indices
             # if overall index is dual, need to (see fermionic fuse):
             #     1. flip not dual sub indices back
             #     2. perform virtual transpose within group
@@ -674,6 +690,44 @@ class FermionicCommon:
         axes = _normalize_axes(axes, self.ndim)
         new = self.conj(inplace=inplace)
         return new._phase_project_fermionic(axes, inplace=True)
+
+    def gram(self, axes=-1) -> "FermionicCommon":
+        """Form ``dag(x) @ x``, contracting every axis but ``axes`` against
+        the conjugate and leaving ``axes`` open in both copies.
+
+        Parameters
+        ----------
+        axes : int or sequence of int, optional
+            The axis to leave open in each copy, default the last. Negative
+            axes are supported. Only a single open axis is currently
+            implemented.
+
+        Returns
+        -------
+        FermionicCommon
+            The result, the open bra axis followed by the open ket axis. It is
+            positive as a fermionic operator, so ``eigh()`` gives nonnegative
+            eigenvalues, although the dense matrix it stores need not be
+            positive semidefinite. Conjugate dummy modes cancel.
+
+        Notes
+        -----
+        The conjugate is taken with ``phase_dual=True``, so that every axis
+        carries its outer-leg phase, and a ``phase_flip(0)`` then puts the
+        result in the convention where ``dagger()`` and ``eigh()`` behave as
+        expected. That flip is its own inverse, so applying it again gives
+        back the plain contraction of the conjugate with the array.
+        """
+        axes = _normalize_axes(axes, self.ndim)
+        if len(axes) != 1:
+            raise NotImplementedError(
+                "Fermionic gram currently supports a single open axis, the "
+                "phase convention for several open axes is not established."
+            )
+        (axis,) = axes
+        rest = tuple(i for i in range(self.ndim) if i != axis)
+        bra = self.conj(phase_dual=True)
+        return bra.tensordot(self, axes=(rest, rest)).phase_flip(0)
 
     def allclose(self, other, **kwargs):
         """Check if two fermionic arrays are element-wise equal within a

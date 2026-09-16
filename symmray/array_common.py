@@ -544,9 +544,12 @@ class ArrayCommon:
             xf = self if inplace else self.copy()
 
         if expand_empty and _axes_expand:
-            g0 = min(g for groups in _axes_groups for g in groups)
+            # with no real group to anchor to, the new axes go at the front
+            g0 = min((g for gs in _axes_groups for g in gs), default=0)
             for ax in _axes_expand:
                 xf.expand_dims(g0 + ax, inplace=True)
+                # record a fusion of no indices, so the axis unfuses away again
+                xf._mark_empty_fused(g0 + ax)
 
         return xf
 

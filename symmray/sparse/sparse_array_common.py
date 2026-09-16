@@ -624,6 +624,20 @@ class SparseArrayCommon:
 
         return self
 
+    def _mark_empty_fused(self, axis):
+        """Mark the size-1 ``axis`` as the fusion of no indices at all, so that
+        unfusing it removes the axis again.
+        """
+        ix = self._indices[axis]
+        (c,) = ix.chargemap
+        subinfo = SubIndexInfo(indices=(), extents={c: {(): 1}})
+        self._indices = (
+            *self._indices[:axis],
+            ix.copy_with(subinfo=subinfo),
+            *self._indices[axis + 1 :],
+        )
+        return self
+
     def _to_pytree_abelian(self):
         data = self._to_pytree_blockcommon()
         data["indices"] = tuple(ix.to_pytree() for ix in self._indices)
@@ -1512,6 +1526,8 @@ class SparseArrayCommon:
 
         # get required information from the fused index
         subinfo = self.indices[axis].subinfo
+        if subinfo is None:
+            raise ValueError(f"Axis {axis} is not fused in this array.")
 
         # info for how to split/slice the linear index into sub charges
         subindex_slices = {

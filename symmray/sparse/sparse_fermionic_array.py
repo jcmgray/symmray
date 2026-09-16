@@ -7,6 +7,7 @@ from ..common import SymmrayCommon
 from ..fermionic_common import (
     FermionicCommon,
     _annihilate_sorted_phase,
+    _combine_phases,
     _koszul_sort_phase,
     parse_dummy_modes,
 )
@@ -447,9 +448,10 @@ class FermionicArray(
 
         dummy_modes = [*l_dummy_modes, *r_dummy_modes]
 
-        # e.g. (1, 2, 4, 5) + (3, 6, 7) -> [1, 2, 4, 5, 3, 6, 7]
+        # merged as l-dummies, l-sectors, r-dummies, r-sectors, e.g.
+        # (1+, 3-) + (2+, 1-) -> [1+, 3-, 2+, 1-], so moving the r-dummies
+        # left over the l-sectors generates a sign
         if left.parity and right.dummy_parity:
-            # moving r-dummy_modes charges over l-sectors generates sign
             phase = -1
         else:
             phase = 1
@@ -457,7 +459,7 @@ class FermionicArray(
         # sort the merged dummy modes into canonical label order, the sign of
         # that sort being the Koszul sign
         perm = sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
-        phase = phase * _koszul_sort_phase(dummy_modes, self.backend)
+        swap_phase = _koszul_sort_phase(dummy_modes, self.backend)
         dummy_modes = [dummy_modes[k] for k in perm]
 
         # second pass over the sorted modes, tracing out conjugate pairs and
@@ -465,9 +467,9 @@ class FermionicArray(
         dummy_modes, trace_phase = _annihilate_sorted_phase(
             dummy_modes, self.backend
         )
-        phase = phase * trace_phase
 
-        if phase == -1:
+        # sparse dummy mode parities are always static, so is the phase
+        if _combine_phases(phase, swap_phase, trace_phase) == -1:
             self.phase_global(inplace=True)
 
         self._dummy_modes = tuple(dummy_modes)

@@ -89,6 +89,26 @@ class BosonicCommon:
         _normalize_axes(axes, self.ndim)
         return self.conj(inplace=inplace)
 
+    def gram(self, axes=-1) -> "BosonicCommon":
+        """Form ``dag(x) @ x``, contracting every axis but ``axes`` against
+        the conjugate and leaving ``axes`` open in both copies.
+
+        Parameters
+        ----------
+        axes : int or sequence of int, optional
+            The axes to leave open in each copy, default the last. Negative
+            axes are supported.
+
+        Returns
+        -------
+        BosonicCommon
+            The positive semidefinite result, the open bra axes followed by
+            the open ket axes, each in their original order.
+        """
+        axes = _normalize_axes(axes, self.ndim)
+        rest = tuple(i for i in range(self.ndim) if i not in axes)
+        return self.conj().tensordot(self, axes=(rest, rest))
+
     def dagger(self, inplace=False) -> "BosonicCommon":
         """Return the adjoint of this abelian array, including the
         indices and any subindex fusing information.
@@ -149,6 +169,7 @@ class BosonicCommon:
         -------
         BosonicCommon
         """
+        (axis,) = _normalize_axes((axis,), self.ndim)
         return self._unfuse_abelian(axis, inplace=inplace)
 
     def squeeze(self, axis=None, inplace=False) -> "BosonicCommon":

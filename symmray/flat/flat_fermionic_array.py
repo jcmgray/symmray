@@ -9,6 +9,7 @@ from ..common import SymmrayCommon
 from ..fermionic_common import (
     FermionicCommon,
     _annihilate_sorted_phase,
+    _combine_phases,
     _koszul_sort_phase,
     parse_dummy_modes,
 )
@@ -653,9 +654,7 @@ class FermionicArrayFlat(
         # 2. sort the merged dummy modes into canonical label order; the
         # fermionic sign of that sort is the Koszul sign (computed vectorized,
         # as parities may be jax tracers - see `_koszul_sort_phase`).
-        perm = tuple(
-            sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
-        )
+        perm = sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
         swap_phase = _koszul_sort_phase(dummy_modes, self.backend)
 
         # apply the (static) reordering
@@ -667,13 +666,8 @@ class FermionicArrayFlat(
             dummy_modes, self.backend
         )
 
-        # fold in all phases, skipping any statically trivial ones so that a
-        # pairless contraction adds no ops
-        phases = self.phases
-        for p in (phase, swap_phase, trace_phase):
-            if not (isinstance(p, int) and p == 1):
-                phases = phases * p
-
+        phase = _combine_phases(phase, swap_phase, trace_phase)
+        phases = self.phases if phase is None else self.phases * phase
         self.modify(dummy_modes=tuple(dummy_modes), phases=phases)
 
     def _resolve_dummy_modes_squeeze(self, axes_squeeze):
