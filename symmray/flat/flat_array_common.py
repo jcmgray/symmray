@@ -25,32 +25,6 @@ from ..utils import DEBUG, get_array_cls
 from .flat_index import FlatIndex, FlatSubIndexInfo
 from .flat_vector import FlatVector
 
-try:
-    from einops import rearrange as _einops_rearrange
-    from einops import repeat as _einops_repeat
-    from einops.array_api import rearrange as _einops_rearrange_api
-    from einops.array_api import repeat as _einops_repeat_api
-
-    # want to support both standard and array_api versions
-
-    def einops_rearrange(tensor, *args, **kwargs):
-        if hasattr(tensor, "__array_namespace__"):
-            return _einops_rearrange_api(tensor, *args, **kwargs)
-        return _einops_rearrange(tensor, *args, **kwargs)
-
-    def einops_repeat(tensor, *args, **kwargs):
-        if hasattr(tensor, "__array_namespace__"):
-            return _einops_repeat_api(tensor, *args, **kwargs)
-        return _einops_repeat(tensor, *args, **kwargs)
-
-except ImportError:
-
-    def missinglib(*args, name, **kwargs):
-        raise ImportError(f"'{name}' required for this function.")
-
-    einops_rearrange = functools.partial(missinglib, name="einops.rearrange")
-    einops_repeat = functools.partial(missinglib, name="einops.repeat")
-
 
 def lexsort_sectors(sectors, order=None, stable=True):
     """Given a sequence of columns of positive integers, or equivalently a
@@ -372,64 +346,6 @@ def _calc_fused_sectors_subkeys_create(
         ]
 
     return new_sectors, subkeys
-
-
-def _calc_fuse_rearrange_pattern(
-    num_groups,
-    axes_groups,
-    axes_before,
-    axes_after,
-    axes_ncharges,
-    ndim,
-):
-    # now we create the unmerge/merge pattern for einops:
-    # heres a full example for 2 groups and 6 axes:
-    # axes_groups = ((5, 2), (4, 1))
-    # '(B B0 B1) p0 p1 p2 p3 p4 p5 -> B p0 (B0 p5 p2) (B1 p4 p1) p3'
-
-    # LHS, first we 'unfuse' the block index
-    # with one new axis for each group, `ax0 -> (B B0 B1 B2 ...)`
-    pattern = ["(B"]
-    for g in range(num_groups):
-        pattern.append(f" B{g}")
-    pattern.append(")")
-
-    # then we label each of the input axes `... p0 p1 p2 ...`
-    for ax in range(ndim):
-        pattern.append(f" p{ax}")
-
-    # RHS, start with the new block index
-    pattern.append(" -> B")
-
-    # then add the unfused output axes before the groups
-    for ax in axes_before:
-        pattern.append(f" p{ax}")
-
-    # then the groups, each looks like `(B0 p5 p2 ...)`, one dimension
-    # coming from the batch index, and the rest real axis fusions
-    unmerged_batch_sizes = {}
-    for g, gaxes in enumerate(axes_groups):
-        pattern.append(f" (B{g}")
-        for ax in gaxes:
-            pattern.append(f" p{ax}")
-
-            # XXX: need to handle singlet dims somehow?
-            # if axes_ncharges[ax] > 1:
-
-            bax = f"B{g}"
-            # keep track of the unmerged
-            if bax in unmerged_batch_sizes:
-                unmerged_batch_sizes[bax] *= axes_ncharges[ax]
-            else:
-                unmerged_batch_sizes[bax] = 1
-        pattern.append(")")
-
-    # then add the unfused output axes after the groups
-    for ax in axes_after:
-        pattern.append(f" p{ax}")
-
-    pattern = "".join(pattern)
-    return pattern, unmerged_batch_sizes
 
 
 class FlatArrayCommon:
@@ -890,19 +806,37 @@ class FlatArrayCommon:
             new_blocks = self._blocks
             old_sectors = self._sectors
 
-        # get the einops rearrangement pattern for the new blocks
-        pattern, unmerged_batch_sizes = _calc_fuse_rearrange_pattern(
-            num_groups,
-            axes_groups,
-            axes_before,
-            axes_after,
-            axes_ncharges,
-            self.ndim,
+        # e.g. for axes_groups=((5, 2), (4, 1)), rearrange as
+        # (B B0 B1) p0 ... p5 -> B p0 (B0 p5 p2) (B1 p4 p1) p3
+
+        # first split the block axis into B and one subsector axis per group
+        xp = self.get_namespace()
+        group_sizes = tuple(
+            math.prod(axes_ncharges[ax] for ax in gaxes[1:])
+            for gaxes in axes_groups
         )
-        # perform the rearrangement!
-        new_blocks = einops_rearrange(
-            new_blocks, pattern, **unmerged_batch_sizes
+        num_new_blocks = new_blocks.shape[0] // math.prod(group_sizes)
+        new_blocks = xp.reshape(
+            new_blocks, (num_new_blocks, *group_sizes, *self.shape_block)
         )
+
+        # then place each subsector axis beside the physical axes it joins
+        perm = [0]
+        perm.extend(num_groups + 1 + ax for ax in axes_before)
+        for g, gaxes in enumerate(axes_groups):
+            perm.append(g + 1)
+            perm.extend(num_groups + 1 + ax for ax in gaxes)
+        perm.extend(num_groups + 1 + ax for ax in axes_after)
+        new_blocks = xp.transpose(new_blocks, tuple(perm))
+
+        # finally merge each subsector axis and its physical axes
+        new_shape_block = [self.shape_block[ax] for ax in axes_before]
+        new_shape_block.extend(
+            group_sizes[g] * math.prod(self.shape_block[ax] for ax in gaxes)
+            for g, gaxes in enumerate(axes_groups)
+        )
+        new_shape_block.extend(self.shape_block[ax] for ax in axes_after)
+        new_blocks = xp.reshape(new_blocks, (num_new_blocks, *new_shape_block))
 
         # now we calculate the new sectors and subkeys, either by slicing
         # the existing sectors, or by creating them from scratch
@@ -990,48 +924,64 @@ class FlatArrayCommon:
 
         axs_rem = tuple(range(axis)) + tuple(range(axis + 1, self.ndim))
         new.sort_stack((axis, *axs_rem), inplace=True)
+        xp = new.get_namespace()
 
         # keys coming from remaining axes
-        ka = einops_repeat(
-            new.sectors, "(Bf B) s -> (Bf B x) s", Bf=fi.ncharge, x=fi.nsectors
-        )[:, axs_rem]
+        num_blocks_per_charge = new.num_blocks // fi.ncharge
+        ka = new.sectors[:, axs_rem]
+        ka = xp.reshape(
+            ka, (fi.ncharge, num_blocks_per_charge, 1, len(axs_rem))
+        )
+        ka = xp.broadcast_to(
+            ka,
+            (fi.ncharge, num_blocks_per_charge, fi.nsectors, len(axs_rem)),
+        )
 
         # keys coming from unfused axis
-        kb = fi.subkeys
-        kb = einops_repeat(
-            kb, "B Bu s -> (B x Bu) s", x=new.num_blocks // fi.ncharge
+        kb = xp.reshape(fi.subkeys, (fi.ncharge, 1, fi.nsectors, -1))
+        kb = xp.broadcast_to(
+            kb,
+            (fi.ncharge, num_blocks_per_charge, fi.nsectors, fi.nsubcharges),
         )
 
         # concatenate into the full new keys!
-        new_sectors = ar.do(
-            "concatenate", (ka[:, :axis], kb, ka[:, axis:]), axis=-1
+        new_sectors = xp.concatenate(
+            (ka[..., :axis], kb, ka[..., axis:]), axis=-1
+        )
+        new_sectors = xp.reshape(
+            new_sectors,
+            (new.num_blocks * fi.nsectors, new.ndim - 1 + fi.nsubcharges),
         )
 
-        # now we need to unfuse the actual blocks an example pattern:
-        #     B p0 ( Bu u0 u1 u2 ) p2 p3 -> (B Bu) p0 u0 u1 u2 p2 p3
-        # i.e. we unfuse the current axis, and shift its internal sector index
-        # (`Bu`) into the total sector index
-        pattern = ["B "]
-        rhs = ["(B Bu) "]
-        sizes = {}
-        for i in range(axis):
-            pattern.append(f"p{i} ")
-            rhs.append(f"p{i} ")
-        pattern.append("( Bu ")
-        for g, sz in enumerate(ix.charge_size for ix in fi.indices):
-            pattern.append(f"u{g} ")
-            rhs.append(f"u{g} ")
-            sizes[f"u{g}"] = sz
-        pattern.append(") ")
-        for i in range(axis + 1, new.ndim):
-            pattern.append(f"p{i} ")
-            rhs.append(f"p{i} ")
-        pattern.append("-> ")
-        pattern.extend(rhs)
-        pattern = "".join(pattern)
-
-        # perform the unfuse!
-        new_blocks = einops_rearrange(new.blocks, pattern, **sizes)
+        # B p0 (Bu u0 u1 u2) p2 p3 -> (B Bu) p0 u0 u1 u2 p2 p3
+        # split the fused axis, then merge Bu into the block axis
+        subshape = tuple(ix.charge_size for ix in fi.indices)
+        new_blocks = xp.reshape(
+            new.blocks,
+            (
+                new.num_blocks,
+                *new.shape_block[:axis],
+                fi.nsectors,
+                *subshape,
+                *new.shape_block[axis + 1 :],
+            ),
+        )
+        perm = (
+            0,
+            axis + 1,
+            *range(1, axis + 1),
+            *range(axis + 2, new_blocks.ndim),
+        )
+        new_blocks = xp.transpose(new_blocks, perm)
+        new_blocks = xp.reshape(
+            new_blocks,
+            (
+                new.num_blocks * fi.nsectors,
+                *new.shape_block[:axis],
+                *subshape,
+                *new.shape_block[axis + 1 :],
+            ),
+        )
 
         # unpack sub indices
         new_indices = (
@@ -1299,24 +1249,34 @@ class FlatArrayCommon:
         num_blocks_a = shape_a[0]
         shape_b = other._get_shape_blocks_full()
         num_blocks_b = shape_b[0]
+        xp = self.get_namespace()
 
         # do outer via broadcasted multiplication
         new_shape_a = (num_blocks_a, 1, *shape_a[1:], *repeat(1, other.ndim))
         new_shape_b = (1, num_blocks_b, *repeat(1, self.ndim), *shape_b[1:])
-        new_blocks = ar.do("reshape", self.blocks, new_shape_a) * ar.do(
-            "reshape", other.blocks, new_shape_b
+        new_blocks = xp.reshape(self.blocks, new_shape_a) * xp.reshape(
+            other.blocks, new_shape_b
         )
         # remerge batch index
-        new_blocks = ar.do(
-            "reshape",
+        new_blocks = xp.reshape(
             new_blocks,
             (num_blocks_a * num_blocks_b, *shape_a[1:], *shape_b[1:]),
         )
 
-        # get new keys from 'broadcasted' concatenation
-        ka = einops_repeat(self.sectors, "b r -> (b x) r", x=num_blocks_b)
-        kb = einops_repeat(other.sectors, "b r -> (x b) r", x=num_blocks_a)
-        new_sectors = ar.do("concatenate", (ka, kb), axis=1)
+        # get new keys from broadcasted concatenation
+        ka = xp.broadcast_to(
+            xp.reshape(self.sectors, (num_blocks_a, 1, self.ndim)),
+            (num_blocks_a, num_blocks_b, self.ndim),
+        )
+        kb = xp.broadcast_to(
+            xp.reshape(other.sectors, (1, num_blocks_b, other.ndim)),
+            (num_blocks_a, num_blocks_b, other.ndim),
+        )
+        new_sectors = xp.concatenate((ka, kb), axis=-1)
+        new_sectors = xp.reshape(
+            new_sectors,
+            (num_blocks_a * num_blocks_b, self.ndim + other.ndim),
+        )
 
         new_indices = self.indices + other.indices
 
@@ -1875,7 +1835,7 @@ def tensordot_flat_direct(
             "tensordot. Consider using mode='fused' instead."
         )
 
-    _reshape = ar.get_lib_fn(a.backend, "reshape")
+    xp = a.get_namespace()
 
     dc = a.order ** (len(axes_a) - 1)
 
@@ -1895,7 +1855,7 @@ def tensordot_flat_direct(
         ),
         a.order,
     )
-    larray = _reshape(a.blocks[lkord], (a.order, -1, dc, *a.shape_block))
+    larray = xp.reshape(a.blocks[lkord], (a.order, -1, dc, *a.shape_block))
 
     # sort and reshape right blocks
     d0 = b.duals[axes_b[0]]
@@ -1913,7 +1873,7 @@ def tensordot_flat_direct(
         ),
         b.order,
     )
-    rarray = _reshape(b.blocks[rkord], (b.order, -1, dc, *b.shape_block))
+    rarray = xp.reshape(b.blocks[rkord], (b.order, -1, dc, *b.shape_block))
 
     linput = ["B0", "Bl", "Bc"]
     rinput = ["B0", "Br", "Bc"]
@@ -1947,25 +1907,28 @@ def tensordot_flat_direct(
 
     # flatten all batch indices
     db, dl, dr, *shape_new_block = new_blocks.shape
-    new_blocks = _reshape(new_blocks, (db * dl * dr, *shape_new_block))
-
-    # XXX: do we need the B axis at all here?
+    new_blocks = xp.reshape(new_blocks, (db * dl * dr, *shape_new_block))
 
     # now we handle sectors
-    lsectors = _reshape(a.sectors[lkord], (a.order, -1, dc, a.ndim))[
+    lsectors = xp.reshape(a.sectors[lkord], (a.order, -1, dc, a.ndim))[
         :, :, 0, left_axes
     ]
-    rsectors = _reshape(b.sectors[rkord], (b.order, -1, dc, b.ndim))[
+    rsectors = xp.reshape(b.sectors[rkord], (b.order, -1, dc, b.ndim))[
         :, :, 0, right_axes
     ]
 
-    new_sectors = ar.do(
-        "concatenate",
-        (
-            einops_repeat(lsectors, "B Bl c -> (B Bl repeat) c", repeat=dr),
-            einops_repeat(rsectors, "B Br c -> (B repeat Br) c", repeat=dl),
-        ),
-        axis=1,
+    lsectors = xp.broadcast_to(
+        xp.reshape(lsectors, (a.order, dl, 1, len(left_axes))),
+        (a.order, dl, dr, len(left_axes)),
+    )
+    rsectors = xp.broadcast_to(
+        xp.reshape(rsectors, (b.order, 1, dr, len(right_axes))),
+        (a.order, dl, dr, len(right_axes)),
+    )
+    new_sectors = xp.concatenate((lsectors, rsectors), axis=-1)
+    new_sectors = xp.reshape(
+        new_sectors,
+        (a.order * dl * dr, len(left_axes) + len(right_axes)),
     )
 
     new_indices = (

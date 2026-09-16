@@ -10,6 +10,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 
 **Enhancements:**
 
+- Flat array fusion and contraction no longer require `einops`
 - Fermionic arrays expose `dummy_parity`, the combined parity of their dummy modes, while preserving traced backend scalar types for flat arrays.
 - `phase_global(parity=...)` conditionally applies a global fermionic phase and supports traced parity scalars with the flat backend.
 - Sparse {func}`~symmray.linalg.svd_rand_truncated`: spread finite `max_bond` over charge sectors in proportion to their current sizes *before* computing block decompositions (otherwise no speedup) and also supports abs and rel cutoffs.
