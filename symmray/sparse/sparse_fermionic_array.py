@@ -4,7 +4,12 @@ import autoray as ar
 
 from ..array_common import ArrayCommon
 from ..common import SymmrayCommon
-from ..fermionic_common import FermionicCommon, parse_dummy_modes
+from ..fermionic_common import (
+    FermionicCommon,
+    _annihilate_sorted_phase,
+    _koszul_sort_phase,
+    parse_dummy_modes,
+)
 from ..fermionic_local_operators import FermionicOperator
 from ..symmetries import calc_phase_permutation, get_symmetry
 from ..utils import DEBUG, get_rng
@@ -449,37 +454,18 @@ class FermionicArray(
         else:
             phase = 1
 
-        # do a phased sort and annihilation of conjugate pairs
-        i = 0
-        while i < len(dummy_modes) - 1:
-            a = dummy_modes[i]
-            b = dummy_modes[i + 1]
-            if a.label == b.label:
-                # 'trace' out the pair
-                if a.dual != b.dual:
-                    if b.dual and b.parity:
-                        # |x><x|, ket-bra contraction
-                        phase = -phase
-                    dummy_modes.pop(i)
-                    dummy_modes.pop(i)
-                    # check previous
-                    i = max(0, i - 1)
-                else:
-                    # detect non conjugate duplicates here as well
-                    raise ValueError(
-                        "`dummy_modes` must be unique conjugate pairs."
-                    )
-            elif b < a:
-                # sort with phased swap
-                dummy_modes[i] = b
-                dummy_modes[i + 1] = a
-                # check previous
-                i = max(0, i - 1)
-                if a.parity and b.parity:
-                    phase = -phase
-            else:
-                # already sorted and not conjugate pair, move to next
-                i += 1
+        # sort the merged dummy modes into canonical label order, the sign of
+        # that sort being the Koszul sign
+        perm = sorted(range(len(dummy_modes)), key=dummy_modes.__getitem__)
+        phase = phase * _koszul_sort_phase(dummy_modes, self.backend)
+        dummy_modes = [dummy_modes[k] for k in perm]
+
+        # second pass over the sorted modes, tracing out conjugate pairs and
+        # picking up the sign of each crossing they involve
+        dummy_modes, trace_phase = _annihilate_sorted_phase(
+            dummy_modes, self.backend
+        )
+        phase = phase * trace_phase
 
         if phase == -1:
             self.phase_global(inplace=True)

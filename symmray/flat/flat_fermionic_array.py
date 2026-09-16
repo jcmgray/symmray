@@ -6,7 +6,12 @@ import autoray as ar
 
 from ..array_common import ArrayCommon
 from ..common import SymmrayCommon
-from ..fermionic_common import FermionicCommon, parse_dummy_modes
+from ..fermionic_common import (
+    FermionicCommon,
+    _annihilate_sorted_phase,
+    _koszul_sort_phase,
+    parse_dummy_modes,
+)
 from ..fermionic_local_operators import FermionicOperator
 from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
@@ -56,80 +61,6 @@ def perm_to_swaps(perm):
             in_position = ix == pos
 
     return tuple(swaps)
-
-
-def _koszul_sort_phase(modes, backend):
-    """Fermionic (Koszul) sign from sorting ``modes`` into ascending label
-    order: ``(-1) ** K`` with ``K = sum_{i<j, modes[j] < modes[i]} p_i p_j``.
-
-    Mode *labels* are static, so the inverted pairs are enumerated at trace
-    time. Mode *parities* ``p`` may be tracer arrays, so the parity vectors of
-    the inverted pairs are stacked and reduced as ``K = sum(p_i * p_j)`` in a
-    few vectorized ops, rather than unrolling O(n^2) scalar multiplies into the
-    graph resulting in slow compile time. Parities that are plain ints
-    (possibly mixed with traced ones) are folded in as python data, both since
-    they can simplify away and since e.g. ``torch.stack`` rejects non-tensors.
-
-    Returns the plain int ``1`` when no inverted pair can contribute.
-    """
-    n = len(modes)
-    if n < 2:
-        return 1
-
-    static = tuple(isinstance(m.parity, int) for m in modes)
-    # a statically-even parity contributes no sign -> we can just ignore
-    static_zero = tuple(
-        static[i] and (modes[i].parity % 2 == 0) for i in range(n)
-    )
-
-    # enumerate inverted pairs (static), partitioning their parity products
-    #     K = sum_{(i, j) in pairs} p_i * p_j
-    # by which factors are static, so each stack is free of plain ints:
-    #     both static -> sum in python
-    #     one static parity: must be odd, so p_i * p_j == other (mod 2)
-    #     both traced -> stack and multiply as vectors
-    K = 0
-    singles = []
-    parities_i = []
-    parities_j = []
-    for i in range(n):
-        if static_zero[i]:
-            # can ignore i
-            continue
-        mi = modes[i]
-        for j in range(i + 1, n):
-            mj = modes[j]
-            if static_zero[j] or (mi < mj):
-                # can ignore j, or not inverted (labels unique -> no ties)
-                continue
-            if static[i] and static[j]:
-                # can eagerly accrue parity product
-                K += mi.parity * mj.parity
-            elif static[i]:
-                # parity product is just traced j
-                singles.append(mj.parity)
-            elif static[j]:
-                # parity product is just traced i
-                singles.append(mi.parity)
-            else:
-                # both traced, need to stack and multiply
-                parities_i.append(mi.parity)
-                parities_j.append(mj.parity)
-
-    if not (singles or parities_i):
-        # no traced contributions -> evaluate the sign statically
-        return -1 if (K % 2) else 1
-
-    if singles:
-        pij = ar.do("stack", singles, like=backend)
-        K = K + ar.do("sum", pij, like=backend)
-
-    if parities_i:
-        pi = ar.do("stack", parities_i, like=backend)
-        pj = ar.do("stack", parities_j, like=backend)
-        K = K + ar.do("sum", pi * pj, like=backend)
-
-    return (K % 2) * -2 + 1
 
 
 class FermionicArrayFlat(
@@ -727,12 +658,23 @@ class FermionicArrayFlat(
         )
         swap_phase = _koszul_sort_phase(dummy_modes, self.backend)
 
-        # apply the (static) reordering and fold in all phases
+        # apply the (static) reordering
         dummy_modes = [dummy_modes[k] for k in perm]
-        self.modify(
-            dummy_modes=tuple(dummy_modes),
-            phases=self.phases * phase * swap_phase,
+
+        # 3. second pass over the sorted modes, tracing out conjugate pairs
+        #    and picking up the sign of each crossing they involve
+        dummy_modes, trace_phase = _annihilate_sorted_phase(
+            dummy_modes, self.backend
         )
+
+        # fold in all phases, skipping any statically trivial ones so that a
+        # pairless contraction adds no ops
+        phases = self.phases
+        for p in (phase, swap_phase, trace_phase):
+            if not (isinstance(p, int) and p == 1):
+                phases = phases * p
+
+        self.modify(dummy_modes=tuple(dummy_modes), phases=phases)
 
     def _resolve_dummy_modes_squeeze(self, axes_squeeze):
         """Assuming we are about to squeeze away `axes_squeeze`, compute the

@@ -54,6 +54,163 @@ def parse_dummy_modes(
     )
 
 
+def _koszul_sort_phase(modes, backend):
+    """Fermionic (Koszul) sign from sorting ``modes`` into ascending label
+    order: ``(-1) ** K`` with ``K = sum_{i<j, modes[j] < modes[i]} p_i p_j``.
+
+    Mode *labels* are static, so the inverted pairs are enumerated at trace
+    time. Mode *parities* ``p`` may be tracer arrays, so the parity vectors of
+    the inverted pairs are stacked and reduced as ``K = sum(p_i * p_j)`` in a
+    few vectorized ops, rather than unrolling O(n^2) scalar multiplies into the
+    graph resulting in slow compile time. Parities that are plain ints
+    (possibly mixed with traced ones) are folded in as python data, both since
+    they can simplify away and since e.g. ``torch.stack`` rejects non-tensors.
+
+    Returns the plain int ``1`` when no inverted pair can contribute.
+    """
+    n = len(modes)
+    if n < 2:
+        return 1
+
+    static = tuple(isinstance(m.parity, int) for m in modes)
+    # a statically-even parity contributes no sign -> we can just ignore
+    static_zero = tuple(
+        static[i] and (modes[i].parity % 2 == 0) for i in range(n)
+    )
+
+    # enumerate inverted pairs (static), partitioning their parity products
+    #     K = sum_{(i, j) in pairs} p_i * p_j
+    # by which factors are static, so each stack is free of plain ints:
+    #     both static -> sum in python
+    #     one static parity: must be odd, so p_i * p_j == other (mod 2)
+    #     both traced -> stack and multiply as vectors
+    K = 0
+    singles = []
+    parities_i = []
+    parities_j = []
+    for i in range(n):
+        if static_zero[i]:
+            # can ignore i
+            continue
+        mi = modes[i]
+        for j in range(i + 1, n):
+            mj = modes[j]
+            if static_zero[j] or (mi < mj):
+                # can ignore j, or not inverted (labels unique -> no ties)
+                continue
+            if static[i] and static[j]:
+                # can eagerly accrue parity product
+                K += mi.parity * mj.parity
+            elif static[i]:
+                # parity product is just traced j
+                singles.append(mj.parity)
+            elif static[j]:
+                # parity product is just traced i
+                singles.append(mi.parity)
+            else:
+                # both traced, need to stack and multiply
+                parities_i.append(mi.parity)
+                parities_j.append(mj.parity)
+
+    return _reduce_parity_terms(K, singles, parities_i, parities_j, backend)
+
+
+def _reduce_parity_terms(K, singles, parities_i, parities_j, backend):
+    """Evaluate the sign ``(-1) ** K``, where ``K`` is the static count already
+    accrued, plus the traced parities in ``singles``, plus the products of the
+    traced parities paired up in ``parities_i`` and ``parities_j``. The traced
+    terms are stacked and reduced in a few vectorized ops, rather than unrolled
+    into the graph.
+
+    Returns the plain int ``1`` if there is nothing traced to add.
+    """
+    if not (singles or parities_i):
+        # no traced contributions -> evaluate the sign statically
+        return -1 if (K % 2) else 1
+
+    if singles:
+        pij = ar.do("stack", singles, like=backend)
+        K = K + ar.do("sum", pij, like=backend)
+
+    if parities_i:
+        pi = ar.do("stack", parities_i, like=backend)
+        pj = ar.do("stack", parities_j, like=backend)
+        K = K + ar.do("sum", pi * pj, like=backend)
+
+    return (K % 2) * -2 + 1
+
+
+def _annihilate_sorted_phase(modes, backend):
+    """Trace out conjugate pairs from an already sorted sequence of ``modes``,
+    returning the surviving modes and the fermionic sign this produces.
+
+    Sorted order places the dual modes first, by descending label, then the
+    non-dual modes by ascending label, so the two halves of a pair sit at
+    mirrored positions, and any other pair between them is fully nested.
+    Tracing out a pair moves its right half left onto its left half, giving
+    ``(-1) ** (p * p_k)`` for each mode ``k`` it crosses. A nested pair
+    contributes both of its halves, so ``2 * p * p_k`` is even and cancels,
+    leaving only the unpaired modes in between.
+
+    Which modes pair up follows from their labels and dualnesses, which are
+    static, so the surviving modes are known at trace time even when the
+    parities are tracer arrays. Only the sign depends on the parities, and it
+    is computed vectorized, see `_reduce_parity_terms`.
+    """
+    positions = {}
+    for k, m in enumerate(modes):
+        positions.setdefault(m.label, []).append(k)
+
+    # which modes pair up is static, so is the set of survivors
+    pairs = []
+    traced_out = set()
+    for ks in positions.values():
+        if len(ks) == 1:
+            continue
+        if len(ks) != 2 or modes[ks[0]].dual == modes[ks[1]].dual:
+            raise ValueError("`dummy_modes` must be unique conjugate pairs.")
+        pairs.append(ks)
+        traced_out.update(ks)
+
+    if not pairs:
+        # nothing to trace out, e.g. an amplitude contraction
+        return modes, 1
+
+    # accrue the crossing terms, partitioned as in `_koszul_sort_phase`
+    K = 0
+    singles = []
+    parities_i = []
+    parities_j = []
+
+    for i, j in pairs:
+        pp = modes[j].parity
+        static_pp = isinstance(pp, int)
+        if static_pp and (pp % 2 == 0):
+            # a statically-even pair contributes no sign
+            continue
+        for k in range(i + 1, j):
+            if k in traced_out:
+                # nested pair, both halves cross, so the sign cancels
+                continue
+            pk = modes[k].parity
+            static_pk = isinstance(pk, int)
+            if static_pk and (pk % 2 == 0):
+                continue
+            if static_pp and static_pk:
+                K += pp * pk
+            elif static_pp:
+                singles.append(pk)
+            elif static_pk:
+                singles.append(pp)
+            else:
+                parities_i.append(pp)
+                parities_j.append(pk)
+
+    modes = [m for k, m in enumerate(modes) if k not in traced_out]
+    phase = _reduce_parity_terms(K, singles, parities_i, parities_j, backend)
+    return modes, phase
+
+
 class FermionicCommon:
     @property
     def dummy_modes(self) -> tuple[FermionicOperator, ...]:

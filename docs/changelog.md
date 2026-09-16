@@ -15,6 +15,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Sparse {func}`~symmray.linalg.svd_rand_truncated`: spread finite `max_bond` over charge sectors in proportion to their current sizes *before* computing block decompositions (otherwise no speedup) and also supports abs and rel cutoffs.
 - Sparse truncated SVD and eigendecomposition accept `max_bond_mode="eager"` for the same size-based allocation. Their default `max_bond_mode="global"` now selects the largest values across full block spectra even when `cutoff=0.0`, preserving degenerate multiplets that cross the threshold.
 - Truncated SVD and eigendecomposition methods now default to `cutoff_mode="rel"`.
+- Contraction now traces out conjugate `dummy_modes` pairs in a second pass over the sorted modes, so both backends fully reduce them and agree. The flat backend previously only sorted them.
 
 **Bug Fixes:**
 
