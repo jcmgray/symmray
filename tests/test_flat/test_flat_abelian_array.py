@@ -532,6 +532,53 @@ def test_tensordot(symmetry, seed):
     fc.to_blocksparse().test_allclose(c)
 
 
+@pytest.mark.parametrize("backend", ["numpy", "jax", "torch"])
+def test_tensordot_direct_backend(backend, require_backend):
+    import autoray as ar
+    import numpy as np
+
+    require_backend(backend)
+    a, b, axes = sr.utils_test.rand_valid_tensordot(
+        "Z3",
+        ndim_a=4,
+        ndim_b=5,
+        ncon=2,
+        dimension_multiplier=3,
+        subsizes="equal",
+        seed=42,
+    )
+    expected = a.tensordot(b, axes=axes, preserve_array=True)
+    fa = a.to_flat().to(backend)
+    fb = b.to_flat().to(backend)
+    actual = fa.tensordot(fb, axes=axes, mode="direct", preserve_array=True)
+    actual.check()
+    actual.to("numpy").to_blocksparse().test_allclose(expected)
+
+    if backend == "numpy":
+        return
+
+    xp = fa.get_namespace()
+
+    def contract(blocks_a, blocks_b):
+        xa = fa.copy_with(blocks=blocks_a)
+        xb = fb.copy_with(blocks=blocks_b)
+        return xa.tensordot(xb, axes=axes, mode="direct").blocks
+
+    blocks_a = xp.stack((fa.blocks, 2 * fa.blocks))
+    blocks_b = xp.stack((fb.blocks, 3 * fb.blocks))
+    if backend == "jax":
+        import jax
+
+        got = jax.jit(jax.vmap(contract))(blocks_a, blocks_b)
+    else:
+        import torch
+
+        got = torch.vmap(contract)(blocks_a, blocks_b)
+
+    want = xp.stack((actual.blocks, 6 * actual.blocks))
+    np.testing.assert_allclose(ar.to_numpy(got), ar.to_numpy(want))
+
+
 @pytest.mark.parametrize("symm", ["Z2", "Z4"])
 def test_tensordot_fused_with_already_fused_arrays(symm):
     a, b, c, d = (

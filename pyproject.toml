@@ -44,7 +44,6 @@ dependencies = [
 testing = [
     "cotengra",
     "coverage",
-    "einops",
     "numpy",
     "pytest-cov",
     "pytest",
@@ -103,7 +102,6 @@ symmray = { path = ".", editable = true }
 [tool.pixi.feature.testing.dependencies]
 cotengra = "*"
 coverage = "*"
-einops = "*"
 networkx = "*"
 numpy = "*"
 pytest = "*"
