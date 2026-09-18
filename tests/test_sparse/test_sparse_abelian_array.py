@@ -149,6 +149,78 @@ def test_AbelianArray_fuse(symmetry, missing, mode):
     x.test_allclose(xu)
 
 
+class TestAbelianArrayFuseBackend:
+    @pytest.mark.parametrize("backend", ("torch", "jax"))
+    def test_concat_plan(self, backend, require_backend):
+        """Check the cached execution plan works on a non-numpy backend."""
+        from symmray.sparse import sparse_array_common as sac
+
+        require_backend(backend)
+        sac._clear_fuseinfo_cache()
+        try:
+            x = sr.utils.get_rand(
+                "U1", (4, 5, 6, 7), duals="equal", seed=1
+            ).to(backend)
+            expected = x.to_dense()
+
+            # first fuse caches the info, second compiles and uses the plan
+            x.fuse((0, 2), (1, 3))
+            y = x.fuse((0, 2), (1, 3))
+            actual = y.unfuse_all().transpose((0, 2, 1, 3)).to_dense()
+
+            assert ar.do("allclose", actual, expected)
+        finally:
+            sac._clear_fuseinfo_cache()
+
+
+class TestFuseInfoCache:
+    def test_byte_budget_evicts_lru(self, monkeypatch):
+        """Check a new entry that exceeds the byte budget evicts the LRU one."""
+        from symmray.sparse import sparse_array_common as sac
+
+        monkeypatch.setattr(sac, "_fuseinfo_cache_maxsize", 8192)
+        monkeypatch.setattr(sac, "_fuseinfo_cache_maxbytes", 700 * 2**10)
+        sac._clear_fuseinfo_cache()
+
+        try:
+            x = sr.utils.get_rand(
+                "U1",
+                (10,) * 4,
+                duals="equal",
+                seed=1,
+                subsizes="maximal",
+            )
+            x.fuse((0, 1), (2, 3))
+            # many blocks, so this entry fills most of the byte budget
+            assert x.num_blocks > 512
+            assert len(sac._fuseinfos) == 1
+            first_key = next(iter(sac._fuseinfos))
+            # plan is not compiled until the entry is reused
+            assert sac._fuseinfos[first_key][0][1] is None
+
+            y = sr.utils.get_rand(
+                "U1",
+                (12,) * 4,
+                duals="equal",
+                seed=2,
+                subsizes="maximal",
+            )
+            y.fuse((0, 1), (2, 3))
+            # adding the second entry evicts the first
+            assert len(sac._fuseinfos) == 1
+            assert first_key not in sac._fuseinfos
+            assert sac._fuseinfo_cache_nbytes <= sac._fuseinfo_cache_maxbytes
+
+            # a cache hit now compiles the plan for the surviving entry
+            hits = sac._fi_hit
+            y.fuse((0, 1), (2, 3))
+            assert sac._fi_hit == hits + 1
+            only_key = next(iter(sac._fuseinfos))
+            assert sac._fuseinfos[only_key][0][1] is not None
+        finally:
+            sac._clear_fuseinfo_cache()
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize(
     "shape0, shape1",

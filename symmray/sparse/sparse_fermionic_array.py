@@ -12,10 +12,15 @@ from ..fermionic_common import (
     parse_dummy_modes,
 )
 from ..fermionic_local_operators import FermionicOperator
-from ..symmetries import calc_phase_permutation, get_symmetry
+from ..symmetries import (
+    calc_phase_permutation,
+    calc_sector_phase_permutation,
+    get_symmetry,
+)
 from ..utils import DEBUG, get_rng
 from .sparse_array_common import (
     SparseArrayCommon,
+    get_permuter,
     permuted,
 )
 from .sparse_data_common import BlockCommon
@@ -333,15 +338,14 @@ class FermionicArray(
         """
         new = self if inplace else self.copy()
 
+        symmetry = new.symmetry
         for sector in new.sectors:
-            parities = tuple(new.symmetry.parity(q) for q in sector)
-
             phase_new = (
                 # start with old phase
                 new._phases.get(sector, 1)
                 *
                 # get the phase from permutation
-                calc_phase_permutation(parities, axes)
+                calc_sector_phase_permutation(symmetry, sector, axes)
             )
 
             if phase_new == 1:
@@ -533,14 +537,17 @@ class FermionicArray(
 
         if phase:
             # compute new sector phases
+            symmetry = new.symmetry
+            _permute = get_permuter(axes)
             new_phases = {}
             for sector in new.sectors:
-                parities = tuple(new.symmetry.parity(q) for q in sector)
-                perm_phase = calc_phase_permutation(parities, axes)
+                perm_phase = calc_sector_phase_permutation(
+                    symmetry, sector, axes
+                )
                 new_phase = old_phases.get(sector, 1) * perm_phase
                 if new_phase == -1:
                     # only populate non-trivial phases
-                    new_phases[permuted(sector, axes)] = -1
+                    new_phases[_permute(sector)] = -1
         else:
             # just permute the phase keys
             new_phases = {
