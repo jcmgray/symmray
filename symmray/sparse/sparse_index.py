@@ -368,7 +368,7 @@ class BlockIndex(Index):
                     tuple(self._chargemap.items()),
                     self._dual,
                     self._subinfo.hashkey() if self._subinfo else None,
-                    self.linearmap,
+                    self._linearmap,
                 )
             )
         return self._hashkey
@@ -515,7 +515,7 @@ class SubIndexInfo(SubInfo):
         if getattr(self, "_hashkey", None) is None:
             self._hashkey = hasher(
                 (
-                    tuple(ix.hashkey for ix in self._indices),
+                    tuple(ix.hashkey() for ix in self._indices),
                     tuple(
                         (c, tuple(extent.items()))
                         for c, extent in self._extents.items()

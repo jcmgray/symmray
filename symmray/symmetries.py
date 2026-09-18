@@ -216,6 +216,14 @@ def get_symmetry(symmetry: str | Symmetry) -> Symmetry:
         raise ValueError(f"Unknown symmetry: {symmetry}")
 
 
+@functools.lru_cache(maxsize=2**16)
+def calc_sector_phase_permutation(symmetry, sector, perm=None):
+    """Get the permutation phase of ``sector``, with the cache keyed on the
+    charges rather than their parities.
+    """
+    return calc_phase_permutation(tuple(map(symmetry.parity, sector)), perm)
+
+
 @functools.lru_cache(maxsize=2**15)
 def calc_phase_permutation(
     parities: tuple[int, ...],

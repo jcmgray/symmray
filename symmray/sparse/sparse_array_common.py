@@ -19,11 +19,22 @@ from ..linalg_common import (
     absorb_svd_result,
     array_split,
 )
-from ..utils import DEBUG, get_array_cls, hasher
+from ..utils import DEBUG, get_array_cls
 from .sparse_index import BlockIndex, SubIndexInfo
 from .sparse_vector import BlockVector
 
 # --------------------------------------------------------------------------- #
+
+
+@functools.lru_cache(2**12)
+def get_permuter(perm):
+    """Get a fast callable selecting ``perm`` from an indexable as a tuple."""
+    if len(perm) == 1:
+        (p,) = perm
+        return lambda it: (it[p],)
+    if not perm:
+        return lambda it: ()
+    return operator.itemgetter(*perm)
 
 
 def permuted(it, perm):
@@ -37,7 +48,7 @@ def permuted(it, perm):
         ('d', 'b', 'a', 'c')
 
     """
-    return tuple(it[p] for p in perm)
+    return get_permuter(tuple(perm))(it)
 
 
 def replace_with_seq(it, index, seq):
@@ -167,18 +178,32 @@ def calc_fuse_group_info(axes_groups, duals):
     )
 
 
+@functools.lru_cache(2**8)
+def get_transpose_reshape(backend, cls):
+    """Get ``(transpose, reshape)`` functions for blocks of type ``cls``. For
+    `numpy.ndarray` use the unbound methods, which skip the python dispatch
+    overhead of the module-level functions.
+    """
+    if (cls.__module__ == "numpy") and (cls.__name__ == "ndarray"):
+        return cls.transpose, cls.reshape
+    return (
+        ar.get_lib_fn(backend, "transpose"),
+        ar.get_lib_fn(backend, "reshape"),
+    )
+
+
 def calc_fuse_block_info(self, axes_groups):
     """Calculate fusing information for a specific set of sectors/blocks."""
     # basic info that doesn't depend on sectors themselves
     (
         num_groups,
         group_singlets,
-        new_ndim,
+        _new_ndim,
         perm,
         position,
         axes_before,
         axes_after,
-        ax2group,
+        _ax2group,
         group_duals,
         new_axes,
     ) = calc_fuse_group_info(axes_groups, self.duals)
@@ -190,85 +215,94 @@ def calc_fuse_block_info(self, axes_groups):
     subinfos = [{} for _ in range(num_groups)]
     combine = self.symmetry.combine
     sign = self.symmetry.sign
+    singlets = set(group_singlets)
 
-    # cache the results of each ax and charge lookup for speed
-    lookup = {}
+    # select each part of a sector in one (mostly C level) call. the group
+    # axes are taken in order, so subsectors match the order tensordot needs
+    get_before = get_permuter(axes_before)
+    get_after = get_permuter(axes_after)
+    group_getters = tuple(map(get_permuter, axes_groups))
 
-    # keep track of a shape in order to fuse the actual array
-    new_shape = [None] * new_ndim
-    # the key of the new fused block to add this block to
-    new_sector = [None] * new_ndim
-    # only the parts of the sector that will be fused
-    subsectors = [[] for _ in range(num_groups)]
-    # the same but signed for combining into new charges
-    grouped_charges = [[] for _ in range(num_groups)]
+    # charge -> size maps of the axes that are not fused
+    cmaps_before = tuple(old_indices[ax].chargemap for ax in axes_before)
+    cmaps_after = tuple(old_indices[ax].chargemap for ax in axes_after)
+
+    # cache per-group and per-axis lookups, which repeat across sectors
+    group_lookup = [{} for _ in range(num_groups)]
+    before_lookup = {}
+    after_lookup = {}
 
     for sector in self.sectors:
-        # reset accumulated values
-        for g in range(num_groups):
-            new_shape[position + g] = 1
-            subsectors[g].clear()
-            grouped_charges[g].clear()
+        subsectors = tuple([get(sector) for get in group_getters])
 
-        # n.b. we have to use `perm` here, not `enumerate(sector)`, so
-        # that subsectors are built in matching order for tensordot e.g.
-        for ax in perm:
-            c = sector[ax]
+        new_charges = []
+        new_sizes = []
+        for g, subsector in enumerate(subsectors):
             try:
-                d, g, g_is_singlet, new_ax, signed_c = lookup[ax, c]
+                new_charge, new_size = group_lookup[g][subsector]
             except KeyError:
-                # the size of charge `c` along axis `ax`
-                ix = old_indices[ax]
-                d = ix.size_of(c)
-
-                # which group is this axis in, if any, and where is it going
-                g = ax2group[ax]
-                g_is_singlet = g in group_singlets
-                new_ax = new_axes[ax]
-                if g is None or g_is_singlet:
-                    # not fusing
-                    signed_c = None
+                gaxes = axes_groups[g]
+                if g in singlets:
+                    # not fusing, so copy the charge and size
+                    (c,) = subsector
+                    new_charge = c
+                    new_size = old_indices[gaxes[0]].size_of(c)
                 else:
-                    # need to match current dualness to group dualness
-                    signed_c = sign(c, group_duals[g] != ix.dual)
+                    # match the block dualness to the group dualness
+                    dual = group_duals[g]
+                    new_charge = combine(
+                        *(
+                            sign(c, dual != old_indices[ax].dual)
+                            for ax, c in zip(gaxes, subsector)
+                        )
+                    )
+                    new_size = 1
+                    for ax, c in zip(gaxes, subsector):
+                        new_size *= old_indices[ax].size_of(c)
+                    # track the new size of each fused index, for unfusing and
+                    # for missing blocks
+                    subinfos[g][subsector] = (new_charge, new_size)
 
-                lookup[ax, c] = d, g, g_is_singlet, new_ax, signed_c
+                group_lookup[g][subsector] = (new_charge, new_size)
 
-            if signed_c is None:
-                # not fusing, new value is just copied
-                new_sector[new_ax] = c
-                new_shape[new_ax] = d
-                if g is not None:
-                    subsectors[g].append(c)
-            else:
-                # fusing: need to accumulate
-                new_shape[new_ax] *= d
-                subsectors[g].append(c)
-                grouped_charges[g].append(signed_c)
+            new_charges.append(new_charge)
+            new_sizes.append(new_size)
 
-        # make hashable version
-        _subsectors = tuple(map(tuple, subsectors))
-        # process grouped charges
-        for g in range(num_groups):
-            if g not in group_singlets:
-                # sum grouped charges
-                new_charge = combine(*grouped_charges[g])
-                new_sector[position + g] = new_charge
-                # keep track of the new blocksize of each fused
-                # index, for unfusing and also missing blocks
-                new_size = new_shape[position + g]
-                subsector = _subsectors[g]
-                subinfos[g][subsector] = (new_charge, new_size)
+        if cmaps_before:
+            charges_before = get_before(sector)
+            try:
+                sizes_before = before_lookup[charges_before]
+            except KeyError:
+                sizes_before = before_lookup[charges_before] = tuple(
+                    [cm[c] for cm, c in zip(cmaps_before, charges_before)]
+                )
+        else:
+            charges_before = sizes_before = ()
 
-        # to fuse (via transpose+reshape) the actual array, and concat later
-        # first group the subblock into the correct new fused block
-        blockmap[sector] = (tuple(new_shape), tuple(new_sector), _subsectors)
+        if cmaps_after:
+            charges_after = get_after(sector)
+            try:
+                sizes_after = after_lookup[charges_after]
+            except KeyError:
+                sizes_after = after_lookup[charges_after] = tuple(
+                    [cm[c] for cm, c in zip(cmaps_after, charges_after)]
+                )
+        else:
+            charges_after = sizes_after = ()
+
+        # fuse the block (transpose then reshape) and record which new fused
+        # block it will go into
+        blockmap[sector] = (
+            (*sizes_before, *new_sizes, *sizes_after),
+            (*charges_before, *new_charges, *charges_after),
+            subsectors,
+        )
 
     # sort and accumulate subsectors into their new charges for each group
     chargemaps = []
     extents = []
     for g in range(num_groups):
-        if g not in group_singlets:
+        if g not in singlets:
             chargemap = {}
             extent = {}
             for subsector, (new_c, new_d) in sorted(subinfos[g].items()):
@@ -319,81 +353,232 @@ def calc_fuse_block_info(self, axes_groups):
     )
 
 
+def calc_fuse_execution_plan(self, fuse_info):
+    """Compile block insertion and concatenation for a cached fusion."""
+    (
+        num_groups,
+        group_singlets,
+        _perm,
+        position,
+        axes_before,
+        axes_after,
+        new_axes,
+        new_indices,
+        blockmap,
+    ) = fuse_info
+
+    slice_lookup = [
+        {
+            charge: dict(zip(extents, accum_for_split(extents.values())))
+            for charge, extents in new_indices[
+                position + group
+            ].subinfo.extents.items()
+        }
+        if group not in group_singlets
+        else None
+        for group in range(num_groups)
+    ]
+
+    new_block_shapes = {}
+    block_steps = []
+    # maps each (new_sector, subsectors) key to its source block index
+    source_map = {}
+    for source, sector in enumerate(self.sectors):
+        new_shape, new_sector, subsectors = blockmap[sector]
+        selector = [slice(None)] * len(new_indices)
+        for group, subsector in enumerate(subsectors):
+            if group not in group_singlets:
+                axis = position + group
+                selector[axis] = slice_lookup[group][new_sector[axis]][
+                    subsector
+                ]
+
+        if new_sector not in new_block_shapes:
+            new_block_shapes[new_sector] = tuple(
+                ix.size_of(charge)
+                for ix, charge in zip(new_indices, new_sector)
+            )
+
+        block_steps.append((new_sector, tuple(selector), new_shape))
+        source_map[new_sector, subsectors] = source
+
+    def calc_missing_shape(new_sector, subkey):
+        return (
+            *(
+                self.indices[axis].size_of(new_sector[new_axes[axis]])
+                for axis in axes_before
+            ),
+            *(
+                new_indices[position + group].subinfo.extents[
+                    new_sector[position + group]
+                ][subsector]
+                for group, subsector in enumerate(subkey)
+            ),
+            *(
+                self.indices[axis].size_of(new_sector[new_axes[axis]])
+                for axis in axes_after
+            ),
+        )
+
+    def build_concat_tree(new_sector, group=0, subkey=()):
+        if group in group_singlets:
+            new_subkey = subkey + ((new_sector[position + group],),)
+            if group == num_groups - 1:
+                return source_map[new_sector, new_subkey]
+            return build_concat_tree(new_sector, group + 1, new_subkey)
+
+        new_charge = new_sector[position + group]
+        extent = new_indices[position + group].subinfo.extents[new_charge]
+        children = []
+        for subsector in extent:
+            new_subkey = (*subkey, subsector)
+            if group == num_groups - 1:
+                try:
+                    child = source_map[new_sector, new_subkey]
+                except KeyError:
+                    child = (
+                        "zeros",
+                        calc_missing_shape(new_sector, new_subkey),
+                    )
+            else:
+                child = build_concat_tree(new_sector, group + 1, new_subkey)
+            children.append(child)
+
+        return ("concat", position + group, tuple(children))
+
+    concat_trees = tuple(
+        (new_sector, build_concat_tree(new_sector))
+        for new_sector in new_block_shapes
+    )
+
+    return (
+        tuple(new_block_shapes.items()),
+        tuple(block_steps),
+        concat_trees,
+    )
+
+
 _fuseinfos = OrderedDict()
 
 try:
     _fuseinfo_cache_maxsize = int(os.environ["SYMMRAY_FUSE_CACHE_MAXSIZE"])
+    if _fuseinfo_cache_maxsize < 0:
+        raise ValueError
     print(f"Using SYMMRAY_FUSE_CACHE_MAXSIZE={_fuseinfo_cache_maxsize}.")
 except KeyError:
     _fuseinfo_cache_maxsize = 8192
 except (TypeError, ValueError):
-    print("SYMMRAY_FUSE_CACHE_MAXSIZE must be an integer, using default.")
+    print(
+        "SYMMRAY_FUSE_CACHE_MAXSIZE must be a non-negative integer, "
+        "using default."
+    )
     _fuseinfo_cache_maxsize = 8192
 
 try:
-    _fuseinfo_cache_maxsectors = int(
-        os.environ["SYMMRAY_FUSE_CACHE_MAXSECTORS"]
-    )
-    print(f"Using SYMMRAY_FUSE_CACHE_MAXSECTORS={_fuseinfo_cache_maxsectors}.")
+    _fuseinfo_cache_maxbytes = int(os.environ["SYMMRAY_FUSE_CACHE_MAXBYTES"])
+    if _fuseinfo_cache_maxbytes < 0:
+        raise ValueError
+    print(f"Using SYMMRAY_FUSE_CACHE_MAXBYTES={_fuseinfo_cache_maxbytes}.")
 except KeyError:
-    _fuseinfo_cache_maxsectors = 512
+    _fuseinfo_cache_maxbytes = 2**28
 except (TypeError, ValueError):
-    print("SYMMRAY_FUSE_CACHE_MAXSECTORS must be an integer, using default.")
-    _fuseinfo_cache_maxsectors = 512
+    print(
+        "SYMMRAY_FUSE_CACHE_MAXBYTES must be a non-negative integer, "
+        "using default."
+    )
+    _fuseinfo_cache_maxbytes = 2**28
 
+_fuseinfo_cache_nbytes = 0
 _fi_missed = 0
 _fi_hit = 0
-_fi_missed_too_long = 0
+_fi_missed_too_large = 0
+
+
+def _estimate_fuseinfo_cache_nbytes(num_blocks):
+    """Estimate the memory used by a cached fusion plan."""
+    return 12 * 2**10 + 2**9 * num_blocks
+
+
+def _clear_fuseinfo_cache():
+    """Clear all cached fusion plans."""
+    _fuseinfos.clear()
+    global _fuseinfo_cache_nbytes
+    _fuseinfo_cache_nbytes = 0
 
 
 def print_fuseinfo_cache_stats():
+    num_queries = _fi_missed + _fi_hit
+    miss_ratio = _fi_missed / num_queries if num_queries else 0.0
     print(
-        f"Cache size: {len(_fuseinfos)}\n"
+        f"Cache size: {len(_fuseinfos)} entries, "
+        f"~{_fuseinfo_cache_nbytes / 2**20:.1f} / "
+        f"{_fuseinfo_cache_maxbytes / 2**20:.1f} MiB\n"
         f"missed: {_fi_missed}, hit: {_fi_hit}\n"
-        f"missed too long: {_fi_missed_too_long}\n"
-        f"ratio: {_fi_missed / (_fi_missed + _fi_hit):.2f}\n"
+        f"missed too large: {_fi_missed_too_large}\n"
+        f"ratio: {miss_ratio:.2f}\n"
     )
 
 
 def cached_fuse_block_info(self, axes_groups):
-    """Calculating fusing block information is expensive, so cache the results.
-    This is a LRU cache that also skips caching if there are too many sectors.
+    """Cache the fusing block information, which is expensive to compute. This
+    is an approximately memory-bounded LRU cache.
     """
 
-    if _fuseinfo_cache_maxsize == 0:
+    if (_fuseinfo_cache_maxsize == 0) or (_fuseinfo_cache_maxbytes == 0):
         # cache disabled
-        return calc_fuse_block_info(self, axes_groups)
+        return calc_fuse_block_info(self, axes_groups), None
 
-    if self.num_blocks > _fuseinfo_cache_maxsectors:
-        # too many sectors to cache
-        global _fi_missed_too_long
-        _fi_missed_too_long += 1
-        return calc_fuse_block_info(self, axes_groups)
+    entry_nbytes = _estimate_fuseinfo_cache_nbytes(self.num_blocks)
+    if entry_nbytes > _fuseinfo_cache_maxbytes:
+        # entry alone exceeds the total cache budget
+        global _fi_missed_too_large
+        _fi_missed_too_large += 1
+        return calc_fuse_block_info(self, axes_groups), None
 
-    key = hasher(
-        (
-            tuple(ix.hashkey() for ix in self.indices),
-            self.sectors,
-            self.symmetry,
-            axes_groups,
-        )
+    # the structural tuple is directly hashable and much cheaper than
+    # pickling and digesting it
+    key = (
+        tuple(ix.hashkey() for ix in self.indices),
+        self.sectors,
+        self.symmetry,
+        axes_groups,
     )
 
     try:
-        res = _fuseinfos[key]
+        cached = _fuseinfos[key]
+    except KeyError:
+        # delay plan compilation until the structure is reused
+        fuse_info = calc_fuse_block_info(self, axes_groups)
+        res = fuse_info, None
+        _fuseinfos[key] = res, entry_nbytes
+
+        global _fuseinfo_cache_nbytes
+        _fuseinfo_cache_nbytes += entry_nbytes
+
+        # trim the least recently used entries to both cache limits
+        while (
+            len(_fuseinfos) > _fuseinfo_cache_maxsize
+            or _fuseinfo_cache_nbytes > _fuseinfo_cache_maxbytes
+        ):
+            _, (_, old_nbytes) = _fuseinfos.popitem(last=False)
+            _fuseinfo_cache_nbytes -= old_nbytes
+        global _fi_missed
+        _fi_missed += 1
+    else:
+        (fuse_info, execution_plan), entry_nbytes = cached
+        if execution_plan is None:
+            execution_plan = calc_fuse_execution_plan(self, fuse_info)
+            # the execution plan now replaces the per-sector block map
+            fuse_info = (*fuse_info[:-1], None)
+            _fuseinfos[key] = (
+                (fuse_info, execution_plan),
+                entry_nbytes,
+            )
+        res = fuse_info, execution_plan
         # mark as most recently used
         _fuseinfos.move_to_end(key)
         global _fi_hit
         _fi_hit += 1
-    except KeyError:
-        # compute new info
-        res = _fuseinfos[key] = calc_fuse_block_info(self, axes_groups)
-        # possibly trim cache
-        if len(_fuseinfos) > _fuseinfo_cache_maxsize:
-            # cache is full, remove the oldest entry
-            _fuseinfos.popitem(last=False)
-        global _fi_missed
-        _fi_missed += 1
 
     return res
 
@@ -410,8 +595,23 @@ def _fuse_blocks_via_insert(
     _reshape,
     _zeros,
     zeros_kwargs,
+    execution_plan=None,
 ):
     """Perform the actual block fusing by inserting blocks into a new array."""
+    if execution_plan is not None:
+        new_block_shapes, block_steps, _ = execution_plan
+        new_blocks = {
+            sector: _zeros(shape, **zeros_kwargs)
+            for sector, shape in new_block_shapes
+        }
+        for (_, array), (new_sector, selector, new_shape) in zip(
+            sector_block_pairs, block_steps
+        ):
+            new_array = _transpose(array, perm)
+            new_array = _reshape(new_array, new_shape)
+            new_blocks[new_sector][selector] = new_array
+        return new_blocks
+
     new_blocks = {}
 
     # for each group, map each subsector to a range in the new charge
@@ -474,11 +674,34 @@ def _fuse_blocks_via_concat(
     _reshape,
     _zeros,
     zeros_kwargs,
+    execution_plan=None,
 ):
     """Perform the actual block fusing, by recusively concatenating blocks
     (more compatible with e.g. autodiff since requires no inplace updates).
     """
     _concatenate = ar.get_lib_fn(backend, "concatenate")
+
+    if execution_plan is not None:
+        _, block_steps, concat_trees = execution_plan
+        arrays = tuple(
+            _reshape(_transpose(array, perm), step[2])
+            for (_, array), step in zip(sector_block_pairs, block_steps)
+        )
+
+        def _evaluate_concat_tree(tree):
+            if isinstance(tree, int):
+                return arrays[tree]
+            if tree[0] == "zeros":
+                return _zeros(tree[1], **zeros_kwargs)
+            return _concatenate(
+                tuple(_evaluate_concat_tree(child) for child in tree[2]),
+                axis=tree[1],
+            )
+
+        return {
+            new_sector: _evaluate_concat_tree(tree)
+            for new_sector, tree in concat_trees
+        }
 
     new_blocks = {}
 
@@ -1204,16 +1427,23 @@ class SparseArrayCommon:
         """
         new = self if inplace else self.copy()
 
-        _transpose = ar.get_lib_fn(new.backend, "transpose")
+        _ex_array = new.get_any_array()
+        _transpose, _ = get_transpose_reshape(
+            ar.infer_backend(_ex_array), type(_ex_array)
+        )
 
         if axes is None:
             # reverse the axes
             axes = tuple(range(new.ndim - 1, -1, -1))
+        else:
+            axes = tuple(axes)
+
+        _permute = get_permuter(axes)
 
         return new.modify(
-            indices=permuted(new._indices, axes),
+            indices=_permute(new._indices),
             blocks={
-                permuted(sector, axes): _transpose(array, axes)
+                _permute(sector): _transpose(array, axes)
                 for sector, array in new.get_sector_block_pairs()
             },
         )
@@ -1444,6 +1674,7 @@ class SparseArrayCommon:
         # ignore empty groups, expanding them is handled by `fuse`
         axes_groups = tuple(gaxes for gaxes in axes_groups if gaxes)
 
+        fuse_info, execution_plan = cached_fuse_block_info(self, axes_groups)
         (
             num_groups,
             group_singlets,
@@ -1454,14 +1685,11 @@ class SparseArrayCommon:
             new_axes,
             new_indices,
             blockmap,
-        ) = cached_fuse_block_info(self, axes_groups)
-        # NOTE: to turn off caching, we would use the following line instead:
-        # ) = calc_fuse_block_info(self, axes_groups)
+        ) = fuse_info
 
         _ex_array = self.get_any_array()
         backend = ar.infer_backend(_ex_array)
-        _transpose = ar.get_lib_fn(backend, "transpose")
-        _reshape = ar.get_lib_fn(backend, "reshape")
+        _transpose, _reshape = get_transpose_reshape(backend, type(_ex_array))
 
         # explicity handle zeros function and dtype and device kwargs
         _zeros = ar.get_lib_fn(backend, "zeros")
@@ -1490,6 +1718,7 @@ class SparseArrayCommon:
                 _reshape,
                 _zeros,
                 zeros_kwargs,
+                execution_plan,
             )
         elif mode == "concat":
             new_blocks = _fuse_blocks_via_concat(
@@ -1509,6 +1738,7 @@ class SparseArrayCommon:
                 _reshape,
                 _zeros,
                 zeros_kwargs,
+                execution_plan,
             )
         else:
             raise ValueError(f"Unknown mode {mode}.")
@@ -1521,45 +1751,52 @@ class SparseArrayCommon:
         if axis < 0:
             axis += self.ndim
 
-        backend = self.backend
-        _reshape = ar.get_lib_fn(backend, "reshape")
+        _ex_array = self.get_any_array()
+        _, _reshape = get_transpose_reshape(
+            ar.infer_backend(_ex_array), type(_ex_array)
+        )
 
         # get required information from the fused index
         subinfo = self.indices[axis].subinfo
         if subinfo is None:
             raise ValueError(f"Axis {axis} is not fused in this array.")
 
-        # info for how to split/slice the linear index into sub charges
-        subindex_slices = {
-            c: accum_for_split(d for d in charge_extent.values())
+        # for each fused charge, precompute the slice and shape of every
+        # subsector, shared by all blocks with that charge
+        subindices = subinfo.indices
+        prefix = (slice(None),) * axis
+        charge_splits = {
+            c: tuple(
+                (
+                    subsector,
+                    (*prefix, slc),
+                    tuple(
+                        ix.size_of(sc) for ix, sc in zip(subindices, subsector)
+                    ),
+                )
+                for subsector, slc in zip(
+                    charge_extent, accum_for_split(charge_extent.values())
+                )
+            )
             for c, charge_extent in subinfo.extents.items()
         }
-        selector = tuple(slice(None) for _ in range(axis))
 
         new_blocks = {}
         for sector, array in self.get_sector_block_pairs():
-            old_charge = sector[axis]
             old_shape = ar.shape(array)
+            shape_before = old_shape[:axis]
+            shape_after = old_shape[axis + 1 :]
+            sector_before = sector[:axis]
+            sector_after = sector[axis + 1 :]
 
-            charge_extent = subinfo.extents[old_charge]
-
-            new_arrays = []
-            for slc in subindex_slices[old_charge]:
-                new_arrays.append(array[(*selector, slc)])
-            # new_arrays = _split(array, splits, axis=axis)
-
-            for subsector, new_array in zip(charge_extent, new_arrays):
+            for subsector, selector, subshape in charge_splits[sector[axis]]:
                 # expand the old charge into the new subcharges
-                new_key = replace_with_seq(sector, axis, subsector)
-
-                # reshape the array to the correct shape
-                subshape = tuple(
-                    ix.size_of(c) for ix, c in zip(subinfo.indices, subsector)
+                new_blocks[(*sector_before, *subsector, *sector_after)] = (
+                    _reshape(
+                        array[selector],
+                        (*shape_before, *subshape, *shape_after),
+                    )
                 )
-                new_shape = replace_with_seq(old_shape, axis, subshape)
-
-                # reshape and store!
-                new_blocks[new_key] = _reshape(new_array, new_shape)
 
         new_indices = replace_with_seq(self.indices, axis, subinfo.indices)
 
@@ -2536,6 +2773,38 @@ def _tensordot_blockwise(
     )
 
 
+def _drop_one_misaligned(x, sectors, subsectors, allowed, inplace):
+    """Keep only the blocks of ``x`` whose contracted subsector is in
+    ``allowed``, and drop the charges no longer used by any block.
+    """
+    old_blocks = x._blocks
+
+    if len(allowed) == len(set(subsectors)):
+        # every block is aligned, nothing to filter
+        new_blocks = dict(old_blocks)
+    else:
+        new_blocks = {
+            sector: old_blocks[sector]
+            for sector, subsector in zip(sectors, subsectors)
+            if subsector in allowed
+        }
+
+    # track which charges are still present on each axis
+    if new_blocks:
+        present = map(set, zip(*new_blocks))
+    else:
+        present = itertools.repeat(frozenset())
+
+    new_indices = []
+    for ix, charges in zip(x.indices, present):
+        dropped = set(ix.charges) - charges
+        new_indices.append(ix.drop_charges(dropped) if dropped else ix)
+
+    return x._modify_or_copy(
+        blocks=new_blocks, indices=tuple(new_indices), inplace=inplace
+    )
+
+
 def drop_misaligned_sectors(
     a: SparseArrayCommon,
     b: SparseArrayCommon,
@@ -2543,7 +2812,7 @@ def drop_misaligned_sectors(
     axes_b: tuple[int, ...],
     inplace=False,
 ) -> tuple[SparseArrayCommon, SparseArrayCommon]:
-    """Eagerly drop misaligned sectors of ``a`` and ``b`` so that they can be
+    """Drop sectors of ``a`` and ``b`` that are not aligned, so they can be
     contracted via fusing.
 
     Parameters
@@ -2558,59 +2827,18 @@ def drop_misaligned_sectors(
     a, b : SparseArrayCommon
         The new arrays with misaligned sectors dropped.
     """
-    # compute the intersection of fused charges for a and b
-    sub_sectors_a = {
-        sector: tuple(sector[ax] for ax in axes_a) for sector in a.sectors
-    }
-    sub_sectors_b = {
-        sector: tuple(sector[ax] for ax in axes_b) for sector in b.sectors
-    }
-    allowed_subsectors = set(sub_sectors_a.values()).intersection(
-        sub_sectors_b.values()
+    sectors_a = a.sectors
+    sectors_b = b.sectors
+    subsectors_a = list(map(get_permuter(axes_a), sectors_a))
+    subsectors_b = list(map(get_permuter(axes_b), sectors_b))
+
+    # only subsectors appearing on both sides can contribute
+    allowed = set(subsectors_a).intersection(subsectors_b)
+
+    return (
+        _drop_one_misaligned(a, sectors_a, subsectors_a, allowed, inplace),
+        _drop_one_misaligned(b, sectors_b, subsectors_b, allowed, inplace),
     )
-
-    # filter out sectors of a that are not aligned with b
-    new_blocks_a = {}
-    charges_drop = [set(ix.charges) for ix in a.indices]
-    for sector, array in a.get_sector_block_pairs():
-        if sub_sectors_a[sector] in allowed_subsectors:
-            # keep the block
-            new_blocks_a[sector] = array
-            for i, c in enumerate(sector):
-                # mark each charge as still present
-                charges_drop[i].discard(c)
-
-    # sync a index chargemaps with present sectors
-    new_indices_a = tuple(
-        ix.drop_charges(cs) if cs else ix
-        for ix, cs in zip(a.indices, charges_drop)
-    )
-
-    # filter out sectors of b that are not aligned with a
-    new_blocks_b = {}
-    charges_drop = [set(ix.charges) for ix in b.indices]
-    for sector, array in b.get_sector_block_pairs():
-        if sub_sectors_b[sector] in allowed_subsectors:
-            # keep the block
-            new_blocks_b[sector] = array
-            for i, c in enumerate(sector):
-                # mark each charge as still present
-                charges_drop[i].discard(c)
-
-    # sync b index chargemaps with present sectors
-    new_indices_b = tuple(
-        ix.drop_charges(cs) if cs else ix
-        for ix, cs in zip(b.indices, charges_drop)
-    )
-
-    a = a._modify_or_copy(
-        blocks=new_blocks_a, indices=new_indices_a, inplace=inplace
-    )
-    b = b._modify_or_copy(
-        blocks=new_blocks_b, indices=new_indices_b, inplace=inplace
-    )
-
-    return a, b
 
 
 def _tensordot_via_fused(a, b, left_axes, axes_a, axes_b, right_axes):
