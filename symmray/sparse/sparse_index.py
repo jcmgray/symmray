@@ -363,13 +363,11 @@ class BlockIndex(Index):
     def hashkey(self):
         """Get a hash key for this index."""
         if getattr(self, "_hashkey", None) is None:
-            self._hashkey = hasher(
-                (
-                    tuple(self._chargemap.items()),
-                    self._dual,
-                    self._subinfo.hashkey() if self._subinfo else None,
-                    self._linearmap,
-                )
+            self._hashkey = (
+                tuple(self._chargemap.items()),
+                self._dual,
+                self._subinfo.hashkey() if self._subinfo else None,
+                self._linearmap,
             )
         return self._hashkey
 
