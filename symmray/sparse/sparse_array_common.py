@@ -480,13 +480,13 @@ try:
         raise ValueError
     print(f"Using SYMMRAY_FUSE_CACHE_MAXBYTES={_fuseinfo_cache_maxbytes}.")
 except KeyError:
-    _fuseinfo_cache_maxbytes = 2**28
+    _fuseinfo_cache_maxbytes = 2**29
 except (TypeError, ValueError):
     print(
         "SYMMRAY_FUSE_CACHE_MAXBYTES must be a non-negative integer, "
         "using default."
     )
-    _fuseinfo_cache_maxbytes = 2**28
+    _fuseinfo_cache_maxbytes = 2**29
 
 _fuseinfo_cache_nbytes = 0
 _fi_missed = 0

@@ -220,6 +220,75 @@ class TestFuseInfoCache:
         finally:
             sac._clear_fuseinfo_cache()
 
+    def test_distinguishes_charges_with_equal_hashes(self):
+        """Equal charge hashes must still produce different cache keys."""
+        from symmray.sparse import sparse_array_common as sac
+
+        assert hash(-1) == hash(-2)
+
+        def build(c):
+            indices = [
+                sr.BlockIndex({c: 2, 0: 2}, dual=dual)
+                for dual in (False, True, False, True)
+            ]
+            return sr.AbelianArray.random(
+                indices, symmetry="U1", charge=0, seed=1
+            )
+
+        sac._clear_fuseinfo_cache()
+        try:
+            x, y = build(-1), build(-2)
+            for _ in range(3):
+                xf = x.fuse((0, 1), (2, 3))
+                yf = y.fuse((0, 1), (2, 3))
+
+            assert len(sac._fuseinfos) == 2
+            assert sorted(xf.indices[0].charges) == [-1, 0, 1]
+            assert sorted(yf.indices[0].charges) == [-2, 0, 2]
+            xf.unfuse_all().test_allclose(x)
+            yf.unfuse_all().test_allclose(y)
+        finally:
+            sac._clear_fuseinfo_cache()
+
+    def test_distinguishes_zn_symmetries(self):
+        """The cache key must distinguish Z3 from Z5."""
+        from symmray.sparse import sparse_array_common as sac
+
+        z3, z5 = sr.get_symmetry("Z3"), sr.get_symmetry("Z5")
+        assert z3 != z5
+        assert hash(z3) != hash(z5)
+
+        def build(symmetry):
+            # use matching sectors so only the symmetry differs in the key
+            indices = [
+                sr.BlockIndex({0: 2, 1: 2}, dual=dual)
+                for dual in (False, True, False, True)
+            ]
+            return sr.AbelianArray.random(
+                indices, symmetry=symmetry, charge=0, seed=1
+            )
+
+        sac._clear_fuseinfo_cache()
+        try:
+            x, y = build(z3), build(z5)
+            assert x.sectors == y.sectors
+            assert all(
+                a.hashkey() == b.hashkey()
+                for a, b in zip(x.indices, y.indices)
+            )
+
+            for _ in range(3):
+                xf = x.fuse((0, 1), (2, 3))
+                yf = y.fuse((0, 1), (2, 3))
+
+            assert len(sac._fuseinfos) == 2
+            assert sorted(xf.indices[0].charges) == [0, 1, 2]
+            assert sorted(yf.indices[0].charges) == [0, 1, 4]
+            xf.unfuse_all().test_allclose(x)
+            yf.unfuse_all().test_allclose(y)
+        finally:
+            sac._clear_fuseinfo_cache()
+
 
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize(
