@@ -1869,47 +1869,50 @@ class SparseArrayCommon:
         -------
         SparseArrayCommon
         """
+        if power not in (1, -1):
+            raise ValueError(f"Unsupported power {power}, expected 1 or -1.")
+
         x = self if inplace else self.copy()
 
         if axis < 0:
             axis += x.ndim
 
-        _reshape = ar.get_lib_fn(v.backend, "reshape")
+        _ex_array = v.get_any_array()
+        _, _reshape = get_transpose_reshape(
+            ar.infer_backend(_ex_array), type(_ex_array)
+        )
         new_shape = tuple(-1 if i == axis else 1 for i in range(x.ndim))
 
-        # sort by axis charge to group vector blocks
-        sectors = sorted(x.sectors, key=lambda s: s[axis])
-        v_charge = None
+        # reshape each vector block at most once, grouped by charge
+        v_blocks = {}
+        new_blocks = {}
 
-        for sector in sectors:
+        for sector, array in x._blocks.items():
             charge = sector[axis]
-
-            # only compute reshaped vector block when charge changes
-            if charge != v_charge:
+            try:
+                v_block = v_blocks[charge]
+            except KeyError:
                 try:
-                    v_block = v.get_block(charge)
-                    v_block = _reshape(v_block, new_shape)
+                    v_block = _reshape(v.get_block(charge), new_shape)
                 except KeyError:
                     v_block = None
-                v_charge = charge
+                v_blocks[charge] = v_block
 
             if v_block is not None:
                 # use broadcasting to perform "ab...X...c,X-> ab...X...c"
-
                 if power == 1:
-                    new_block = x.get_block(sector) * v_block
-                elif power == -1:
-                    new_block = x.get_block(sector) / v_block
+                    new_blocks[sector] = array * v_block
+                else:
+                    new_blocks[sector] = array / v_block
+            elif power == -1:
+                # block isn't present -> like dividing by zero
+                raise ZeroDivisionError(
+                    "Cannot divide by implicitly zero (missing) "
+                    f"block for charge {charge}."
+                )
+            # else block isn't present -> like multiplying by zero, so drop it
 
-                x.set_block(sector, new_block)
-            else:
-                # block isn't present -> like multiplying by zero
-                if power == -1:
-                    raise ZeroDivisionError(
-                        "Cannot divide by implicitly zero (missing) "
-                        f"block for charge {charge}."
-                    )
-                x.del_block(sector)
+        x._blocks = new_blocks
 
         if DEBUG:
             x.check()
