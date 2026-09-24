@@ -172,6 +172,29 @@ class TestAbelianArrayFuseBackend:
         finally:
             sac._clear_fuseinfo_cache()
 
+    # insert mode needs in place assignment, which jax lacks
+    @pytest.mark.parametrize(
+        "backend, mode",
+        [
+            ("torch", "insert"),
+            ("torch", "concat"),
+            ("jax", "concat"),
+            ("cupy", "insert"),
+            ("cupy", "concat"),
+        ],
+    )
+    def test_missing_sectors(self, backend, mode, require_backend):
+        require_backend(backend)
+        x = sr.utils.get_rand("U1", (4, 5, 6, 7), duals="equal", seed=1)
+        x.del_block(list(x.sectors)[len(x.sectors) // 2])
+        x = x.to(backend)
+        expected = x.to_dense()
+
+        y = x.fuse((0, 2), (1, 3), mode=mode)
+        assert y.backend == backend
+        actual = y.unfuse_all().transpose((0, 2, 1, 3)).to_dense()
+        assert ar.do("allclose", actual, expected)
+
 
 class TestFuseInfoCache:
     def test_byte_budget_evicts_lru(self, monkeypatch):

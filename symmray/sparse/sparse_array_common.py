@@ -594,15 +594,13 @@ def _fuse_blocks_via_insert(
     _transpose,
     _reshape,
     _zeros,
-    zeros_kwargs,
     execution_plan=None,
 ):
     """Perform the actual block fusing by inserting blocks into a new array."""
     if execution_plan is not None:
         new_block_shapes, block_steps, _ = execution_plan
         new_blocks = {
-            sector: _zeros(shape, **zeros_kwargs)
-            for sector, shape in new_block_shapes
+            sector: _zeros(shape) for sector, shape in new_block_shapes
         }
         for (_, array), (new_sector, selector, new_shape) in zip(
             sector_block_pairs, block_steps
@@ -647,9 +645,7 @@ def _fuse_blocks_via_insert(
             fused_shape = tuple(
                 ix.size_of(c) for ix, c in zip(new_indices, new_sector)
             )
-            new_fused_array = new_blocks[new_sector] = _zeros(
-                fused_shape, **zeros_kwargs
-            )
+            new_fused_array = new_blocks[new_sector] = _zeros(fused_shape)
 
         # insert the block into the fused block
         new_fused_array[tuple(selector)] = new_array
@@ -673,7 +669,6 @@ def _fuse_blocks_via_concat(
     _transpose,
     _reshape,
     _zeros,
-    zeros_kwargs,
     execution_plan=None,
 ):
     """Perform the actual block fusing, by recusively concatenating blocks
@@ -692,7 +687,7 @@ def _fuse_blocks_via_concat(
             if isinstance(tree, int):
                 return arrays[tree]
             if tree[0] == "zeros":
-                return _zeros(tree[1], **zeros_kwargs)
+                return _zeros(tree[1])
             return _concatenate(
                 tuple(_evaluate_concat_tree(child) for child in tree[2]),
                 axis=tree[1],
@@ -758,7 +753,7 @@ def _fuse_blocks_via_concat(
                         *shape_new,
                         *shape_after,
                     )
-                    array = _zeros(new_shape, **zeros_kwargs)
+                    array = _zeros(new_shape)
                 arrays.append(array)
         else:
             # recurse to next group
@@ -1691,13 +1686,8 @@ class SparseArrayCommon:
         backend = ar.infer_backend(_ex_array)
         _transpose, _reshape = get_transpose_reshape(backend, type(_ex_array))
 
-        # explicity handle zeros function and dtype and device kwargs
-        _zeros = ar.get_lib_fn(backend, "zeros")
-        zeros_kwargs = {}
-        if hasattr(_ex_array, "dtype"):
-            zeros_kwargs["dtype"] = _ex_array.dtype
-        if hasattr(_ex_array, "device"):
-            zeros_kwargs["device"] = _ex_array.device
+        # namespace injects dtype+device if the backend takes it
+        _zeros = self.get_namespace().zeros
 
         if mode == "auto":
             if backend == "numpy":
@@ -1717,7 +1707,6 @@ class SparseArrayCommon:
                 _transpose,
                 _reshape,
                 _zeros,
-                zeros_kwargs,
                 execution_plan,
             )
         elif mode == "concat":
@@ -1737,7 +1726,6 @@ class SparseArrayCommon:
                 _transpose,
                 _reshape,
                 _zeros,
-                zeros_kwargs,
                 execution_plan,
             )
         else:
