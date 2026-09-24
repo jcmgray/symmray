@@ -237,6 +237,72 @@ class FermionicCommon:
         """The combined parity of the dummy modes."""
         return sum(mode.parity for mode in self.dummy_modes) % 2
 
+    def _parse_phase_dual(self, phase_dual):
+        """Return the outer axes and whether to phase outer dummy modes."""
+        if isinstance(phase_dual, bool):
+            return tuple(range(self.ndim)) if phase_dual else (), phase_dual
+        if not ar.is_scalar(phase_dual):
+            phase_dual = tuple(phase_dual)
+            if not phase_dual:
+                # an empty sequence still selects outer dummy modes
+                return (), True
+        return _normalize_axes(phase_dual, self.ndim), True
+
+    def _resolve_dummy_modes_conj(
+        self,
+        phase_permutation=True,
+        phase_dummy=False,
+        inner_dummy_labels=(),
+    ):
+        """Update dummy modes after conjugation and apply their phases in place.
+
+        Parameters
+        ----------
+        phase_permutation : bool, optional
+            Apply the phase from moving reversed dummy modes before the axes.
+        phase_dummy : bool, optional
+            Phase dual dummy modes outside ``inner_dummy_labels``.
+        inner_dummy_labels : collection, optional
+            Labels whose usual conjugate partners are already in the network.
+            These modes get no dual phase. Their labels become virtual
+            conjugates to keep them distinct from those partners. Use the
+            result only as part of the conjugate network.
+        """
+        if not self.dummy_modes:
+            return
+
+        if phase_dummy:
+            outer_dual_parities = [
+                m.parity
+                for m in self.dummy_modes
+                if m.dual and (m.label not in inner_dummy_labels)
+            ]
+            if outer_dual_parities:
+                self.phase_global(
+                    parity=sum(outer_dual_parities), inplace=True
+                )
+
+        # 1. we get a reversal and conjugation of the dummy modes
+        #       dummy modes          real indices
+        # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
+        #                     <-->
+        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+        new_dummy_modes = tuple(
+            m.vconj if m.label in inner_dummy_labels else m.dag
+            for m in reversed(self.dummy_modes)
+        )
+        self.modify(dummy_modes=new_dummy_modes)
+
+        if phase_permutation:
+            # 2. moving dummy modes back to left
+            # after flipping might generate global sign
+            # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
+            #                     <--
+            # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
+            self.phase_global(
+                parity=self.parity * self.dummy_parity, inplace=True
+            )
+
     def _do_unary_op(self, fn, inplace=False) -> "FermionicCommon":
         """Need to sync phases before applying an elementwise function, which
         does not generally commute with them.

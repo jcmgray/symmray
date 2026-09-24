@@ -18,6 +18,8 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Truncated SVD and eigendecomposition methods now default to `cutoff_mode="rel"`.
 - Contraction now traces out conjugate `dummy_modes` pairs in a second pass over the sorted modes, so both backends fully reduce them and agree. The flat backend previously only sorted them.
 - Add `gram(axes=-1)` and `symmray.gram` to form `dag(x) @ x`, contracting every other axis against the conjugate. Sparse and flat fermionic arrays use the positive fermionic operator convention, and currently support a single open axis.
+- Fermionic `conj` and `dagger` accept a sequence of outer axes for `phase_dual`. Use `inner_dummy_labels` for dummy modes whose conjugate partners are already in the network. These modes get no dual phase and use virtual conjugate labels.
+- Add `FermionicOperator.vconj`. It flips a mode's dual flag and wraps its label as `("vconj", label)`. Applying it twice restores the original mode.
 
 **Bug Fixes:**
 
@@ -25,6 +27,8 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - 'Fermionic reductions' (`sum`, `max`, `min`, `all`, `any`) and elementwise operations (`abs`, `sqrt`, `clip`, `isfinite`, `real`, `imag`) now `phase_sync` (note some of these are not well-defined but its useful to match the equivalent `to_dense`)
 - Fermionic `item` and `get_scalar_element` now `phase_sync`, including `float`, `complex`, `int` and `bool` conversions.
 - Fusing an empty group of axes now records subindex information for the expanded axis, so that `unfuse` removes it again and the fuse/unfuse round trip is total. Fermionic unfusing also normalizes negative axes before computing phases.
+- Fermionic `conj(phase_dual=True)` and `dagger(phase_dual=True)` now phase dual dummy modes like outer dual indices. This fixes wrong signs in norms and repeated conjugation of arrays with dual dummy modes.
+- Dummy mode labels with mixed types now sort consistently. This fixes contraction signs when site labels and `("squeeze", label, ax)` labels occur together.
 
 
 ## v0.3.1 (2026-08-25)

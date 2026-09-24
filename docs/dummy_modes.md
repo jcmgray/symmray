@@ -50,6 +50,9 @@ When two arrays contract with [`tensordot`](#symmray.interface.tensordot),
 records the sign of each odd swap. Adjacent modes with the same label and
 opposite orientations cancel.
 
+Mode labels can use mixed types. Real numbers sort first, then strings, then
+tuples, then other types. Tuple items follow the same rules. [`FermionicOperator.vconj`](#FermionicOperator.vconj) creates labels starting with `("vconj", ...)`, which sort last.
+
 ```python
 a = sr.utils.rand_index("Z2", 2, seed=1)
 b = sr.utils.rand_index("Z2", 4, seed=2)
@@ -87,6 +90,20 @@ z.conj().dummy_modes
 ```
 
 Contracting an array with its conjugate cancels the matching pairs.
+
+If a dummy mode's regular conjugate pair is *already* in the network (for
+example forming gram-style operators within a norm tensor network), pass its
+label in `inner_dummy_labels`. Other dual dummy modes are phased like dual open
+indices whenever `phase_dual` is not `False`, but inner ones are not phased,
+like an inner bond. Their conjugates also get a distinct label,
+`("vconj", label)`, from the [`vconj`](#FermionicOperator.vconj) property:
+
+```python
+z.conj(inner_dummy_labels={"A"}).dummy_modes
+# (B+, ('vconj', 'A')+)
+```
+
+The distinct label keeps the conjugate pair in the original network separate.
 
 ## Slicing
 

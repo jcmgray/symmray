@@ -519,3 +519,192 @@ class TestKoszulSortPhase:
         ]
         res = _koszul_sort_phase(pruned, "torch")
         assert isinstance(res, int) and res == 1
+
+
+class TestConjPhaseDualDummyModes:
+    """Check dual dummy mode phases for kets and conjugated bras."""
+
+    @staticmethod
+    def get_arrays(flat, charge, duals, seed=42):
+        x = sr.utils.get_rand(
+            "Z2",
+            shape=(4,) * len(duals),
+            duals=duals,
+            charge=charge,
+            fermionic=True,
+            label="x",
+            flat=flat,
+            subsizes="equal",
+            seed=seed,
+        )
+        return x, x.conj(phase_dual=True), x.dagger(phase_dual=True)
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize("charge", [0, 1])
+    @pytest.mark.parametrize(
+        "duals", list(itertools.product((False, True), repeat=3))
+    )
+    def test_norm(self, flat, charge, duals):
+        for x in self.get_arrays(flat, charge, duals):
+            n2 = sr.tensordot(x.conj(phase_dual=True), x, x.ndim)
+            assert float(n2) == pytest.approx(x.norm() ** 2)
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize("charge", [0, 1])
+    @pytest.mark.parametrize(
+        "duals", list(itertools.product((False, True), repeat=3))
+    )
+    def test_involution(self, flat, charge, duals):
+        for x in self.get_arrays(flat, charge, duals):
+            x.conj(phase_dual=True).conj(phase_dual=True).test_allclose(x)
+            x.dagger(phase_dual=True).dagger(phase_dual=True).test_allclose(x)
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize("charge", [0, 1])
+    @pytest.mark.parametrize(
+        "duals", list(itertools.product((False, True), repeat=3))
+    )
+    def test_gram_of_bra(self, flat, charge, duals):
+        _, x, _ = self.get_arrays(flat, charge, duals)
+        for axis in range(x.ndim):
+            m = x.gram(axis)
+            physical = m.phase_flip(1) if not m.duals[1] else m
+            d = physical.to_dense()
+            assert np.linalg.eigvalsh(d).min() > -1e-10
+            assert np.trace(d).real == pytest.approx(x.norm() ** 2)
+
+
+class TestConjOuterAxesAndInnerDummyModes:
+    """Check selected outer axes and paired dummy modes in a network."""
+
+    @staticmethod
+    def get_array(flat, charge, duals, seed=42):
+        return sr.utils.get_rand(
+            "Z2",
+            shape=(4,) * len(duals),
+            duals=duals,
+            charge=charge,
+            fermionic=True,
+            label="x",
+            flat=flat,
+            subsizes="equal",
+            seed=seed,
+        )
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize("charge", [0, 1])
+    @pytest.mark.parametrize(
+        "duals", list(itertools.product((False, True), repeat=3))
+    )
+    def test_all_axes_matches_true(self, flat, charge, duals):
+        x = self.get_array(flat, charge, duals)
+        for x in (x, x.conj(phase_dual=True)):
+            axes = tuple(range(x.ndim))
+            x.conj(phase_dual=axes).test_allclose(x.conj(phase_dual=True))
+            x.dagger(phase_dual=axes).test_allclose(x.dagger(phase_dual=True))
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize("charge", [0, 1])
+    @pytest.mark.parametrize(
+        "duals", list(itertools.product((False, True), repeat=3))
+    )
+    def test_axes_match_phase_flip(self, flat, charge, duals):
+        # a ket, and a bra with dual dummy modes
+        x = self.get_array(flat, charge, duals)
+        for x in (x, x.conj(phase_dual=True)):
+            ndim = x.ndim
+            dummy_parity = sum(m.parity for m in x.dummy_modes if m.dual)
+            for r in range(ndim + 1):
+                # includes axes=(), which still phases the dummy modes
+                for axes in itertools.combinations(range(ndim), r):
+                    expected = x.conj()
+                    flip = [ax for ax in axes if not expected.indices[ax].dual]
+                    expected = expected.phase_flip(*flip)
+                    expected = expected.phase_global(parity=dummy_parity)
+                    x.conj(phase_dual=axes).test_allclose(expected)
+
+                    expected = x.dagger()
+                    flip = [
+                        ndim - 1 - ax
+                        for ax in axes
+                        if not expected.indices[ndim - 1 - ax].dual
+                    ]
+                    expected = expected.phase_flip(*flip)
+                    expected = expected.phase_global(parity=dummy_parity)
+                    x.dagger(phase_dual=axes).test_allclose(expected)
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize("phase_dual", [False, True])
+    def test_inner_dummy_modes_relabelled_and_involution(
+        self, flat, phase_dual
+    ):
+        x = self.get_array(flat, 1, (False, True, False))
+        (m,) = x.dummy_modes
+        if phase_dual:
+            # skipped inner phases leave this sign after two calls
+            x_twice = x.phase_global(parity=m.parity)
+        else:
+            x_twice = x
+
+        y = x.conj(phase_dual=phase_dual, inner_dummy_labels={"x"})
+        assert y.dummy_modes == (m.vconj,)
+        z = y.conj(phase_dual=phase_dual, inner_dummy_labels={("vconj", "x")})
+        assert z.dummy_modes == x.dummy_modes
+        z.test_allclose(x_twice)
+
+        y = x.dagger(phase_dual=phase_dual, inner_dummy_labels={"x"})
+        assert y.dummy_modes == (m.vconj,)
+        z = y.dagger(
+            phase_dual=phase_dual, inner_dummy_labels={("vconj", "x")}
+        )
+        assert z.dummy_modes == x.dummy_modes
+        z.test_allclose(x_twice)
+
+    @pytest.mark.parametrize("flat", [False, True])
+    @pytest.mark.parametrize(
+        "duals", list(itertools.product((False, True), repeat=3))
+    )
+    def test_region_with_pair_norm(self, flat, duals):
+        # two odd arrays with a conjugate dummy mode pair
+        dpa, db, dpb = duals
+        a = self.get_array(flat, 1, (dpa, db), seed=1)
+        b = self.get_array(flat, 1, (not db, dpb), seed=2)
+        a.modify(dummy_modes=(FermionicOperator("r"),))
+        b.modify(dummy_modes=(FermionicOperator("r", dual=True),))
+
+        r = sr.tensordot(a, b, ((1,), (0,)))
+        assert r.dummy_modes == ()
+        expected = r.norm() ** 2
+
+        # physical axes are outer, the bond and dummy pair are inner
+        ac = a.conj(phase_dual=(0,), inner_dummy_labels={"r"})
+        bc = b.conj(phase_dual=(1,), inner_dummy_labels={"r"})
+
+        # bra and ket regions first
+        rc = sr.tensordot(ac, bc, ((1,), (0,)))
+        n2 = sr.tensordot(rc, r, ((0, 1), (0, 1)))
+        assert float(n2) == pytest.approx(expected)
+
+        # site by site
+        la = sr.tensordot(ac, a, ((0,), (0,)))
+        lb = sr.tensordot(bc, b, ((1,), (1,)))
+        n2 = sr.tensordot(la, lb, ((0, 1), (0, 1)))
+        assert float(n2) == pytest.approx(expected)
+
+        # ket and bra arrays interleaved
+        t = sr.tensordot(ac, a, ((0,), (0,)))
+        t = sr.tensordot(t, b, ((1,), (0,)))
+        n2 = sr.tensordot(t, bc, ((0, 1), (0, 1)))
+        assert float(n2) == pytest.approx(expected)
+
+        t = sr.tensordot(ac, r, ((0,), (0,)))
+        n2 = sr.tensordot(t, bc, ((0, 1), (0, 1)))
+        assert float(n2) == pytest.approx(expected)
+
+        # conjugating the region twice gives it back
+        inner = {("vconj", "r")}
+        acc = ac.conj(phase_dual=(0,), inner_dummy_labels=inner)
+        bcc = bc.conj(phase_dual=(1,), inner_dummy_labels=inner)
+        assert acc.dummy_modes == a.dummy_modes
+        assert bcc.dummy_modes == b.dummy_modes
+        sr.tensordot(acc, bcc, ((1,), (0,))).test_allclose(r)

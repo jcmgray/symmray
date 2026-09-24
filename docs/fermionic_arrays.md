@@ -47,13 +47,17 @@ internally.
 conjugates the numerical data and accounts for reversing the order of
 fermionic operators. Its two main phase options are:
 
-- `phase_permutation=True` applies the sign from reversing the axis order
-- `phase_dual=False` leaves dual-axis parity operators unapplied
+- `phase_permutation=True` applies the sign from virtual axis reversal
+- `phase_dual=False` adds no dual-index phase. `True` adds it on every axis
+  that is dual before conjugation. A sequence adds it only on those of the
+  selected axes.
 
-The defaults are suitable for a tensor-network wavefunction whose open physical
-indices are all ket-like. If a network has both ket-like and bra-like open
-indices, the dual open indices of the conjugated network may need explicit
-phase flips.
+The defaults suit a network with only ket-like open indices. If it also has
+bra-like open indices, pass each array's 'outer' axes as `phase_dual=axes`.
+Axis positions refer to the array before conjugation or transposition. When
+`phase_dual` is `True` or a sequence, dual dummy modes also get a phase unless
+their labels are in `inner_dummy_labels`. See
+[Dummy fermionic modes](dummy_modes.md).
 
 Use
 [`x.conj_project(axes=...)`](#symmray.fermionic_common.FermionicCommon.conj_project)

@@ -1,8 +1,14 @@
+import itertools
+
 import numpy as np
 import pytest
 
 import symmray as sr
-from symmray.fermionic_local_operators import FermionicOperator
+from symmray.fermionic_local_operators import (
+    FermionicOperator,
+    label_key,
+    labels_lt,
+)
 
 SPINLESS_SYMS = ["Z2", "U1"]
 SPINFUL_SYMS = ["Z2", "U1", "Z2Z2", "U1U1"]
@@ -31,6 +37,94 @@ def test_fermionic_operator_ordering():
     a = FermionicOperator("a")
     assert a.dag < a
     assert not (a < a.dag)
+
+
+class TestLabelOrder:
+    # mixed label types, including tagged and incomparable tuples
+    LABELS = (
+        0,
+        3,
+        1.5,
+        "a",
+        "x",
+        (1,),
+        (0, 1),
+        (1, 2),
+        (1, "a"),
+        ("x",),
+        ("x", (0, 1)),
+        (0, 1, 2),
+        ("squeeze", 0, 1),
+        ("squeeze", (1, 2), 0),
+        ("vconj", 0),
+        ("vconj", (0, 1)),
+        ("vconj", (1, 2)),
+        ("vconj", ("squeeze", 0, 1)),
+    )
+
+    @pytest.mark.parametrize(
+        "a, b",
+        [
+            (("squeeze", 0, 1), (0, 1, 2)),
+            (("x", (0, 1)), (1, 2)),
+            ((1, "a"), ("x",)),
+            ((0, 1, 2), (1,)),
+            (("vconj", (0, 1)), (1, 2)),
+        ],
+    )
+    def test_exactly_one_order(self, a, b):
+        assert labels_lt(a, b) != labels_lt(b, a)
+
+    def test_sort_independent_of_input_order(self):
+        rng = np.random.default_rng(42)
+        expected = sorted(self.LABELS, key=label_key)
+        for _ in range(10):
+            labels = list(self.LABELS)
+            rng.shuffle(labels)
+            ops = sorted(map(FermionicOperator, labels))
+            assert [op.label for op in ops] == expected
+
+    def test_transitive(self):
+        for a, b, c in itertools.permutations(self.LABELS, 3):
+            if labels_lt(a, b) and labels_lt(b, c):
+                assert labels_lt(a, c)
+
+    @staticmethod
+    def is_vconj(label):
+        return isinstance(label, tuple) and label[0] == "vconj"
+
+    def test_comparable_pairs_keep_natural_order(self):
+        # tagged labels are excluded, they sort last by design
+        plain = [x for x in self.LABELS if not self.is_vconj(x)]
+        for a, b in itertools.permutations(plain, 2):
+            try:
+                natural = a < b
+            except TypeError:
+                continue
+            assert labels_lt(a, b) == natural
+
+    def test_vconj_labels_sort_last(self):
+        vconj = [x for x in self.LABELS if self.is_vconj(x)]
+        plain = [x for x in self.LABELS if not self.is_vconj(x)]
+        for a in plain:
+            for b in vconj:
+                assert labels_lt(a, b)
+                assert not labels_lt(b, a)
+        assert labels_lt(("vconj", (0, 1)), ("vconj", (1, 2)))
+
+
+def test_fermionic_operator_vconj():
+    a = FermionicOperator((0, 1), dual=True)
+    b = a.vconj
+    assert b.label == ("vconj", (0, 1))
+    assert b.dual is not a.dual
+    assert b.parity == a.parity
+    assert b.vconj == a
+
+    # labels stay plain python objects, so pytrees round trip
+    c = FermionicOperator.from_pytree(b.to_pytree())
+    assert c == b
+    assert c.parity == b.parity
 
 
 # the worked example from the build_local_fermionic_elements docstring

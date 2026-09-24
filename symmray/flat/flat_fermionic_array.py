@@ -605,33 +605,6 @@ class FermionicArrayFlat(
         new.modify(phases=new.phases * phase_change)
         return new
 
-    def _resolve_dummy_modes_conj(self, phase_permutation=True):
-        """Assuming we have effectively taken the conjugate of a fermionic
-        array with dummy modes, get their new order and compute any
-        phase changes coming from moving back to the beginning of the index
-        order.
-        """
-        if not self.dummy_modes:
-            return
-
-        # 1. we get a reversal and conjugation of the dummy modes
-        #       dummy modes          real indices
-        # | o0 o1 ... on-2 on-1 | P0 P1 ... Pn-2 Pn-1 |
-        #                     <-->
-        # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-        new_dummy_modes = tuple(r.dag for r in reversed(self.dummy_modes))
-        self.modify(dummy_modes=new_dummy_modes)
-
-        if phase_permutation:
-            # 2. moving dummy modes back to left
-            # after flipping might generate global sign
-            # | Pn-1 Pn-2 ... P1 P0 | on-1 on-2 ... o1 o0 |
-            #                     <--
-            # | on-1 on-2 ... o1 o0 | Pn-1 Pn-2 ... P1 P0 |
-            self.phase_global(
-                parity=self.parity * self.dummy_parity, inplace=True
-            )
-
     def _resolve_dummy_modes_combine(self, a, b):
         """Calculate the new combined dummy modes and any associated global
         phases combing from contracting two fermionic arrays `a` and `b`. This
@@ -732,38 +705,49 @@ class FermionicArrayFlat(
         # transpose the actual arrays
         return new._transpose_abelian(axes, inplace=True)
 
-    def conj(self, phase_permutation=True, phase_dual=False, inplace=False):
-        """Conjugate this flat fermionic array. By default this include phases
-        from both the virtual flipping of all axes, but *not* the conjugation
-        of dual indices, such that::
+    def conj(
+        self,
+        phase_permutation=True,
+        phase_dual=False,
+        inner_dummy_labels=(),
+        inplace=False,
+    ):
+        """Conjugate this flat fermionic array.
+
+        By default, include the phase from treating the axis order as reversed,
+        but exclude the phase from dual indices. Thus::
 
             (
                 tensordot_fermionic(x.conj(), x, ndim) ==
                 tensordot_fermionic(x, x.conj(), ndim)
             )
 
-        If all indices have matching dualness (i.e. all bra or all ket), *or*
-        you set `phase_dual=True` then the above contractions will also be
-        equal to ``x.norm() ** 2``.
+        If all indices have the same dual value, or ``phase_dual=True``, both
+        contractions also equal ``x.norm() ** 2``.
 
         Parameters
         ----------
         phase_permutation : bool, optional
-            Whether to flip the phase of sectors whose odd charges undergo a
-            odd permutation due to *virtually* flipping the order of axes, by
-            default True.
-        phase_dual : bool, optional
-            Whether to flip the phase of dual indices, by default False. If a
-            FermionicArrayFlat has a mix of dual and non-dual indices, and you
-            are explicitly forming the norm, you may want to set this to True.
-            But if it is part of a large tensor network you only need to flip
-            the phase of true 'outer' dual indices.
+            Apply the phase from virtual axis reversal. Default is True.
+        phase_dual : bool or sequence of int, optional
+            Select dual indices to phase. False selects none (the default).
+            True selects all. A sequence selects axes by their positions on
+            this array. Dual dummy modes outside ``inner_dummy_labels`` also
+            add a phase unless this is False. This includes an empty sequence.
+        inner_dummy_labels : collection, optional
+            Labels whose usual conjugate partners are already in the network.
+            These modes get no dual phase. Their labels become virtual
+            conjugates (:attr:`FermionicOperator.vconj`) to keep them distinct
+            from those partners. Use the result only in the conjugate network.
+        inplace : bool, optional
+            Modify this array instead of returning a copy. Default is False.
 
         Returns
         -------
         FermionicArrayFlat
         """
         new = self if inplace else self.copy()
+        axes, phase_dummy = new._parse_phase_dual(phase_dual)
 
         if phase_permutation:
             # perform the phase accumulation separately first
@@ -772,15 +756,16 @@ class FermionicArrayFlat(
         # conjugate the actual arrays
         new._conj_abelian(inplace=True)
 
-        if phase_dual:
-            axs_conj = tuple(
-                ax for ax, ix in enumerate(new.indices) if not ix.dual
-            )
-            new.phase_flip(*axs_conj, inplace=True)
+        phased_axes = tuple(ax for ax in axes if not new.indices[ax].dual)
+        if phased_axes:
+            new.phase_flip(*phased_axes, inplace=True)
 
         if new.dummy_modes:
-            # handle potential dummy odd modes
-            new._resolve_dummy_modes_conj(phase_permutation)
+            new._resolve_dummy_modes_conj(
+                phase_permutation=phase_permutation,
+                phase_dummy=phase_dummy,
+                inner_dummy_labels=inner_dummy_labels,
+            )
 
         return new
 
@@ -817,20 +802,48 @@ class FermionicArrayFlat(
         phase_change = ((exponents + const) % 2) * -2 + 1
         return new.modify(phases=new.phases * phase_change)
 
-    def dagger(self, phase_dual=False, inplace=False):
-        """Fermionic conjugate transpose."""
+    def dagger(self, phase_dual=False, inner_dummy_labels=(), inplace=False):
+        """Fermionic conjugate transpose.
+
+        Parameters
+        ----------
+        phase_dual : bool or sequence of int, optional
+            Select dual indices to phase. False selects none (the default).
+            True selects all. A sequence selects axes by their positions on
+            this array, before transposition. Dual dummy modes outside
+            ``inner_dummy_labels`` also add a phase unless this is False.
+            This includes an empty sequence.
+        inner_dummy_labels : collection, optional
+            Labels whose usual conjugate partners are already in the network.
+            These modes get no dual phase. Their labels become virtual
+            conjugates (:attr:`FermionicOperator.vconj`) to keep them distinct
+            from those partners. Use the result only in the conjugate network.
+        inplace : bool, optional
+            Modify this array instead of returning a copy. Default is False.
+
+        Returns
+        -------
+        FermionicArrayFlat
+        """
+        axes, phase_dummy = self._parse_phase_dual(phase_dual)
         new = self._conj_abelian(inplace=inplace)
         new._transpose_abelian(inplace=True)
 
-        if phase_dual:
-            axs_conj = tuple(
-                ax for ax, ix in enumerate(new.indices) if not ix.dual
-            )
-            new.phase_flip(*axs_conj, inplace=True)
+        # axes are reversed by the transpose
+        phased_axes = tuple(
+            new.ndim - 1 - ax
+            for ax in axes
+            if not new.indices[new.ndim - 1 - ax].dual
+        )
+        if phased_axes:
+            new.phase_flip(*phased_axes, inplace=True)
 
-        # handle potential dummy odd modes
-        #     dagger defined by phaseless reversal of all axes
-        new._resolve_dummy_modes_conj(phase_permutation=True)
+        # moving reversed dummy modes before the axes can add a phase
+        new._resolve_dummy_modes_conj(
+            phase_permutation=True,
+            phase_dummy=phase_dummy,
+            inner_dummy_labels=inner_dummy_labels,
+        )
 
         return new
 

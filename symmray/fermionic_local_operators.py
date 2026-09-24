@@ -7,31 +7,31 @@ import numbers
 
 import autoray as ar
 
+# tagged labels sort after plain labels
+_LABEL_TAG_RANKS = {"vconj": 4}
+
+
+def label_key(label):
+    """Return a sort key for a fermionic mode label.
+
+    Real numbers sort before strings, then tuples, then other types. Tuple
+    items follow the same rules. ``("vconj", label)`` sorts after plain labels.
+    ``("squeeze", ...)`` sorts as a normal tuple.
+    """
+    if isinstance(label, numbers.Real):
+        return (0, label)
+    if isinstance(label, str):
+        return (1, label)
+    if isinstance(label, tuple):
+        rank = _LABEL_TAG_RANKS.get(label[0]) if label else None
+        if rank is not None:
+            return (rank, tuple(map(label_key, label[1:])))
+        return (2, tuple(map(label_key, label)))
+    return (3, type(label).__name__, repr(label))
+
 
 def labels_lt(labela, labelb):
-    try:
-        return labela < labelb
-    except TypeError:
-        # allow certain mixed types to be compared, the logic here is:
-        # 1. group all integer labels first
-        # 2. then plain strings
-        # 3. then tuples by length
-        # XXX: some different length tuples can be compared, might revisit
-        if isinstance(labela, numbers.Integral):
-            la = -2
-        elif isinstance(labela, str):
-            la = -1
-        else:
-            la = len(labela)
-
-        if isinstance(labelb, numbers.Integral):
-            lb = -2
-        elif isinstance(labelb, str):
-            lb = -1
-        else:
-            lb = len(labelb)
-
-        return la < lb
+    return label_key(labela) < label_key(labelb)
 
 
 class FermionicOperator:
@@ -80,6 +80,21 @@ class FermionicOperator:
     @property
     def dag(self):
         return FermionicOperator(self._label, not self._dual, self.parity)
+
+    @property
+    def vconj(self):
+        """Return the 'virtual conjugate' of this operator.
+
+        Use it when the usual conjugate partner is already in the network.
+        It flips ``dual`` and wraps the label as ``("vconj", label)``.
+        Applying it again unwraps the label and restores this operator.
+        """
+        label = self._label
+        if isinstance(label, tuple) and label[:1] == ("vconj",):
+            label = label[1]
+        else:
+            label = ("vconj", label)
+        return FermionicOperator(label, not self._dual, self._parity)
 
     def __eq__(self, other):
         # XXX: do we need parity here?
