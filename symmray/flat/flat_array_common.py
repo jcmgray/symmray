@@ -10,7 +10,7 @@ from itertools import repeat
 import autoray as ar
 import cotengra as ctg
 
-from ..array_common import maybe_keep_label
+from ..array_common import maybe_keep_label, parse_single_einsum_eq
 from ..linalg_common import (
     Absorb,
     absorb_svd_result,
@@ -1322,7 +1322,81 @@ class FlatArrayCommon:
         return _sum(sector_equals * new_blocks)
 
     def _einsum_abelian(self, eq, preserve_array=False):
-        raise NotImplementedError
+        """Single term einsum, supporting (partial) traces and transposes."""
+        lhs, rhs, kept, traced = parse_single_einsum_eq(eq, self.ndim)
+
+        if not traced:
+            if not rhs and not preserve_array:
+                return self.blocks[0]
+            return self._transpose_abelian(kept)
+
+        if kept and (
+            any(ix.num_charges != self.order for ix in self.indices)
+            or self.num_blocks != self.order ** (self.ndim - 1)
+        ):
+            raise NotImplementedError(
+                "Flat partial traces need every charge on each input axis "
+                "and a complete set of sector blocks."
+            )
+
+        xp = self.get_namespace()
+        matching_sectors = functools.reduce(
+            operator.and_,
+            (self.sectors[:, a] == self.sectors[:, b] for a, b in traced),
+        )
+        # keep the block axis separate during einsum
+        batch_label = ctg.get_symbol(len(set(lhs)))
+        labels = {
+            c: ctg.get_symbol(i) for i, c in enumerate(dict.fromkeys(lhs))
+        }
+        block_eq = (
+            batch_label
+            + "".join(labels[c] for c in lhs)
+            + "->"
+            + batch_label
+            + "".join(labels[c] for c in rhs)
+        )
+
+        if kept:
+            blocks_per_output = self.order ** len(traced)
+            num_output_sectors = self.order ** (len(kept) - 1)
+            # group matching blocks by output sector before summing
+            # keeping only blocks where all trace pairs match
+            block_order = lexsort_sectors(
+                (~matching_sectors, *(self.sectors[:, ax] for ax in kept)),
+                self.order,
+            )[: num_output_sectors * blocks_per_output]
+
+            # perform the einsum within each block!
+            blocks = xp.einsum(block_eq, self.blocks[block_order])
+
+            # sum over output blocks mapped to the same output sector
+            blocks = xp.sum(
+                xp.reshape(
+                    blocks,
+                    (num_output_sectors, blocks_per_output, *blocks.shape[1:]),
+                ),
+                axis=1,
+            )
+            # drop traced sectors and permute remaining
+            sectors = self.sectors[block_order[::blocks_per_output]][:, kept]
+            indices = tuple(self.indices[ax] for ax in kept)
+            if len(kept) == 1:
+                # only a single charge left
+                indices = (indices[0].select_charge(sectors[0, 0]),)
+        else:
+            blocks = xp.einsum(block_eq, self.blocks)
+            scalar = xp.sum(
+                xp.where(matching_sectors, blocks, xp.zeros_like(blocks))
+            )
+            if not preserve_array:
+                return scalar
+            blocks = xp.reshape(scalar, (1,))
+            sectors = self.sectors[:1, :0]
+            indices = ()
+
+        # fermionic phases are applied before this method
+        return self.copy_with(sectors=sectors, blocks=blocks, indices=indices)
 
     def _tensordot_abelian(
         self,

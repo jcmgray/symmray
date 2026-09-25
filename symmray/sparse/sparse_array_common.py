@@ -13,7 +13,12 @@ from collections import OrderedDict, defaultdict
 
 import autoray as ar
 
-from ..array_common import maybe_keep_label, parse_tensordot_axes, without
+from ..array_common import (
+    maybe_keep_label,
+    parse_single_einsum_eq,
+    parse_tensordot_axes,
+    without,
+)
 from ..linalg_common import (
     Absorb,
     absorb_svd_result,
@@ -1935,49 +1940,21 @@ class SparseArrayCommon:
         return drop_misaligned_sectors(self, other, *axes)
 
     def _einsum_abelian(self, eq, preserve_array=False):
-        """Einsum for abelian arrays, currently only single term.
+        """Permute or trace sparse blocks with an einsum equation.
 
-        Parameters
-        ----------
-        eq : str
-            The einsum equation, e.g. "abcb->ca". The output indices must be
-            specified and only trace and permutations are allowed.
-        preserve_array : bool, optional
-            If tracing to a scalar, whether to return an AbelainArray object
-            with no indices, or simply scalar itself (the default).
-
-        Returns
-        -------
-        SparseArrayCommon or scalar
+        The equation must name its output. A complete trace returns a scalar,
+        or an array with no axes if ``preserve_array=True``.
         """
         _einsum = ar.get_lib_fn(self.backend, "einsum")
 
-        # parse equation
-        lhs, rhs = eq.split("->")
-        ind_map = {}
-        traced = {}
-        for j, (q, ind) in enumerate(zip(lhs, self.indices)):
-            if q in rhs:
-                ind_map[q] = ind
-            else:
-                traced.setdefault(q, []).append(j)
-        # how to permute kept indices to match output
-        perm = tuple(map(lhs.index, rhs))
-
-        if DEBUG:
-            for q, js in traced.items():
-                if len(js) != 2:
-                    raise ValueError(
-                        f"Can only trace two indices, got {len(js)}."
-                    )
-                j1, j2 = js
-                assert self.indices[j1].matches(self.indices[j2])
+        lhs, rhs, kept_axes, traced = parse_single_einsum_eq(eq, self.ndim)
+        eq = f"{lhs}->{rhs}"
 
         new_blocks = {}
         for sector, array in self.get_sector_block_pairs():
-            if all(sector[ja] == sector[jb] for ja, jb in traced.values()):
+            if all(sector[ja] == sector[jb] for ja, jb in traced):
                 # only trace diagonal blocks
-                new_sector = tuple(sector[i] for i in perm)
+                new_sector = tuple(sector[i] for i in kept_axes)
                 new_array = _einsum(eq, array)
 
                 try:
@@ -1985,7 +1962,7 @@ class SparseArrayCommon:
                 except KeyError:
                     new_blocks[new_sector] = new_array
 
-        new_indices = tuple(ind_map[q] for q in rhs)
+        new_indices = tuple(self.indices[i] for i in kept_axes)
 
         if rhs or preserve_array:
             # wrap in new array

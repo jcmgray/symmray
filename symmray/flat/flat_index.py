@@ -149,6 +149,22 @@ class FlatIndex(Index):
     def size_total(self) -> int:
         return self._num_charges * self._charge_size
 
+    def matches(self, other):
+        """Return whether two flat indices can contract.
+
+        They need equal charge counts and block sizes, and opposite dualness.
+
+        Parameters
+        ----------
+        other : FlatIndex
+            The other index.
+        """
+        return (
+            self._num_charges == other._num_charges
+            and self._charge_size == other._charge_size
+            and self._dual != other._dual
+        )
+
     def conj(self) -> "FlatIndex":
         """Return the conjugate of the index, i.e., flip the dualness and
         subinfo.

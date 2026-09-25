@@ -11,6 +11,56 @@ from .utils import DEBUG
 from .vector_common import VectorCommon
 
 
+@functools.lru_cache(2**12)
+def parse_single_einsum_eq(eq, ndim):
+    """Parse an einsum equation for one array.
+
+    Return input labels, output labels, kept axes, and trace pairs.
+    """
+    if not isinstance(eq, str):
+        raise TypeError("The einsum equation must be a string.")
+
+    if "..." in eq:
+        raise NotImplementedError("Ellipses are not supported in einsum.")
+
+    if eq.count("->") != 1 or "," in eq:
+        raise ValueError("Expected one einsum input and explicit output.")
+
+    lhs, rhs = eq.replace(" ", "").split("->")
+
+    if len(lhs) != ndim:
+        raise ValueError("The einsum input must have one label per axis.")
+
+    if len(set(rhs)) != len(rhs) or not set(rhs) <= set(lhs):
+        raise ValueError("Einsum output labels must be unique input labels.")
+
+    traced = []
+    for c in dict.fromkeys(lhs):
+        axes = tuple(i for i, q in enumerate(lhs) if q == c)
+        if c in rhs:
+            if len(axes) != 1:
+                raise NotImplementedError(
+                    "Einsum diagonal extraction is not supported."
+                )
+        elif len(axes) != 2:
+            raise NotImplementedError(
+                "Einsum can only sum paired trace labels."
+            )
+        else:
+            traced.append(axes)
+
+    return lhs, rhs, tuple(map(lhs.index, rhs)), tuple(traced)
+
+
+def check_einsum_traced(indices, traced):
+    """Check that the indices in each trace pair can contract."""
+    for a, b in traced:
+        if not indices[a].matches(indices[b]):
+            raise ValueError(
+                "Traced indices must have matching sizes and opposite duals."
+            )
+
+
 def _is_squeeze_entry(entry):
     return entry and entry[0] == "s"
 

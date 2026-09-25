@@ -266,18 +266,31 @@ def _parse_multiply_diagonal_eq(eq):
 
 
 def einsum(*args, **kwargs):
-    """Perform an Einstein summation on a `symmray` array, this simply uses
-    `cotengra` to dispatch the full expression into pairwise tensordot (or
-    einsum if necessary) calls.
+    """Contract arrays with an einsum equation that names its output.
+
+    With one array, permute axes (``"abc->cab"``) or trace pairs
+    (``"abcb->ca"``, ``"abab->"``). Each output label must occur once. Each
+    trace label must occur twice on indices with matching sizes and opposite
+    dualness. A complete trace returns a scalar. Set ``preserve_array=True``
+    to return an array with no axes. Fermionic arrays include the signs from
+    permuting and tracing axes.
+
+    Flat partial traces need a complete set of sector blocks and every
+    charge on each input axis. Diagonal extraction, single-axis sums, and
+    ellipses are unsupported.
+
+    With two arrays, pairwise contractions and outer products use
+    ``tensordot``. The result is reordered if the equation asks for it. A
+    symmray vector can multiply along a shared axis, e.g.
+    ``"i,ijkl->ijkl"``. Cotengra handles more than two arrays.
     """
     if not isinstance(args[0], str):
-        # convert from interleaved
         eq, arrays = ctg.utils.convert_from_interleaved(args)
     else:
         eq, *arrays = args
 
     if len(arrays) == 1:
-        # use symmray for single term
+        # use symmray method for single term
         return arrays[0].einsum(eq, **kwargs)
 
     if len(arrays) == 2:
