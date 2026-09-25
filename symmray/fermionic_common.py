@@ -2,7 +2,12 @@
 
 import autoray as ar
 
-from .array_common import _normalize_axes, parse_tensordot_axes
+from .array_common import (
+    _normalize_axes,
+    check_einsum_traced,
+    parse_single_einsum_eq,
+    parse_tensordot_axes,
+)
 from .fermionic_local_operators import FermionicOperator
 from .linalg_common import Absorb
 
@@ -463,22 +468,24 @@ class FermionicCommon:
         return new
 
     def einsum(self, eq, preserve_array=False):
-        """Einsum for fermionic arrays, currently only single term.
+        """Permute axes or trace pairs with fermionic signs.
 
         Parameters
         ----------
         eq : str
-            The einsum equation, e.g. "abcb->ca". The output indices must be
-            specified and only trace and permutations are allowed.
+            An equation with explicit output, e.g. ``"abcb->ca"``. Each
+            output label must occur once. Each trace label must occur twice on
+            indices with matching sizes and opposite dualness.
         preserve_array : bool, optional
-            If tracing to a scalar, whether to return an AbelianArray object
-            with no indices, or simply scalar itself (the default).
+            If True, return an array with no axes for a complete trace.
+            Otherwise, return a scalar.
 
         Returns
         -------
         FermionicCommon or scalar
         """
-        lhs, rhs = eq.split("->")
+        lhs, rhs, _, traced = parse_single_einsum_eq(eq, self.ndim)
+        check_einsum_traced(self.indices, traced)
 
         def key(i):
             c = lhs[i]

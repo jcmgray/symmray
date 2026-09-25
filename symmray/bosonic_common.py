@@ -1,6 +1,10 @@
 """Common methods for any 'bosonic' (non-fermionic) arrays."""
 
-from .array_common import _normalize_axes
+from .array_common import (
+    _normalize_axes,
+    check_einsum_traced,
+    parse_single_einsum_eq,
+)
 from .linalg_common import Absorb
 
 
@@ -190,21 +194,24 @@ class BosonicCommon:
         return self._squeeze_abelian(axis=axis, inplace=inplace)
 
     def einsum(self, eq, preserve_array=False):
-        """Einsum for abelian arrays, currently only single term.
+        """Permute axes or trace pairs in an abelian array.
 
         Parameters
         ----------
         eq : str
-            The einsum equation, e.g. "abcb->ca". The output indices must be
-            specified and only trace and permutations are allowed.
+            An equation with explicit output, e.g. ``"abcb->ca"``. Each
+            output label must occur once. Each trace label must occur twice on
+            indices with matching sizes and opposite dualness.
         preserve_array : bool, optional
-            If tracing to a scalar, whether to return an abelian array object
-            with no indices, or simply the scalar itself (the default).
+            If True, return an array with no axes for a complete trace.
+            Otherwise, return a scalar.
 
         Returns
         -------
         BosonicCommon or scalar
         """
+        *_, traced = parse_single_einsum_eq(eq, self.ndim)
+        check_einsum_traced(self.indices, traced)
         return self._einsum_abelian(eq, preserve_array=preserve_array)
 
     def tensordot(self, other, axes=2, mode="auto", preserve_array=False):
