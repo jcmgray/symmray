@@ -91,6 +91,36 @@ def test_svd(symmetry, shape, duals, seed=42):
     fxr.to_blocksparse().test_allclose(x)
 
 
+@pytest.mark.parametrize("duals", ([False, False], [True, True]))
+@pytest.mark.parametrize("charge_side", ["left", "right"])
+@pytest.mark.parametrize("dual_dummy", [False, True])
+def test_qr_charge_side(duals, charge_side, dual_dummy, seed=42):
+    x = sr.utils.get_rand(
+        "Z2",
+        [24, 36],
+        duals=duals,
+        charge=1,
+        fermionic=True,
+        seed=seed,
+        subsizes="equal",
+        label="x",
+    )
+    if dual_dummy:
+        x = x.conj(phase_dual=True)
+    q, r = sr.linalg.qr(x, charge_side=charge_side)
+
+    fx = x.to_flat()
+    fq, fr = sr.linalg.qr(fx, charge_side=charge_side)
+    fq.check()
+    fr.check()
+    charged, neutral = (fq, fr) if charge_side == "left" else (fr, fq)
+    assert charged.dummy_modes == fx.dummy_modes
+    assert not neutral.dummy_modes
+    fq.to_blocksparse().test_allclose(q)
+    fr.to_blocksparse().test_allclose(r)
+    (fq @ fr).to_blocksparse().test_allclose(x)
+
+
 @pytest.mark.parametrize("symmetry", ("Z2",))
 @pytest.mark.parametrize("seed", range(10))
 def test_qr_roundtrip(symmetry, seed):

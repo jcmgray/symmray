@@ -852,6 +852,10 @@ class FermionicCommon:
 
         Parameters
         ----------
+        charge_side : {"auto", "left", "right"}, optional
+            Which factor gets the array charge, label and dummy modes. If
+            "auto", this is chosen from ``absorb``, see
+            :meth:`Absorb.choose_charge_side`.
         drop_dummy_modes : {"auto", bool}, optional
             Whether to drop ``dummy_modes`` (and the array ``label``) from the
             returned factors. Useful is using the factors as projectors rather
@@ -859,6 +863,10 @@ class FermionicCommon:
             the method is "eigh".
         """
         x = self.phase_sync()
+
+        if charge_side != "auto":
+            # the abelian split needs charge matching phase side
+            kwargs["charge_side"] = charge_side
 
         left, s, right = x._split_abelian(*args, **kwargs)
 
@@ -923,7 +931,7 @@ class FermionicCommon:
         absorb=0,
         shift=True,
         drop_dummy_modes="auto",
-    ) -> "FermionicCommon":
+    ):
         """Cholesky decomposition with optional diagonal regularization,
         returning results in an SVD-like ``(left, None, right)`` format
         for compatibility with tensor network split drivers. Handles

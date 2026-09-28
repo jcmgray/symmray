@@ -36,6 +36,34 @@ def test_qr_basics(symmetry, d0, d1, f0, f1, c):
 
 
 @pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("f0", [False, True])
+@pytest.mark.parametrize("f1", [False, True])
+@pytest.mark.parametrize("charge_side", ["left", "right"])
+@pytest.mark.parametrize("dual_dummy", [False, True])
+def test_qr_charge_side(symmetry, f0, f1, charge_side, dual_dummy):
+    x = sr.utils.get_rand(
+        symmetry,
+        (4, 5),
+        duals=[f0, f1],
+        charge=1,
+        fermionic=True,
+        label="x",
+        seed=42,
+    )
+    if dual_dummy:
+        x = x.conj(phase_dual=True)
+    q, r = sr.linalg.qr(x, charge_side=charge_side)
+    q.check()
+    r.check()
+    charged, neutral = (q, r) if charge_side == "left" else (r, q)
+    assert charged.charge == x.charge
+    assert charged.dummy_modes == x.dummy_modes
+    assert neutral.charge == 0
+    assert not neutral.dummy_modes
+    assert (q @ r).allclose(x)
+
+
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
 @pytest.mark.parametrize("d0", [3, 4])
 @pytest.mark.parametrize("d1", [2, 5])
 @pytest.mark.parametrize("f0", [False, True])
