@@ -29,6 +29,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Fusing an empty group of axes now records subindex information for the expanded axis, so that `unfuse` removes it again and the fuse/unfuse round trip is total. Fermionic unfusing also normalizes negative axes before computing phases.
 - Fermionic `conj(phase_dual=True)` and `dagger(phase_dual=True)` now phase dual dummy modes like outer dual indices. This fixes wrong signs in norms and repeated conjugation of arrays with dual dummy modes.
 - Dummy mode labels with mixed types now sort consistently. This fixes contraction signs when site labels and `("squeeze", label, ax)` labels occur together.
+- Fermionic splits, such as `qr` and `svd`, now pass explicit `charge_side` on to the abelian split, so charge, label and dummy modes go on the requested factor.
 
 
 ## v0.3.1 (2026-08-25)
