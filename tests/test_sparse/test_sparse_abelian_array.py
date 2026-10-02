@@ -184,7 +184,10 @@ class TestNoReferenceCycles:
 
         x = sr.utils.get_rand("U1", (4, 5, 6, 7), seed=1)
         x.del_block(list(x.sectors)[len(x.sectors) // 2])
-        gc.collect()
+        # garbage from other libraries (e.g. torch.compile) can need
+        # several passes to clear
+        while gc.collect():
+            pass
         gc.disable()
         try:
             # second fuse compiles the execution plan
@@ -199,7 +202,10 @@ class TestNoReferenceCycles:
 
         x = sr.utils.get_rand("U1", (4, 5, 6, 3), seed=1, fermionic=True)
         y = x.conj()
-        gc.collect()
+        # garbage from other libraries (e.g. torch.compile) can need
+        # several passes to clear
+        while gc.collect():
+            pass
         gc.disable()
         try:
             for _ in range(2):
