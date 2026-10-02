@@ -436,12 +436,13 @@ class SubIndexInfo(SubInfo):
         This should not be mutated after creation.
     """
 
-    __slots__ = ("_extents", "_hashkey", "_indices")
+    __slots__ = ("_extents", "_hashkey", "_indices", "_splits")
 
     def __init__(self, indices, extents):
         self._indices = indices
         self._extents = extents
         self._hashkey = None
+        self._splits = None
 
     @property
     def extents(self):
@@ -454,6 +455,34 @@ class SubIndexInfo(SubInfo):
     def subshape(self):
         return tuple(ix.size_total for ix in self._indices)
 
+    @property
+    def splits(self):
+        """A mapping of each charge of the fused index to a tuple of
+        ``(subsector, start, stop, subshape)`` for each of its subsectors,
+        giving where it sits within the fused index and its unfused shape.
+        This is cached after the first call.
+        """
+        splits = getattr(self, "_splits", None)
+        if splits is None:
+            splits = {}
+            for c, extent in self._extents.items():
+                charge_splits = []
+                start = 0
+                for subsector, d in extent.items():
+                    subshape = tuple(
+                        [
+                            ix._chargemap[sc]
+                            for ix, sc in zip(self._indices, subsector)
+                        ]
+                    )
+                    charge_splits.append(
+                        (subsector, start, start + d, subshape)
+                    )
+                    start += d
+                splits[c] = tuple(charge_splits)
+            self._splits = splits
+        return splits
+
     def copy_with(self, indices=None, extents=None):
         """A copy of this subindex information with some attributes replaced.
         Note that checks are not performed on the new properties, this is
@@ -463,6 +492,7 @@ class SubIndexInfo(SubInfo):
         new._indices = self._indices if indices is None else indices
         new._extents = self._extents if extents is None else extents
         new._hashkey = None
+        new._splits = None
         return new
 
     def to_pytree(self):
@@ -489,13 +519,18 @@ class SubIndexInfo(SubInfo):
         """Get a copy of this subindex information with the charges in
         ``charges`` discarded.
         """
-        return self.copy_with(
+        new = self.copy_with(
             extents={
                 c: extent
                 for c, extent in self._extents.items()
                 if c not in charges
             },
         )
+        splits = getattr(self, "_splits", None)
+        if splits is not None:
+            # the remaining charges keep their splits
+            new._splits = {c: splits[c] for c in new._extents}
+        return new
 
     def matches(self, other):
         """Whether this subindex information matches ``other`` subindex

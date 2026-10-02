@@ -149,6 +149,73 @@ def test_AbelianArray_fuse(symmetry, missing, mode):
     x.test_allclose(xu)
 
 
+class TestFuseMissingSubBlocks:
+    @pytest.mark.parametrize("symmetry", ("Z2", "U1", "U1U1"))
+    @pytest.mark.parametrize(
+        "groups",
+        [
+            ((0, 2), (1, 3)),
+            ((0, 2), (3,)),
+            ((1,), (0, 2)),
+            ((3, 0), (1,), (2,)),
+            ((0, 1, 3),),
+        ],
+    )
+    def test_concat_matches_insert(self, symmetry, groups):
+        from symmray.sparse import sparse_array_common as sac
+
+        sac._clear_fuseinfo_cache()
+        x = sr.utils.get_rand(symmetry, (4, 5, 6, 7), seed=1)
+        for sector in list(x.sectors)[::3]:
+            x.del_block(sector)
+
+        # second pass uses the cached execution plan
+        for _ in range(2):
+            xi = x._fuse_core_abelian(*groups, mode="insert")
+            xc = x._fuse_core_abelian(*groups, mode="concat")
+            xc.check()
+            xi.test_allclose(xc)
+
+
+class TestNoReferenceCycles:
+    @pytest.mark.parametrize("mode", ("insert", "concat"))
+    def test_fuse(self, mode):
+        import gc
+
+        x = sr.utils.get_rand("U1", (4, 5, 6, 7), seed=1)
+        x.del_block(list(x.sectors)[len(x.sectors) // 2])
+        gc.collect()
+        gc.disable()
+        try:
+            # second fuse compiles the execution plan
+            for _ in range(2):
+                x.fuse((0, 2), (1, 3), mode=mode)
+            assert gc.collect() == 0
+        finally:
+            gc.enable()
+
+    def test_tensordot_and_dense(self):
+        import gc
+
+        x = sr.utils.get_rand("U1", (4, 5, 6, 3), seed=1, fermionic=True)
+        y = x.conj()
+        gc.collect()
+        gc.disable()
+        try:
+            for _ in range(2):
+                z = sr.tensordot(x, y, axes=((1, 2), (1, 2)))
+            d = z.to_dense()
+            z.from_dense(
+                d,
+                index_maps=[[c for c, _ in ix.linearmap] for ix in z.indices],
+                duals=z.duals,
+                charge=z.charge,
+            )
+            assert gc.collect() == 0
+        finally:
+            gc.enable()
+
+
 class TestAbelianArrayFuseBackend:
     @pytest.mark.parametrize("backend", ("torch", "jax"))
     def test_concat_plan(self, backend, require_backend):

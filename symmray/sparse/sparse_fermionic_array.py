@@ -2,7 +2,7 @@
 
 import autoray as ar
 
-from ..array_common import ArrayCommon
+from ..array_common import ArrayCommon, parse_tensordot_axes
 from ..common import SymmrayCommon
 from ..fermionic_common import (
     FermionicCommon,
@@ -14,12 +14,12 @@ from ..fermionic_common import (
 from ..fermionic_local_operators import FermionicOperator
 from ..symmetries import (
     calc_phase_permutation,
-    calc_sector_phase_permutation,
     get_symmetry,
 )
 from ..utils import DEBUG, get_rng
 from .sparse_array_common import (
     SparseArrayCommon,
+    calc_fuse_group_info,
     get_permuter,
     permuted,
 )
@@ -338,15 +338,11 @@ class FermionicArray(
         """
         new = self if inplace else self.copy()
 
-        symmetry = new.symmetry
-        for sector in new.sectors:
-            phase_new = (
-                # start with old phase
-                new._phases.get(sector, 1)
-                *
-                # get the phase from permutation
-                calc_sector_phase_permutation(symmetry, sector, axes)
-            )
+        for sector, perm_phase in zip(
+            new.sectors, new._calc_permutation_phases(axes)
+        ):
+            # start with old phase
+            phase_new = new._phases.get(sector, 1) * perm_phase
 
             if phase_new == 1:
                 new._phases.pop(sector, None)
@@ -480,6 +476,125 @@ class FermionicArray(
             self.phase_transpose((*axes_squeeze, *axes_leave), inplace=True)
             self.modify(dummy_modes=(*self.dummy_modes, *squeezed_dummy_modes))
 
+    def _prepare_for_tensordot_fermionic(self, other, axes):
+        """Perform necessary fermionic phase operations to prepare two arrays
+        for an abelian tensordot. The phases are those of transposing to
+        ``[..., x, y, z], [z, y, x, ...]``, but the blocks keep their layout,
+        since the fused contraction transposes them anyway.
+        """
+        left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+            axes, self.ndim, other.ndim
+        )
+
+        # if contracted index is like |x><x| phase flip to get <x|x>
+        if self.size <= other.size:
+            flip_a = tuple(ax for ax in axes_a if not self.indices[ax].dual)
+            flip_b = ()
+        else:
+            flip_a = ()
+            flip_b = tuple(ax for ax in axes_b if other.indices[ax].dual)
+
+        # data layout [x, y, z, ...] for b, but phase layout [z, y, x, ...]
+        a = self._phase_sync_permuted((*left_axes, *axes_a), flip_a)
+        b = other._phase_sync_permuted(
+            (*reversed(axes_b), *right_axes), flip_b
+        )
+
+        return a, b, axes_a, axes_b
+
+    def _calc_permutation_phases(self, axes, axes_flip=()):
+        """Get the phase, 1 or -1, of each sector from permuting its axes by
+        ``axes`` and flipping ``axes_flip``, as a list in block order. These
+        only depend on the parities of a sector, so are computed once for
+        each pattern of parities.
+        """
+        parity = self.symmetry.parity
+        parity_map = {c: parity(c) for ix in self._indices for c in ix.charges}
+
+        cache = {}
+        phases = []
+        for sector in self._blocks:
+            parities = tuple([parity_map[c] for c in sector])
+            try:
+                phase = cache[parities]
+            except KeyError:
+                phase = calc_phase_permutation(parities, axes)
+                if sum(parities[ax] for ax in axes_flip) % 2:
+                    phase = -phase
+                cache[parities] = phase
+            phases.append(phase)
+
+        return phases
+
+    def _phase_sync_permuted(self, axes, axes_flip=(), inplace=False):
+        """Multiply the lazy phases, the phases of transposing by ``axes``
+        and of flipping ``axes_flip`` all into the blocks, without actually
+        transposing them.
+        """
+        if not axes_flip and axes == tuple(range(self.ndim)):
+            # nothing to do
+            return self.phase_sync(inplace=inplace)
+
+        old_phases = self.phases
+
+        new_blocks = {}
+        for (sector, array), phase in zip(
+            self._blocks.items(),
+            self._calc_permutation_phases(axes, axes_flip),
+        ):
+            if old_phases:
+                phase *= old_phases.get(sector, 1)
+            new_blocks[sector] = -array if phase == -1 else array
+
+        return self._modify_or_copy(
+            blocks=new_blocks, phases={}, inplace=inplace
+        )
+
+    def _fuse_core(self, *axes_groups, inplace=False) -> "FermionicArray":
+        """Fermionic fusion of axes groups. This includes three sources of
+        phase changes:
+
+        1. Initial fermionic transpose to make each group contiguous.
+        2. Flipping of non dual indices, if merged group is overall dual.
+        3. Virtual transpose within a group, if merged group is overall dual.
+
+        A grouped axis is overall dual if the first axis in the group is dual.
+        All three phases are applied in a single pass, leaving the actual
+        transpose to the abelian fuse.
+
+        Parameters
+        ----------
+        axes_groups : Sequence[Sequence[int]]
+            The axes groups to fuse. See `AbelianArray.fuse` for more details.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        # the transpose making each group contiguous
+        perm = list(calc_fuse_group_info(axes_groups, self.duals)[3])
+
+        axes_flip = []
+        for group in axes_groups:
+            if self.indices[group[0]].dual:
+                # overall dual index:
+                # 1. flip non dual sub indices
+                axes_flip.extend(
+                    ax for ax in group if not self.indices[ax].dual
+                )
+                # 2. virtual transpose within group, which composes with the
+                # first transpose as reversing the group within it
+                #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
+                start = perm.index(group[0])
+                perm[start : start + len(group)] = reversed(group)
+
+        x = self._phase_sync_permuted(tuple(perm), axes_flip, inplace=inplace)
+
+        # so we can do the actual block transposes and concatenations
+        return x._fuse_core_abelian(*axes_groups, inplace=True)
+
     def transpose(self, axes=None, phase=True, inplace=False):
         """Transpose the fermionic array, by default accounting for the phases
         accumulated from swapping odd charges.
@@ -510,13 +625,11 @@ class FermionicArray(
 
         if phase:
             # compute new sector phases
-            symmetry = new.symmetry
             _permute = get_permuter(axes)
             new_phases = {}
-            for sector in new.sectors:
-                perm_phase = calc_sector_phase_permutation(
-                    symmetry, sector, axes
-                )
+            for sector, perm_phase in zip(
+                new.sectors, new._calc_permutation_phases(axes)
+            ):
                 new_phase = old_phases.get(sector, 1) * perm_phase
                 if new_phase == -1:
                     # only populate non-trivial phases
@@ -600,10 +713,9 @@ class FermionicArray(
                     #     (perm=[ndim-1, ..., 0])
                     phase_new *= calc_phase_permutation(parities, None)
 
-                if phased_axes:
+                if phased_axes and sum(parities[ax] for ax in phased_axes) % 2:
                     # phase dual indices from before conjugation
-                    if sum(parities[ax] for ax in phased_axes) % 2:
-                        phase_new *= -1
+                    phase_new *= -1
 
                 if phase_new == 1:
                     new._phases.pop(sector, None)
