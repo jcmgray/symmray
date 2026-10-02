@@ -4,7 +4,7 @@ import functools
 
 import autoray as ar
 
-from ..array_common import ArrayCommon
+from ..array_common import ArrayCommon, parse_tensordot_axes
 from ..common import SymmrayCommon
 from ..fermionic_common import (
     FermionicCommon,
@@ -14,6 +14,7 @@ from ..fermionic_common import (
     parse_dummy_modes,
 )
 from ..fermionic_local_operators import FermionicOperator
+from ..sparse.sparse_array_common import calc_fuse_group_info
 from ..sparse.sparse_fermionic_array import FermionicArray
 from ..symmetries import get_symmetry
 from ..utils import DEBUG
@@ -671,6 +672,115 @@ class FermionicArrayFlat(
 
         self.phase_transpose((*axes_squeeze, *axes_leave), inplace=True)
         self.modify(dummy_modes=(*self.dummy_modes, *squeezed_dummy_modes))
+
+    def _fuse_core(
+        self,
+        *axes_groups,
+        inplace=False,
+    ) -> "FermionicArrayFlat":
+        """Fermionic fusion of axes groups. This includes three sources of
+        phase changes:
+
+        1. Initial fermionic transpose to make each group contiguous.
+        2. Flipping of non dual indices, if merged group is overall dual.
+        3. Virtual transpose within a group, if merged group is overall dual.
+
+        A grouped axis is overall dual if the first axis in the group is dual.
+
+        Parameters
+        ----------
+        axes_groups : Sequence[Sequence[int]]
+            The axes groups to fuse. See `AbelianArray.fuse` for more details.
+        inplace : bool, optional
+            Whether to perform the operation inplace or return a new array.
+
+        Returns
+        -------
+        FermionicArray
+        """
+        x = self if inplace else self.copy()
+
+        # first make groups into contiguous
+        # blocks using fermionic transpose
+        perm = calc_fuse_group_info(axes_groups, x.duals)[3]
+        # this is the first step which introduces phases
+        x.transpose(perm, inplace=True)
+        # update groups to reflect new axes
+        axes_groups = tuple(tuple(map(perm.index, g)) for g in axes_groups)
+
+        # process each group with another two sources of phase changes:
+        axes_flip = []
+        virtual_perm = None
+        for group in axes_groups:
+            if x.indices[group[0]].dual:
+                # overall dual index:
+                # 1. flip non dual sub indices
+                for ax in group:
+                    if not x.indices[ax].dual:
+                        axes_flip.append(ax)
+
+                # 2. virtual transpose within group
+                if virtual_perm is None:
+                    virtual_perm = list(range(x.ndim))
+                for axi, axj in zip(group, reversed(group)):
+                    virtual_perm[axi] = axj
+
+        if axes_flip:
+            x.phase_flip(*axes_flip, inplace=True)
+
+        # if the fused axes is overall bra, need phases from effective flip
+        #   <a|<b|<c|  |a>|b>|c>    ->    P * <c|<b|<a|  |a>|b>|c>
+        #   but actual array layout should not be flipped, so do virtually
+        if virtual_perm is not None:
+            x.phase_transpose(tuple(virtual_perm), inplace=True)
+
+        # insert phases
+        x.phase_sync(inplace=True)
+
+        # so we can do the actual block concatenations
+        x._fuse_core_abelian(*axes_groups, inplace=True)
+
+        return x
+
+    def _prepare_for_tensordot_fermionic(self, other, axes):
+        """Perform necessary fermionic phase operations to prepare two arrays
+        for an abelian tensordot.
+        """
+        ndim_a, ndim_b = self.ndim, other.ndim
+        left_axes, axes_a, axes_b, right_axes = parse_tensordot_axes(
+            axes, ndim_a, ndim_b
+        )
+
+        ncon = len(axes_a)
+
+        # XXX: do all three as virtual phases?
+
+        # permute a & b so we have axes like
+        #     in terms of data layout => [..., x, y, z], [x, y, z, ...]
+        a = self.transpose((*left_axes, *axes_a))
+        b = other.transpose((*axes_b, *right_axes))
+        #     but in terms of 'phase layout' =>  [..., x, y, z], [z, y, x, ...]
+        b.phase_transpose(
+            (*range(ncon - 1, -1, -1), *range(ncon, b.ndim)), inplace=True
+        )
+
+        # new axes for tensordot_abelian having permuted inputs
+        new_axes_a = tuple(range(ndim_a - ncon, ndim_a))
+        new_axes_b = tuple(range(ncon))
+
+        # if contracted index is like |x><x| phase flip to get <x|x>
+        if a.size <= b.size:
+            axs_flip = tuple(ax for ax in new_axes_a if not a.indices[ax].dual)
+            a.phase_flip(*axs_flip, inplace=True)
+        else:
+            axs_flip = tuple(ax for ax in new_axes_b if b.indices[ax].dual)
+            b.phase_flip(*axs_flip, inplace=True)
+
+        # actually multiply block arrays with phases
+        a.phase_sync(inplace=True)
+        b.phase_sync(inplace=True)
+
+        return a, b, new_axes_a, new_axes_b
 
     def transpose(
         self,
