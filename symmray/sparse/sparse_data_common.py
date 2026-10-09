@@ -169,7 +169,18 @@ class BlockCommon:
         self._blocks.update(params)
 
     def apply_to_arrays(self, fn):
-        """Apply the ``fn`` inplace to the array of every block."""
+        """Apply ``fn`` inplace to the array of each block. ``fn`` should be
+        elementwise, since other backends may apply it to all the data at once.
+        Use `apply_to_blocks` otherwise.
+        """
+        for sector, array in self.get_sector_block_pairs():
+            self.set_block(sector, fn(array))
+
+    def apply_to_blocks(self, fn):
+        """Apply ``fn`` inplace to the array of each block. ``fn`` need not be
+        elementwise, e.g. a matrix exponential.
+        """
+
         for sector, array in self.get_sector_block_pairs():
             self.set_block(sector, fn(array))
 

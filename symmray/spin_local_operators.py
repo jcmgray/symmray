@@ -155,6 +155,7 @@ def build_local_spin_array(
     charge=None,
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Compute a local spin-1/2 operator as an `AbelianArray`.
 
@@ -176,6 +177,8 @@ def build_local_spin_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -199,6 +202,7 @@ def build_local_spin_array(
         fermionic=False,
         charge=charge,
         flat=flat,
+        layout=layout,
     )
 
 
@@ -209,6 +213,7 @@ def tfim_local_array(
     coordinations=(1, 1),
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Build a local symmetric transverse-field Ising operator.
 
@@ -235,6 +240,8 @@ def tfim_local_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -261,6 +268,7 @@ def tfim_local_array(
         index_maps=_spinhalf_index_maps(symmetry, 2),
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
@@ -271,6 +279,7 @@ def heisenberg_local_array(
     coordinations=(1, 1),
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Build a local symmetric Heisenberg operator.
 
@@ -302,6 +311,8 @@ def heisenberg_local_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -336,10 +347,13 @@ def heisenberg_local_array(
         index_maps=_spinhalf_index_maps(symmetry, 2),
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def spin_operator_local_array(symmetry, op="z", like="numpy", flat=False):
+def spin_operator_local_array(
+    symmetry, op="z", like="numpy", flat=False, layout=None
+):
     """Build a single-site abelian symmetric spin-1/2 operator.
 
     Parameters
@@ -356,6 +370,8 @@ def spin_operator_local_array(symmetry, op="z", like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -399,4 +415,5 @@ def spin_operator_local_array(symmetry, op="z", like="numpy", flat=False):
         charge=charge,
         like=like,
         flat=flat,
+        layout=layout,
     )

@@ -134,6 +134,16 @@ class FlatCommon:
             pass
 
     def apply_to_arrays(self, fn):
+        """Apply ``fn`` inplace to all the stacked blocks at once. ``fn``
+        should be elementwise, use `apply_to_blocks` otherwise.
+        """
+        self._blocks = fn(self._blocks)
+
+    def apply_to_blocks(self, fn):
+        """Apply ``fn`` inplace to all the stacked blocks at once. ``fn``
+        should broadcast over the leading block axis, e.g. a batched expm.
+        """
+
         self._blocks = fn(self._blocks)
 
     def _item_blockwise(self):

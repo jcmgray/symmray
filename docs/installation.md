@@ -50,7 +50,7 @@ pip install --no-deps -U -e symmray/
 
 ## Optional dependencies
 
-`symmray` stores numerical data using an Autoray-compatible array library. Install
-NumPy, PyTorch, JAX, or the backend used by your application. Several linear
-algebra routines and all tensor-network constructors also require
+`symmray` stores numerical data using an autoray-compatible array library.
+Install NumPy, PyTorch, JAX, or the backend used by your application. Several
+linear algebra routines and all tensor-network constructors also require
 [`quimb`](https://quimb.readthedocs.io/).

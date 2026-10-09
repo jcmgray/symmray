@@ -34,6 +34,50 @@ class Symmetry(ABC):
         """Return a random valid charge, for testing purposes."""
         raise NotImplementedError
 
+    # vectorized versions for the packed backend, acting on integer arrays of
+    # charges with shape ``(..., num_components)``
+
+    num_components = 1
+
+    # combining charges is addition modulo this, or plain addition if 0. None
+    # if neither. Used by compiled packed kernels
+    charge_modulus = None
+
+    def charges_to_array(self, charges):
+        """Convert a sequence of charges to an integer array with shape
+        ``(len(charges), num_components)``.
+        """
+        import numpy as np
+
+        return np.array(list(charges), dtype=np.int64).reshape(
+            -1, self.num_components
+        )
+
+    def array_to_charges(self, array):
+        """Convert an integer array of charges, with shape
+        ``(n, num_components)``, back to a list of charges.
+        """
+        if self.num_components == 1:
+            return [int(c) for c in array[:, 0]]
+        return [tuple(map(int, c)) for c in array]
+
+    def combine_array(self, array, axis=-2):
+        """Combine an array of charges along ``axis``."""
+        raise NotImplementedError
+
+    def sign_array(self, array, duals):
+        """Negate the charges in ``array`` where ``duals`` is True. ``duals``
+        should be a boolean array with shape ``array.shape[:-1]``.
+        """
+
+        raise NotImplementedError
+
+    def parity_array(self, array):
+        """Get the parity, 0 or 1, of an array of charges, with shape
+        ``array.shape[:-1]``.
+        """
+        raise NotImplementedError
+
     def __str__(self):
         return self.__class__.__name__
 
@@ -82,6 +126,21 @@ class ZN(Symmetry):
         rng = get_rng(seed)
         return int(rng.integers(0, self.N))
 
+    @property
+    def charge_modulus(self):
+        return self.N
+
+    def combine_array(self, array, axis=-2):
+        return array.sum(axis=axis) % self.N
+
+    def sign_array(self, array, duals):
+        import numpy as np
+
+        return np.where(duals[..., None], (self.N - array) % self.N, array)
+
+    def parity_array(self, array):
+        return array[..., 0] % 2
+
     def __reduce__(self):
         return (get_symmetry, (f"Z{self.N}",))
 
@@ -121,6 +180,19 @@ class U1(Symmetry):
         rng = get_rng(seed)
         return int(rng.integers(-1, 2))
 
+    charge_modulus = 0
+
+    def combine_array(self, array, axis=-2):
+        return array.sum(axis=axis)
+
+    def sign_array(self, array, duals):
+        import numpy as np
+
+        return np.where(duals[..., None], -array, array)
+
+    def parity_array(self, array):
+        return array[..., 0] % 2
+
 
 class Z2Z2(Symmetry):
     __slots__ = ()
@@ -152,6 +224,18 @@ class Z2Z2(Symmetry):
         charge = rng.integers(0, 2, size=2)
         return tuple(map(int, charge))
 
+    num_components = 2
+    charge_modulus = 2
+
+    def combine_array(self, array, axis=-2):
+        return array.sum(axis=axis) % 2
+
+    def sign_array(self, array, duals):
+        return array
+
+    def parity_array(self, array):
+        return array[..., 0] ^ array[..., 1]
+
 
 class U1U1(Symmetry):
     __slots__ = ()
@@ -181,6 +265,20 @@ class U1U1(Symmetry):
         rng = get_rng(seed)
         charge = rng.integers(-1, 2, size=2)
         return tuple(map(int, charge))
+
+    num_components = 2
+    charge_modulus = 0
+
+    def combine_array(self, array, axis=-2):
+        return array.sum(axis=axis)
+
+    def sign_array(self, array, duals):
+        import numpy as np
+
+        return np.where(duals[..., None], -array, array)
+
+    def parity_array(self, array):
+        return (array[..., 0] + array[..., 1]) % 2
 
 
 @functools.lru_cache(2**14)

@@ -168,19 +168,20 @@ matches several objects, qualify it further or give an explicit title.
 
 ## Architecture
 
-`symmray` assembles its public array classes from common and storage-specific
-mixins. For example, sparse and flat abelian arrays share
+`symmray` assembles its public array classes from common and layout-specific
+mixins. For example, sparse, flat and packed abelian arrays share
 [`ArrayCommon`](#symmray.array_common.ArrayCommon),
 [`BosonicCommon`](#symmray.bosonic_common.BosonicCommon), and
-[`SymmrayCommon`](#symmray.common.SymmrayCommon), while their storage operations
-live in [`SparseArrayCommon`](#symmray.sparse.sparse_array_common.SparseArrayCommon)
-and [`FlatArrayCommon`](#symmray.flat.flat_array_common.FlatArrayCommon).
+[`SymmrayCommon`](#symmray.common.SymmrayCommon), while their layout operations
+live in [`SparseArrayCommon`](#symmray.sparse.sparse_array_common.SparseArrayCommon),
+[`FlatArrayCommon`](#symmray.flat.flat_array_common.FlatArrayCommon) and
+[`PackedArrayCommon`](#symmray.packed.packed_array_common.PackedArrayCommon).
 
 <img width="640" alt="symmray array class hierarchy" src="https://github.com/user-attachments/assets/33c0999c-9cb9-4551-bc92-39e63855e1f5" />
 
 Each method name may be defined only once along a public class's MRO. The test
 `tests/test_no_method_overrides.py` enforces this rule. Shared public behavior
-belongs in the most general applicable mixin. Storage-specific work should use
+belongs in the most general applicable mixin. Layout-specific work should use
 private delegators such as `_copy_abelian` rather than override a public method.
 
 

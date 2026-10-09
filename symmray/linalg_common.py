@@ -210,6 +210,89 @@ class Absorb:
         return charge_side
 
 
+CUTOFF_MODE_MAP = {
+    1: 1,
+    "abs": 1,
+    2: 2,
+    "rel": 2,
+    3: 3,
+    "sum2": 3,
+    4: 4,
+    "rsum2": 4,
+    5: 5,
+    "sum1": 5,
+    6: 6,
+    "rsum1": 6,
+}
+
+
+def calc_truncation_cutoff(sall, cutoff, cutoff_mode, max_bond, xp):
+    """Find the absolute value below which singular values should be discarded,
+    given all of them.
+
+    Parameters
+    ----------
+    sall : array_like
+        Every singular value, from all sectors, sorted in ascending order.
+    cutoff : float
+        The cutoff, interpreted according to ``cutoff_mode``. Zero or less
+        means no cutoff.
+    cutoff_mode : int or str
+        How to interpret ``cutoff``, see `CUTOFF_MODE_MAP`.
+    max_bond : int
+        Maximum total number of values to keep, zero or less for no limit.
+
+    xp : namespace
+        The array namespace of ``sall``.
+
+    Returns
+    -------
+    float or None
+        Keep values greater than or equal to this, or None to keep all.
+    """
+    abs_cutoff = None
+    if cutoff > 0.0:
+        cutoff_mode = CUTOFF_MODE_MAP[cutoff_mode]
+
+        if cutoff_mode == 1:
+            # absolute cutoff
+            abs_cutoff = cutoff
+        elif cutoff_mode == 2:
+            # relative cutoff
+            abs_cutoff = sall[-1] * cutoff
+        else:
+            # possibly square singular values
+            power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
+            if power == 1:
+                # sum1 or rsum1
+                cum_spow = xp.cumsum(sall, 0)
+            else:
+                # sum2 or rsum2
+                cum_spow = xp.cumsum(sall**power, 0)
+
+            if cutoff_mode in (4, 6):
+                # rsum1 or rsum2: relative cumulative cutoff
+                cond = cum_spow >= cutoff * cum_spow[-1]
+            else:
+                # sum1 or sum2: absolute cumulative cutoff
+                cond = cum_spow >= cutoff
+
+            # translate to total number of singular values to keep
+            n_chi_all = xp.count_nonzero(cond)
+            # and then to an absolute cutoff value
+            abs_cutoff = sall[-n_chi_all]
+
+    if 0 < max_bond < ar.size(sall):
+        # also take into account a total maximum bond
+        max_bond_cutoff = sall[-max_bond]
+        if abs_cutoff is None:
+            abs_cutoff = max_bond_cutoff
+        else:
+            abs_cutoff = max(abs_cutoff, max_bond_cutoff)
+
+    return abs_cutoff
+
+
 def absorb_svd_result(U, s, VH, absorb):
     """Apply absorption of singular values into U and/or VH.
 

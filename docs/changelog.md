@@ -10,6 +10,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 
 **Enhancements:**
 
+- New `packed` backend, which uses single numpy buffer to store all blocks and numba to accelerate various operations. For sparse data can e.g. be 2-3x faster for U1 and 10-20x faster for U1U1.
 - Flat array fusion and contraction no longer require `einops`
 - Fermionic arrays expose `dummy_parity`, the combined parity of their dummy modes, while preserving traced backend scalar types for flat arrays.
 - `phase_global(parity=...)` conditionally applies a global fermionic phase and supports traced parity scalars with the flat backend.

@@ -18,8 +18,9 @@ indices = (
 x = sr.U1FermionicArray.random(indices=indices, charge=-2, seed=1)
 ```
 
-The flat equivalent is [`FermionicArrayFlat`](#FermionicArrayFlat). Both
-layouts expose the same high-level phase rules.
+The flat and packed equivalents are [`FermionicArrayFlat`](#FermionicArrayFlat)
+and [`FermionicArrayPacked`](#FermionicArrayPacked). All layouts expose the
+same high-level phase rules.
 
 ## Phase handling
 
@@ -65,7 +66,7 @@ when inserting an array together with its conjugate as a projector. `axes`
 accepts either one integer or an ordered sequence selecting the uncontracted
 bonds. The first selected axis sets the reference duality inherited when the
 open axes are fused. The method handles the dualities of every contracted axis
-and the global sign of odd-parity arrays for both sparse and flat storage.
+and the global sign of odd-parity arrays for every block layout.
 
 ![Conjugation with one open dual index that needs a phase flip](images/tn-conjugate-phase.png)
 

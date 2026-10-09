@@ -57,7 +57,7 @@ print(U)
 ```
 
 Use the [getting-started guide](getting_started.md) for a short introduction.
-The later guides describe the array model, storage layouts, fermionic signs,
+The later guides describe the array model, block layouts, fermionic signs,
 operators, and tensor-network helpers.
 
 ```{toctree}
@@ -67,7 +67,7 @@ operators, and tensor-network helpers.
 installation.md
 getting_started.md
 abelian_arrays.md
-block_storage.md
+block_layout.md
 fermionic_arrays.md
 dummy_modes.md
 fermionic_operators.md

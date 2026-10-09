@@ -28,8 +28,9 @@ The constructors assign opposite dualnesses to the two ends of each internal
 bond and choose charge sectors from the requested symmetry, dimensions, and
 total charges. Use `duals="reversed"` for the backwards-compatible default,
 `duals="canonical"` to flip every bond, `duals="random"` to randomize each
-bond, or pass a mapping for explicit per-bond overrides. Pass `flat=True` with
-compatible equal sector sizes to use flat storage.
+bond, or pass a mapping for explicit per-bond overrides. Pass `layout="flat"`
+with compatible equal sector sizes, or `layout="packed"`, to choose the
+[block layout](block_layout.md).
 
 ## Hamiltonian terms
 

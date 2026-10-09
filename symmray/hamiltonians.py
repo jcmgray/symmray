@@ -50,6 +50,7 @@ def ham_tfim_from_edges(
     jx=-1.0,
     hz=-3.0,
     flat=False,
+    layout=None,
 ):
     """Return a dict of local 2-body Hamiltonian abelian symmetric terms for
     the transverse field Ising model on the given lattice defined by `edges`::
@@ -76,6 +77,8 @@ def ham_tfim_from_edges(
         take the site as input.
     flat : bool, optional
         Whether to return flat arrays, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -99,6 +102,7 @@ def ham_tfim_from_edges(
             hz=(hz_factory(cooa), hz_factory(coob)),
             coordinations=(coordinations[cooa], coordinations[coob]),
             flat=flat,
+            layout=layout,
         )
         for cooa, coob in edges
     }
@@ -110,6 +114,7 @@ def ham_heisenberg_from_edges(
     j=1.0,
     b=0.0,
     flat=False,
+    layout=None,
 ):
     """Return a dict of local 2-body Hamiltonian abelian symmetric terms for
     the Heisenberg model on the given lattice defined by `edges`::
@@ -141,6 +146,8 @@ def ham_heisenberg_from_edges(
         symmetry.
     flat : bool, optional
         Whether to return flat arrays, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -164,6 +171,7 @@ def ham_heisenberg_from_edges(
             b=(b_factory(cooa), b_factory(coob)),
             coordinations=(coordinations[cooa], coordinations[coob]),
             flat=flat,
+            layout=layout,
         )
         for cooa, coob in edges
     }
@@ -177,6 +185,7 @@ def ham_fermi_hubbard_from_edges(
     mu=0.0,
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Return a dict of local 2-body Hamiltonian terms for the Fermi-Hubbard
     model on the given lattice defined by `edges`. The indices are ordered as
@@ -203,6 +212,8 @@ def ham_fermi_hubbard_from_edges(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return flat arrays, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -229,6 +240,7 @@ def ham_fermi_hubbard_from_edges(
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
             flat=flat,
+            layout=layout,
         )
         for cooa, coob in edges
     }
@@ -243,6 +255,7 @@ def ham_fermi_hubbard_spinless_from_edges(
     delta=0.0,
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Return a dict of local 2-body Hamiltonian terms for the 'spinless
     Fermi-Hubbard' or ('t-V') model on the given lattice defined by `edges`.
@@ -267,6 +280,8 @@ def ham_fermi_hubbard_spinless_from_edges(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return flat arrays, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -295,6 +310,7 @@ def ham_fermi_hubbard_spinless_from_edges(
             coordinations=(coordinations[cooa], coordinations[coob]),
             like=like,
             flat=flat,
+            layout=layout,
         )
         for cooa, coob in edges
     }

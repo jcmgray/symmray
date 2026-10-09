@@ -149,6 +149,7 @@ def TN_abelian_from_edges_rand(
     bond_ind_id="b{}-{}",
     fermionic=False,
     flat=False,
+    layout=None,
     site_charge=None,
     subsizes="maximal",
     duals="reversed",
@@ -187,6 +188,8 @@ def TN_abelian_from_edges_rand(
     flat : bool, optional
         Whether to generate 'flat' backend arrays (True) or the default
         block-sparse backend arrays (False).
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
@@ -304,6 +307,7 @@ def TN_abelian_from_edges_rand(
                 charge=site_charge(site),
                 fermionic=fermionic,
                 flat=flat,
+                layout=layout,
                 subsizes=subsizes,
                 seed=rng,
                 dtype=dtype,
@@ -401,6 +405,7 @@ def MPS_abelian_rand(
     site_ind_id="k{}",
     fermionic=False,
     flat=False,
+    layout=None,
     site_charge=None,
     subsizes="maximal",
     duals="reversed",
@@ -436,6 +441,8 @@ def MPS_abelian_rand(
     flat : bool, optional
         Whether to generate 'flat' backend arrays (True) or the default
         block-sparse backend arrays (False).
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
@@ -474,6 +481,7 @@ def MPS_abelian_rand(
         site_tag_id=site_tag_id,
         fermionic=fermionic,
         flat=flat,
+        layout=layout,
         site_charge=site_charge,
         subsizes=subsizes,
         duals=duals,
@@ -502,6 +510,7 @@ def TN2D_abelian_rand(
     y_tag_id="Y{}",
     fermionic=False,
     flat=False,
+    layout=None,
     site_charge=None,
     subsizes="maximal",
     duals="reversed",
@@ -543,6 +552,8 @@ def TN2D_abelian_rand(
         Whether to generate fermionic tensors.
     flat : bool, optional
         Whether to generate flat backend arrays.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
     site_charge : callable, optional
         A function mapping each site coordinate to its total charge.
     subsizes : {"maximal", "equal"}, optional
@@ -576,6 +587,7 @@ def TN2D_abelian_rand(
         site_ind_id=site_ind_id,
         fermionic=fermionic,
         flat=flat,
+        layout=layout,
         site_charge=site_charge,
         subsizes=subsizes,
         duals=duals,
@@ -659,6 +671,7 @@ def PEPS_abelian_rand(
     y_tag_id="Y{}",
     fermionic=False,
     flat=False,
+    layout=None,
     site_charge=None,
     subsizes="maximal",
     duals="reversed",
@@ -699,6 +712,8 @@ def PEPS_abelian_rand(
     flat : bool, optional
         Whether to generate 'flat' backend arrays (True) or the default
         block-sparse backend arrays (False).
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
@@ -737,6 +752,7 @@ def PEPS_abelian_rand(
         y_tag_id=y_tag_id,
         fermionic=fermionic,
         flat=flat,
+        layout=layout,
         site_charge=site_charge,
         subsizes=subsizes,
         duals=duals,
@@ -761,6 +777,7 @@ def TN3D_abelian_rand(
     z_tag_id="Z{}",
     fermionic=False,
     flat=False,
+    layout=None,
     site_charge=None,
     subsizes="maximal",
     duals="reversed",
@@ -806,6 +823,8 @@ def TN3D_abelian_rand(
         Whether to generate fermionic tensors.
     flat : bool, optional
         Whether to generate flat backend arrays.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
     site_charge : callable, optional
         A function mapping each site coordinate to its total charge.
     subsizes : {"maximal", "equal"}, optional
@@ -839,6 +858,7 @@ def TN3D_abelian_rand(
         site_ind_id=site_ind_id,
         fermionic=fermionic,
         flat=flat,
+        layout=layout,
         site_charge=site_charge,
         subsizes=subsizes,
         duals=duals,
@@ -938,6 +958,7 @@ def PEPS3D_abelian_rand(
     z_tag_id="Z{}",
     fermionic=False,
     flat=False,
+    layout=None,
     site_charge=None,
     subsizes="maximal",
     duals="reversed",
@@ -979,6 +1000,8 @@ def PEPS3D_abelian_rand(
         Whether to generate fermionic tensors.
     flat : bool, optional
         Whether to generate flat backend arrays.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
     site_charge : callable, optional
         A function that takes a site index and returns the charge of that site.
         By default it will create all even parity tensors if Z2=0 or it will
@@ -1019,6 +1042,7 @@ def PEPS3D_abelian_rand(
         z_tag_id=z_tag_id,
         fermionic=fermionic,
         flat=flat,
+        layout=layout,
         site_charge=site_charge,
         subsizes=subsizes,
         duals=duals,
