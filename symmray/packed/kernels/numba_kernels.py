@@ -701,9 +701,9 @@ def tensordot_align(sub_a, sub_b, radices):
 
 
 @numba.njit(cache=True, nogil=True)
-def _row_charges(counts, starts):
-    # the charge of each subsector row
-    owner = np.empty(starts[-1] + counts[-1], dtype=np.int64)
+def _row_charges(counts, starts, num_rows):
+    # the charge of each of the num_rows subsector rows
+    owner = np.empty(num_rows, dtype=np.int64)
     for c in range(counts.shape[0]):
         for i in range(starts[c], starts[c] + counts[c]):
             owner[i] = c
@@ -744,7 +744,7 @@ def _sorted_pairs(
     has_left = l_keys.shape[1] > 0
 
     r_lex = _argsort_rows(r_keys, _soff_radices(r_soff))
-    r_owner = _row_charges(r_counts, r_starts)
+    r_owner = _row_charges(r_counts, r_starts, r_keys.shape[0])
     e = 0
     if not has_left:
         pair_of = np.full(r_counts.shape[0], -1, dtype=np.int64)
@@ -777,7 +777,7 @@ def _sorted_pairs(
         pos[r_owner[rr]] += 1
 
     l_lex = _argsort_rows(l_keys, _soff_radices(l_soff))
-    l_owner = _row_charges(l_counts, l_starts)
+    l_owner = _row_charges(l_counts, l_starts, l_keys.shape[0])
     for idx in range(l_lex.shape[0]):
         rl = l_lex[idx]
         p = pair_of[l_owner[rl]]

@@ -168,6 +168,25 @@ class TestTensordot:
         assert_matches(xp.tensordot(y.to_packed(), 1), x.tensordot(y, 1))
 
     @pytest.mark.parametrize("symmetry", ("U1", "U1U1"))
+    def test_no_aligned_sectors(self, symmetry, kernels):
+        x = sr.utils.get_rand(symmetry, (6, 7, 5), seed=16, subsizes="maximal")
+        y = sr.utils.get_rand(
+            symmetry, [x.indices[2].conj(), 4], seed=17, subsizes="maximal"
+        )
+        # x keeps only one contracted charge, which y then drops
+        c = x.sectors[0][2]
+        for sector in x.sectors:
+            if sector[2] != c:
+                x.del_block(sector)
+        for sector in y.sectors:
+            if sector[0] == c:
+                y.del_block(sector)
+        z = x.to_packed().tensordot(y.to_packed(), 1)
+        z.check()
+        assert z.num_blocks == 0
+        assert z.shape == x.shape[:2] + y.shape[1:]
+
+    @pytest.mark.parametrize("symmetry", ("U1", "U1U1"))
     def test_align_axes(self, symmetry, kernels):
         x, xp = get_rand(symmetry, (6, 7, 5), seed=30, subsizes="maximal")
         y = sr.utils.get_rand(
