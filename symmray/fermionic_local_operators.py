@@ -286,6 +286,7 @@ def build_local_fermionic_array(
     index_maps,
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Compute a local fermionic operator as a `FermionicArray`.
 
@@ -305,6 +306,8 @@ def build_local_fermionic_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -323,6 +326,7 @@ def build_local_fermionic_array(
         fermionic=True,
         index_maps=index_maps * 2,
         flat=flat,
+        layout=layout,
     )
 
 
@@ -377,6 +381,7 @@ def fermi_hubbard_spinless_local_array(
     coordinations=(1, 1),
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Construct the fermionic local tensor for the spinless Fermi-Hubbard
     model. The indices are ordered as (a, b, a', b').
@@ -403,6 +408,8 @@ def fermi_hubbard_spinless_local_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -444,6 +451,7 @@ def fermi_hubbard_spinless_local_array(
         index_maps=[indexmap, indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
@@ -455,6 +463,7 @@ def fermi_hubbard_local_array(
     coordinations=(1, 1),
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Construct the fermionic local tensor for the Fermi-Hubbard model. The
     indices are ordered as (a, b, a', b'), with the local basis like
@@ -482,6 +491,8 @@ def fermi_hubbard_local_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -549,6 +560,7 @@ def fermi_hubbard_local_array(
         index_maps=[indexmap, indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
@@ -556,6 +568,7 @@ def fermi_number_operator_spinless_local_array(
     symmetry,
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Construct the fermionic number operator for the spinless Fermi-Hubbard
     model. The indices are ordered as (a, a'). The local basis is
@@ -569,6 +582,8 @@ def fermi_number_operator_spinless_local_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -588,6 +603,7 @@ def fermi_number_operator_spinless_local_array(
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
@@ -595,6 +611,7 @@ def fermi_number_operator_spinful_local_array(
     symmetry,
     like="numpy",
     flat=False,
+    layout=None,
 ):
     """Construct the fermionic number operator for the Fermi-Hubbard model. The
     indices are ordered as (a, a'), with the local basis like
@@ -609,6 +626,8 @@ def fermi_number_operator_spinful_local_array(
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -631,10 +650,13 @@ def fermi_number_operator_spinful_local_array(
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
+def fermi_number_up_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the 'up' fermionic number operator for the Fermi-Hubbard
     model. The indices are ordered as (a, a'), with the local basis like
     ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
@@ -648,6 +670,8 @@ def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -670,10 +694,13 @@ def fermi_number_up_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
+def fermi_number_down_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the 'down' fermionic number operator for the Fermi-Hubbard
     model. The indices are ordered as (a, a'), with the local basis like
     ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
@@ -687,6 +714,8 @@ def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -709,10 +738,11 @@ def fermi_number_down_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_spin_z_local_array(symmetry, like="numpy", flat=False):
+def fermi_spin_z_local_array(symmetry, like="numpy", flat=False, layout=None):
     """Construct the fermionic ``S^z`` operator for the Fermi-Hubbard model.
     The indices are ordered as (a, a'), with the local basis like
     ``(|00>, ad+|00>, au+|00>, au+ad+|00>)`` for site a with up (au) and
@@ -726,6 +756,8 @@ def fermi_spin_z_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -748,13 +780,16 @@ def fermi_spin_z_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
 fermi_spin_operator_local_array = fermi_spin_z_local_array
 
 
-def fermi_spin_plus_local_array(symmetry, like="numpy", flat=False):
+def fermi_spin_plus_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the fermionic spin raising operator
     ``S^+ = c_up^dagger c_down`` for the Fermi-Hubbard model.
 
@@ -770,6 +805,8 @@ def fermi_spin_plus_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -797,10 +834,13 @@ def fermi_spin_plus_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_spin_minus_local_array(symmetry, like="numpy", flat=False):
+def fermi_spin_minus_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the fermionic spin lowering operator
     ``S^- = c_down^dagger c_up`` for the Fermi-Hubbard model.
 
@@ -816,6 +856,8 @@ def fermi_spin_minus_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -843,10 +885,13 @@ def fermi_spin_minus_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_double_occupancy_local_array(symmetry, like="numpy", flat=False):
+def fermi_double_occupancy_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the on-site double occupancy operator ``D = n↑ n↓`` for the
     Fermi-Hubbard model, i.e. the projector onto the doubly occupied state. The
     indices are ordered as (a, a'), with the local basis like
@@ -861,6 +906,8 @@ def fermi_double_occupancy_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -883,10 +930,13 @@ def fermi_double_occupancy_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_pairing_onsite_local_array(symmetry, like="numpy", flat=False):
+def fermi_pairing_onsite_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the on-site s-wave (singlet) pair annihilation operator
     ``Δ = c↑ c↓`` for the Fermi-Hubbard model, the superconducting order
     parameter whose expectation ``<Δ>`` is non-zero only in a number
@@ -907,6 +957,8 @@ def fermi_pairing_onsite_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -936,10 +988,13 @@ def fermi_pairing_onsite_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )
 
 
-def fermi_pairing_bond_local_array(symmetry, like="numpy", flat=False):
+def fermi_pairing_bond_local_array(
+    symmetry, like="numpy", flat=False, layout=None
+):
     """Construct the nearest-neighbor spin-singlet pair annihilation operator
     ``Delta_ab = c_a_up c_b_down - c_a_down c_b_up``.
 
@@ -954,6 +1009,8 @@ def fermi_pairing_bond_local_array(symmetry, like="numpy", flat=False):
         The backend to use, by default "numpy".
     flat : bool, optional
         Whether to return a flat array, by default False.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
     Returns
     -------
@@ -986,4 +1043,5 @@ def fermi_pairing_bond_local_array(symmetry, like="numpy", flat=False):
         index_maps=[indexmap, indexmap],
         like=like,
         flat=flat,
+        layout=layout,
     )

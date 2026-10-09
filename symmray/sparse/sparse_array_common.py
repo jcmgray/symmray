@@ -20,9 +20,11 @@ from ..array_common import (
     without,
 )
 from ..linalg_common import (
+    CUTOFF_MODE_MAP,
     Absorb,
     absorb_svd_result,
     array_split,
+    calc_truncation_cutoff,
 )
 from ..utils import DEBUG, get_array_cls
 from .sparse_index import BlockIndex, SubIndexInfo
@@ -1983,6 +1985,13 @@ class SparseArrayCommon:
         cls = get_array_cls(self.symmetry, self.fermionic, flat=True)
         return cls.from_blocksparse(self, symmetry=self.symmetry)
 
+    def to_packed(self):
+        """Convert this block sparse backend abelian or fermionic array to a
+        packed backend array.
+        """
+        cls = get_array_cls(self.symmetry, self.fermionic, layout="packed")
+        return cls.from_blocksparse(self, symmetry=self.symmetry)
+
     # --------------------------- linalg methods ---------------------------- #
 
     def _split_abelian_dynamic(
@@ -1999,7 +2008,7 @@ class SparseArrayCommon:
         """
         # pop out truncation and absorb options
         cutoff = kwargs.pop("cutoff", 0.0)
-        cutoff_mode = _CUTOFF_MODE_MAP[kwargs.pop("cutoff_mode", "rel")]
+        cutoff_mode = CUTOFF_MODE_MAP[kwargs.pop("cutoff_mode", "rel")]
         renorm = kwargs.pop("renorm", False)
         max_bond = kwargs.pop("max_bond", -1)
         absorb = kwargs.pop("absorb", "both")
@@ -2434,22 +2443,6 @@ def calc_sub_max_bonds(sizes, max_bond):
     return tuple(sub_max_bonds)
 
 
-_CUTOFF_MODE_MAP = {
-    1: 1,
-    "abs": 1,
-    2: 2,
-    "rel": 2,
-    3: 3,
-    "sum2": 3,
-    4: 4,
-    "rsum2": 4,
-    5: 5,
-    "sum1": 5,
-    6: 6,
-    "rsum1": 6,
-}
-
-
 def truncate_svd_result_blocksparse(
     U: SparseArrayCommon,
     s: BlockVector,
@@ -2476,45 +2469,9 @@ def truncate_svd_result_blocksparse(
             sall = xp.abs(sall)
         sall = xp.sort(sall)
 
-        abs_cutoff = None
-        if cutoff > 0.0:
-            cutoff_mode = _CUTOFF_MODE_MAP[cutoff_mode]
-
-            if cutoff_mode == 1:
-                # absolute cutoff
-                abs_cutoff = cutoff
-            elif cutoff_mode == 2:
-                # relative cutoff
-                abs_cutoff = sall[-1] * cutoff
-            else:
-                # possibly square singular values
-                power = {3: 2, 4: 2, 5: 1, 6: 1}[cutoff_mode]
-                if power == 1:
-                    # sum1 or rsum1
-                    cum_spow = xp.cumsum(sall, 0)
-                else:
-                    # sum2 or rsum2
-                    cum_spow = xp.cumsum(sall**power, 0)
-
-                if cutoff_mode in (4, 6):
-                    # rsum1 or rsum2: relative cumulative cutoff
-                    cond = cum_spow >= cutoff * cum_spow[-1]
-                else:
-                    # sum1 or sum2: absolute cumulative cutoff
-                    cond = cum_spow >= cutoff
-
-                # translate to total number of singular values to keep
-                n_chi_all = xp.count_nonzero(cond)
-                # and then to an absolute cutoff value
-                abs_cutoff = sall[-n_chi_all]
-
-        if 0 < max_bond < ar.size(sall):
-            # also take into account a total maximum bond
-            max_bond_cutoff = sall[-max_bond]
-            if abs_cutoff is None:
-                abs_cutoff = max_bond_cutoff
-            else:
-                abs_cutoff = max(abs_cutoff, max_bond_cutoff)
+        abs_cutoff = calc_truncation_cutoff(
+            sall, cutoff, cutoff_mode, max_bond, xp
+        )
 
         if abs_cutoff is None:
             sub_max_bonds = tuple(map(ar.size, s.get_all_blocks()))

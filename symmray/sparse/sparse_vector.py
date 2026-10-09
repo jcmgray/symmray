@@ -58,6 +58,12 @@ class BlockVector(BlockCommon, VectorCommon, SymmrayCommon):
 
         return FlatVector.from_blocks(self.blocks)
 
+    def to_packed(self):
+        """Convert the block sparse vector to a packed vector."""
+        from ..packed.packed_vector import PackedVector
+
+        return PackedVector(self.blocks)
+
     def to_dense(self):
         """Convert the block vector to a dense array."""
         arrays = tuple(map(self.get_block, sorted(self.sectors)))

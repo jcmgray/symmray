@@ -14,8 +14,11 @@ USER_FACING_CLASSES = [
     sr.FermionicArray,
     sr.AbelianArrayFlat,
     sr.FermionicArrayFlat,
+    sr.AbelianArrayPacked,
+    sr.FermionicArrayPacked,
     sr.BlockVector,
     sr.FlatVector,
+    sr.PackedVector,
 ]
 
 

@@ -161,6 +161,12 @@ class BlockIndex(Index):
             linearmap=self._linearmap,
         )
 
+    def to_packed(self):
+        """Convert this index to a packed index."""
+        from ..packed.packed_index import PackedIndex
+
+        return PackedIndex.from_blockindex(self)
+
     @property
     def chargemap(self):
         """A mapping from charge to size."""

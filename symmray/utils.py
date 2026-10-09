@@ -519,52 +519,95 @@ def rand_index(
         raise ValueError(f"Symmetry unknown or not supported: {symmetry}.")
 
 
-def get_array_cls(symmetry, fermionic=False, flat=False) -> type:
-    """Get the array class for the given symmetry, fermionic flag, and flat
-    flag.
+def parse_layout(layout=None, flat=False):
+    """Get the storage layout from ``layout``, or from the older ``flat`` flag.
+    Returns one of ``"sparse"``, ``"flat"`` or ``"packed"``.
+    """
+
+    if layout is None:
+        return "flat" if flat else "sparse"
+    if flat and layout != "flat":
+        raise ValueError(f"Conflicting flat=True and layout={layout!r}.")
+    if layout not in ("sparse", "flat", "packed"):
+        raise ValueError(
+            f"Unknown layout {layout!r}, expected 'sparse', 'flat' or "
+            "'packed'."
+        )
+    return layout
+
+
+def get_array_cls(symmetry, fermionic=False, flat=False, layout=None) -> type:
+    """Get the array class for the given symmetry, fermionic flag, and storage
+    layout.
 
     Parameters
     ----------
+    symmetry : str or Symmetry
+        The symmetry of the array.
+    fermionic : bool, optional
+        Whether to get a fermionic array class.
+    flat : bool, optional
+        Whether to get a flat array class, the same as ``layout="flat"``.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout, default "sparse" (or "flat" if ``flat``).
 
+    Returns
+    -------
+    type
     """
     import symmray as sr
 
-    if symmetry in ("Z2", "U1", "Z2Z2", "U1U1"):
+    layout = parse_layout(layout, flat)
+    fermionic = bool(fermionic)
+
+    if str(symmetry) in ("Z2", "U1", "Z2Z2", "U1U1"):
         # statically defined array classes
         classes = {
             # blocksparse abelian arrays
-            ("Z2", 0, 0): sr.Z2Array,
-            ("U1", 0, 0): sr.U1Array,
-            ("Z2Z2", 0, 0): sr.Z2Z2Array,
-            ("U1U1", 0, 0): sr.U1U1Array,
+            ("Z2", 0, "sparse"): sr.Z2Array,
+            ("U1", 0, "sparse"): sr.U1Array,
+            ("Z2Z2", 0, "sparse"): sr.Z2Z2Array,
+            ("U1U1", 0, "sparse"): sr.U1U1Array,
             # blocksparse fermionic arrays
-            ("Z2", 1, 0): sr.Z2FermionicArray,
-            ("U1", 1, 0): sr.U1FermionicArray,
-            ("Z2Z2", 1, 0): sr.Z2Z2FermionicArray,
-            ("U1U1", 1, 0): sr.U1U1FermionicArray,
+            ("Z2", 1, "sparse"): sr.Z2FermionicArray,
+            ("U1", 1, "sparse"): sr.U1FermionicArray,
+            ("Z2Z2", 1, "sparse"): sr.Z2Z2FermionicArray,
+            ("U1U1", 1, "sparse"): sr.U1U1FermionicArray,
             # flat abelian arrays
-            ("Z2", 0, 1): sr.Z2ArrayFlat,
+            ("Z2", 0, "flat"): sr.Z2ArrayFlat,
             # flat fermionic arrays
-            ("Z2", 1, 1): sr.Z2FermionicArrayFlat,
+            ("Z2", 1, "flat"): sr.Z2FermionicArrayFlat,
+            # packed abelian arrays
+            ("Z2", 0, "packed"): sr.Z2ArrayPacked,
+            ("U1", 0, "packed"): sr.U1ArrayPacked,
+            ("Z2Z2", 0, "packed"): sr.Z2Z2ArrayPacked,
+            ("U1U1", 0, "packed"): sr.U1U1ArrayPacked,
+            # packed fermionic arrays
+            ("Z2", 1, "packed"): sr.Z2FermionicArrayPacked,
+            ("U1", 1, "packed"): sr.U1FermionicArrayPacked,
+            ("Z2Z2", 1, "packed"): sr.Z2Z2FermionicArrayPacked,
+            ("U1U1", 1, "packed"): sr.U1U1FermionicArrayPacked,
         }
         try:
-            return classes[str(symmetry), fermionic, flat]
+            return classes[str(symmetry), fermionic, layout]
         except KeyError:
-            if flat:
+            if layout == "flat":
                 raise ValueError(
                     f"Couldn't get array class for symmetry {symmetry}, "
-                    f"fermionic={fermionic}, flat={flat}. Note that only "
+                    f"fermionic={fermionic}, layout={layout}. Note that only "
                     "cyclic symmetries are supported for flat arrays."
                 ) from None
             raise
     else:
         # symmetry is defined dynamically, and should be supplied as kwarg
         return {
-            (0, 0): sr.AbelianArray,
-            (1, 0): sr.FermionicArray,
-            (0, 1): sr.AbelianArrayFlat,
-            (1, 1): sr.FermionicArrayFlat,
-        }[fermionic, flat]
+            (0, "sparse"): sr.AbelianArray,
+            (1, "sparse"): sr.FermionicArray,
+            (0, "flat"): sr.AbelianArrayFlat,
+            (1, "flat"): sr.FermionicArrayFlat,
+            (0, "packed"): sr.AbelianArrayPacked,
+            (1, "packed"): sr.FermionicArrayPacked,
+        }[fermionic, layout]
 
 
 def choose_duals(duals, ndim):
@@ -599,11 +642,12 @@ def get_rand(
     label=None,
     flat=False,
     subsizes="random",
+    layout=None,
     **kwargs,
 ):
     """Get a random symmray array, with the given symmetry and shape. The
-    duals, charge, and sub charge sizes can be specified or automatically
-    or randomly generated.
+    duals, charge, and sub charge sizes can be specified or automatically or
+    randomly generated.
 
     Parameters
     ----------
@@ -616,10 +660,10 @@ def get_rand(
         explicit linearmap, or a `BlockIndex`.
     duals : "random", "equals", or Sequence[bool], optional
         The dualness of each index. If "random", the dualnesses are chosen
-        randomly. If "equal", they are chosen so the first half of the
-        indices have `dual=False` and the second half have `dual=True`.
-        If `shape` contains `BlockIndex` objects, the dualness of that index
-        takes precedence over any specification here.
+        randomly. If "equal", they are chosen so the first half of the indices
+        have `dual=False` and the second half have `dual=True`. If `shape`
+        contains `BlockIndex` objects, the dualness of that index takes
+        precedence over any specification here.
     charge : int or tuple[int], optional
         The total charge of the array. If not given the 'zero' charge is used,
         which depends on the symmetry.
@@ -633,9 +677,8 @@ def get_rand(
         An optional label for the array, potentially needed for ordering dummy
         odd fermionic modes.
     flat : bool, optional
-        Whether to generate a 'flat' backend array (True) or the default
-        block-sparse backend array (False). If `flat`, then `subsizes` should
-        be set to `"equal"` or equivalent.
+        Whether to generate a 'flat' backend array, the same as
+        ``layout="flat"``.
     subsizes : "random", "equal", "maximal", "minimal", or tuple[int], optional
         The sizes of the charge sectors. The choices are as follows:
 
@@ -650,9 +693,12 @@ def get_rand(
 
         If `shape` contains `dict` or `BlockIndex` objects, the subsizes of
         those indices take precedence over any specification here.
+    layout : {"sparse", "flat", "packed"}, optional
+        The storage layout of the array, default "sparse". If "flat", then
+        `subsizes` should be set to `"equal"` or equivalent.
     kwargs
-        Additional keyword arguments are passed to the random array
-        generation function.
+        Additional keyword arguments are passed to the random array generation
+        function.
 
     Returns
     -------
@@ -660,6 +706,7 @@ def get_rand(
     """
     import symmray as sr
 
+    layout = parse_layout(layout, flat)
     symmetry = sr.get_symmetry(symmetry)
     rng = get_rng(seed)
     duals = choose_duals(duals, len(shape))
@@ -683,8 +730,10 @@ def get_rand(
         **kwargs,
     )
 
-    if flat:
+    if layout == "flat":
         x = x.to_flat()
+    elif layout == "packed":
+        x = x.to_packed()
 
     return x
 
@@ -726,8 +775,10 @@ def from_dense(
     fermionic=False,
     charge=None,
     flat=False,
+    layout=None,
     **kwargs,
 ):
+    layout = parse_layout(layout, flat)
     cls = get_array_cls(symmetry, fermionic=fermionic, flat=False)
     x = cls.from_dense(
         array,
@@ -737,6 +788,8 @@ def from_dense(
         symmetry=symmetry,
         **kwargs,
     )
-    if flat:
+    if layout == "flat":
         x = x.to_flat()
+    elif layout == "packed":
+        x = x.to_packed()
     return x

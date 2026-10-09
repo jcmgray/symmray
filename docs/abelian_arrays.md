@@ -13,7 +13,8 @@ An abelian `symmray` array has four main parts:
 
 The default sparse layout stores
 [`blocks`](#symmray.sparse.sparse_data_common.BlockCommon.blocks) as a
-dictionary from a sector tuple to an array.
+dictionary from a sector tuple to an array. See [block layout](block_layout.md)
+for the flat and packed alternatives.
 
 ## Indices and charge
 

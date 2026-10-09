@@ -8,8 +8,9 @@ expectation values and apply gates. `symmray` provides fermionic operators as
 ## Fermionic operators
 
 Fermionic operators are built in a fixed local basis. The
-[`Z2`](#symmray.symmetries.Z2) operators can use flat storage by setting
-`flat=True`.
+[`Z2`](#symmray.symmetries.Z2) operators can use the flat layout by setting
+`layout="flat"`, and all operators can use `layout="packed"`, see
+[block layout](block_layout.md).
 
 ### Built-in fermionic operators
 
