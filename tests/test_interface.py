@@ -25,6 +25,22 @@ def test_finfo(dtype, flat):
     assert ar.get_namespace(x).finfo(x.dtype).eps == expected.eps
 
 
+class TestIndexFromChargemap:
+    @pytest.mark.parametrize("layout", ("sparse", "packed"))
+    @pytest.mark.parametrize("dual", (False, True))
+    def test_from_chargemap(self, layout, dual):
+        x = sr.utils.get_rand("U1", (5, 6), seed=3)
+        if layout == "packed":
+            x = x.to_packed()
+        cls = type(x.indices[0])
+        # unsorted on purpose, both layouts sort charges
+        ix = cls.from_chargemap({2: 3, -1: 2, 0: 4}, dual=dual)
+        assert isinstance(ix, cls)
+        assert ix.dual == dual
+        assert ix.chargemap == {-1: 2, 0: 4, 2: 3}
+        assert ix.size_total == 9
+
+
 class TestApplyToBlocks:
     @pytest.mark.parametrize("layout", ("sparse", "flat", "packed"))
     def test_expm_matches_dense(self, layout):

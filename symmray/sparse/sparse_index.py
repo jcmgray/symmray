@@ -92,6 +92,13 @@ class BlockIndex(Index):
             linearmap=pytree["linearmap"],
         )
 
+    @classmethod
+    def from_chargemap(cls, chargemap, dual=False, subinfo=None):
+        """Create an index from a mapping of charge to size, with the same
+        signature as for the packed index.
+        """
+        return cls(chargemap=chargemap, dual=dual, subinfo=subinfo)
+
     def copy_with(self, **kwargs):
         """A copy of this index with some attributes replaced. Note that checks
         are not performed on the new propoerties, this is intended for internal
