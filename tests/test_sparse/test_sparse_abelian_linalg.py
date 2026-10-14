@@ -429,6 +429,47 @@ def test_truncated_invalid_max_bond_mode():
         x.svd_truncated(max_bond=2, max_bond_mode="invalid")
 
 
+@pytest.mark.parametrize("symmetry", ("Z2", "U1"))
+@pytest.mark.parametrize("charge_side", ("left", "right"))
+@pytest.mark.parametrize("truncation", [{"cutoff": 1e-12}, {"max_bond": 3}])
+def test_truncated_charge_side(symmetry, charge_side, truncation):
+    x = sr.utils.get_rand(
+        symmetry, (6, 7), duals=(False, True), charge=1, seed=1
+    )
+    u, s, vh = x._split(
+        method="svd", absorb=None, charge_side=charge_side, **truncation
+    )
+    for y in (u, s, vh):
+        y.check()
+    assert (u if charge_side == "left" else vh).charge == x.charge
+    if "cutoff" in truncation:
+        assert ar.do("einsum", "ij,j,jk->ik", u, s, vh).allclose(x)
+    else:
+        # the largest singular values are kept
+        _, s_full, _ = x._split(
+            method="svd", absorb=None, charge_side=charge_side
+        )
+        s_top = sorted(s_full.to_dense(), reverse=True)[:3]
+        assert_allclose(sorted(s.to_dense(), reverse=True), s_top)
+
+
+def test_truncated_eager_max_bond_ignores_block_order():
+    # equal blocks, so the sectors kept are a tie, decided by sector order
+    shape = ({-1: 2, 0: 2, 1: 2}, {-1: 2, 0: 2, 1: 2})
+    x = sr.utils.get_rand("U1", shape, duals=(False, True), seed=3)
+    y = x.copy_with(blocks=dict(reversed(x.blocks.items())))
+    assert list(y.blocks) != list(x.blocks)
+    kept = [
+        sorted(
+            z._split(
+                method="svd", absorb=None, max_bond=2, max_bond_mode="eager"
+            )[1].sectors
+        )
+        for z in (x, y)
+    ]
+    assert kept[0] == kept[1]
+
+
 @pytest.mark.parametrize("symmetry", ("Z2", "U1", "Z2Z2", "U1U1"))
 @pytest.mark.parametrize("d", (2, 3, 4, 5, 7))
 @pytest.mark.parametrize("seed", range(1))

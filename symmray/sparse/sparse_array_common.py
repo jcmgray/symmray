@@ -1766,10 +1766,10 @@ class SparseArrayCommon:
 
         Parameters
         ----------
-        v : BlockVector
-            The vector to contract with.
-        axis : int
-            The axis along which to contract.
+        v : BlockVector or sequence of BlockVector
+            The vector, or one vector per axis if ``axis`` is a sequence.
+        axis : int or sequence of int
+            The axis, or axes, to contract along.
         power : int or float, optional
             The power to raise the diagonal elements to.
         inplace : bool, optional
@@ -1779,6 +1779,14 @@ class SparseArrayCommon:
         -------
         SparseArrayCommon
         """
+        if isinstance(axis, (tuple, list)):
+            if len(v) != len(axis):
+                raise ValueError(f"Got {len(v)} vectors for {len(axis)} axes.")
+            x = self if inplace else self.copy()
+            for vi, ax in zip(v, axis):
+                x = x.multiply_diagonal(vi, ax, power=power, inplace=True)
+            return x
+
         if power not in (1, -1):
             raise ValueError(f"Unsupported power {power}, expected 1 or -1.")
 
@@ -2152,6 +2160,10 @@ class SparseArrayCommon:
 
         sector_block_pairs = tuple(self.get_sector_block_pairs())
         if eager_max_bond and sector_block_pairs:
+            # sector order breaks ties in spreading the max bond, so sort it
+            sector_block_pairs = tuple(
+                sorted(sector_block_pairs, key=lambda pair: pair[0])
+            )
             sector_ranks = tuple(
                 min(xp.shape(array)) for _, array in sector_block_pairs
             )
@@ -2485,23 +2497,29 @@ def truncate_svd_result_blocksparse(
     else:
         sub_max_bonds = tuple(map(ar.size, s.get_all_blocks()))
 
+    # each bond charge has one block in each of U, s and VH
+    # -> which of U and VH carries the array charge depends on charge_side
+    u_sectors = {sector[1]: sector for sector in U.sectors}
+    vh_sectors = {sector[0]: sector for sector in VH.sectors}
+
     new_inner_chargemap = {}
-    for (c0, c1), n_chi in zip(U.sectors, sub_max_bonds):
+    for c, n_chi in zip(s.sectors, sub_max_bonds):
+        u_sector, vh_sector = u_sectors[c], vh_sectors[c]
         # check how many singular values from this sector are valid
         if n_chi == 0:
             # remove this sector entirely
-            U.del_block((c0, c1))
-            s.del_block(c1)
-            VH.del_block((c1, c1))
+            U.del_block(u_sector)
+            s.del_block(c)
+            VH.del_block(vh_sector)
             continue
 
         # slice the values and left and right vectors
-        U.set_block((c0, c1), U.get_block((c0, c1))[:, :n_chi])
-        s.set_block(c1, s.get_block(c1)[:n_chi])
-        VH.set_block((c1, c1), VH.get_block((c1, c1))[:n_chi, :])
+        U.set_block(u_sector, U.get_block(u_sector)[:, :n_chi])
+        s.set_block(c, s.get_block(c)[:n_chi])
+        VH.set_block(vh_sector, VH.get_block(vh_sector)[:n_chi, :])
 
         # make sure the index chargemaps are updated too
-        new_inner_chargemap[c1] = n_chi
+        new_inner_chargemap[c] = n_chi
 
     new_inner_chargemap = dict(sorted(new_inner_chargemap.items()))
 

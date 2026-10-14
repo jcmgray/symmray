@@ -370,6 +370,16 @@ def multiply_diagonal(x, v, axis):
 ar.register_function("symmray", "multiply_diagonal", multiply_diagonal)
 
 
+def multiply_diagonals(x, vs, axes):
+    """Multiply a `symmray` array by each vector in ``vs`` as if contracting
+    a diagonal matrix into the matching axis in ``axes``, all at once.
+    """
+    return x.multiply_diagonal(vs, axes)
+
+
+ar.register_function("symmray", "multiply_diagonals", multiply_diagonals)
+
+
 def ldmul(v, x):
     """Left multiply a `symmray` matrix `x` by a vector `v`."""
     return x.ldmul(v)

@@ -235,6 +235,59 @@ class TestMultiplyDiagonal:
         with pytest.raises(ZeroDivisionError):
             x.to_packed().multiply_diagonal(v.to_packed(), 1, power=-1)
 
+    @pytest.mark.parametrize("symmetry", all_symmetries)
+    @pytest.mark.parametrize(
+        "axes", [(0, 2), (3, 1), (2, 3), (0, 1, 2, 3), (-1,)]
+    )
+    @pytest.mark.parametrize("power", (1, -1))
+    def test_several_axes(self, symmetry, axes, power, kernels):
+        x = sr.utils.get_rand(symmetry, (4, 5, 3, 6), seed=20)
+        rng = np.random.default_rng(21)
+        vs = [
+            sr.BlockVector(
+                {
+                    c: rng.uniform(0.5, 2.0, size=d)
+                    for c, d in x.indices[ax].chargemap.items()
+                }
+            )
+            for ax in axes
+        ]
+        expected = x
+        for v, ax in zip(vs, axes):
+            expected = expected.multiply_diagonal(v, ax, power=power)
+        assert_matches(
+            x.to_packed().multiply_diagonal(
+                [v.to_packed() for v in vs], axes, power=power
+            ),
+            expected,
+        )
+        # the sparse loop gives the same
+        x.multiply_diagonal(vs, axes, power=power).test_allclose(expected)
+
+    def test_several_axes_missing_blocks_drop(self, kernels):
+        x = sr.utils.get_rand("U1", (6, 5, 6), seed=22, subsizes="maximal")
+        v0 = sr.BlockVector(
+            {c: np.full(d, 2.0) for c, d in x.indices[0].chargemap.items()}
+        )
+        charges = list(x.indices[2].charges)
+        v2 = sr.BlockVector({c: np.ones(1) for c in charges[1:]})
+        assert_matches(
+            x.to_packed().multiply_diagonal(
+                [v0.to_packed(), v2.to_packed()], (0, 2)
+            ),
+            x.multiply_diagonal(v0, 0).multiply_diagonal(v2, 2),
+        )
+
+    def test_several_axes_bad_input_raises(self, kernels):
+        x = sr.utils.get_rand("U1", (4, 5), seed=23).to_packed()
+        v = sr.BlockVector(
+            {c: np.ones(d) for c, d in x.indices[0].chargemap.items()}
+        ).to_packed()
+        with pytest.raises(ValueError, match="Repeated axis"):
+            x.multiply_diagonal([v, v], (0, -2))
+        with pytest.raises(ValueError, match="vectors for"):
+            x.multiply_diagonal([v], (0, 1))
+
 
 class TestElementwise:
     @pytest.mark.parametrize("symmetry", all_symmetries)

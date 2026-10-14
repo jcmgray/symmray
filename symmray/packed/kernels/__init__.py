@@ -14,9 +14,9 @@ arrays. All packed array logic is shared between sets:
 - ``run_copy(plan, src, scales=None)``: run a copy plan, return a new buffer of
   length ``dst_size``. Optional ``scales`` multiply each entry.
 
-- ``plan_muldiag(offsets, shapes, axis, vbase)``: prepare to multiply each C
+- ``plan_muldiag(offsets, shapes, axes, vbases)``: prepare to multiply each C
   contiguous block ``i``, at ``offsets[i]`` with shape ``shapes[i]``, along
-  ``axis`` by the vector elements starting at ``vbase[i]``.
+  each axis ``axes[k]`` by the vector elements starting at ``vbases[i, k]``.
 
 - ``run_muldiag(plan, src, v, power)``: run a multiply plan. ``power`` is 1 to
   multiply or -1 to divide.

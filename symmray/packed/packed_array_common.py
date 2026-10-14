@@ -14,6 +14,7 @@ from ..utils import DEBUG, get_array_cls
 from .kernels import get_kernels
 from .packed_index import PackedIndex, PackedSubIndexInfo
 from .packed_vector import PackedVector
+from .parallel import decompose_blocks, gather, map_elementwise
 
 # --------------------------- structure helpers ----------------------------- #
 
@@ -867,30 +868,36 @@ def calc_plan_outer(a, b):
     return pairs, (indices, sectors, shapes, offsets)
 
 
-def calc_plan_muldiag(x, v, axis):
-    """Plan multiplying ``x`` by the vector ``v`` along ``axis``. Blocks with
-    no matching vector block are dropped first.
+def calc_plan_muldiag(x, vs, axes):
+    """Plan multiplying ``x`` by each vector in ``vs`` along the matching axis
+    in ``axes``. The vector data should be joined end to end, in order. Blocks
+    missing from any vector are dropped first.
     """
     import numpy as np
 
     kernels = get_kernels()
-    ids = {c: i for i, c in enumerate(v._charges)}
-    vstart = v._offsets[:-1]
-    vsizes = np.diff(v._offsets)
-    ix = x._indices[axis]
-    per_charge = np.full(ix.num_charges, -1, dtype=np.int64)
-    for i, (c, d) in enumerate(zip(ix.charges, ix.sizes.tolist())):
-        j = ids.get(c, -1)
-        if j < 0:
-            continue
-        if vsizes[j] != d:
-            raise ValueError(
-                f"Vector block for charge {c} has size {vsizes[j]}, "
-                f"but axis {axis} has size {d} there."
-            )
-        per_charge[i] = vstart[j]
-    vbase = per_charge.take(x._sectors[:, axis])
-    keep = vbase >= 0
+    vbases = np.empty((x._sectors.shape[0], len(axes)), dtype=np.int64)
+    # start of each vector in the joined data
+    voff = 0
+    for k, (v, axis) in enumerate(zip(vs, axes)):
+        ids = {c: i for i, c in enumerate(v._charges)}
+        vstart = v._offsets[:-1] + voff
+        vsizes = np.diff(v._offsets)
+        ix = x._indices[axis]
+        per_charge = np.full(ix.num_charges, -1, dtype=np.int64)
+        for i, (c, d) in enumerate(zip(ix.charges, ix.sizes.tolist())):
+            j = ids.get(c, -1)
+            if j < 0:
+                continue
+            if vsizes[j] != d:
+                raise ValueError(
+                    f"Vector block for charge {c} has size {vsizes[j]}, "
+                    f"but axis {axis} has size {d} there."
+                )
+            per_charge[i] = vstart[j]
+        vbases[:, k] = per_charge.take(x._sectors[:, axis])
+        voff += int(v._offsets[-1])
+    keep = (vbases >= 0).all(axis=1)
     if keep.all():
         select = keep = None
         offsets, shapes = x._offsets, x._shapes
@@ -899,8 +906,8 @@ def calc_plan_muldiag(x, v, axis):
             x._indices, x._sectors, x._shapes, x._offsets, keep
         )
         _, _, shapes, offsets, _ = select
-        vbase = vbase[keep]
-    plan = kernels.plan_muldiag(offsets, shapes, axis, vbase)
+        vbases = vbases[keep]
+    plan = kernels.plan_muldiag(offsets, shapes, axes, vbases)
     return select, keep, plan
 
 
@@ -1657,17 +1664,18 @@ class PackedArrayCommon:
         )
 
     def multiply_diagonal(self, v, axis, power=1, inplace=False):
-        """Multiply this array by the vector ``v`` as if contracting a diagonal
-        matrix along ``axis``.
+        """Multiply this array by vector ``v`` as if contracting a diagonal
+        matrix along ``axis``. Several vectors and axes can be given, which
+        are applied in one pass over the data.
 
         Parameters
         ----------
-        v : PackedVector
-            The vector to contract with.
-        axis : int
-            The axis along which to contract.
+        v : PackedVector or sequence of PackedVector
+            The vector, or one vector per axis if ``axis`` is a sequence.
+        axis : int or sequence of int
+            The axis, or distinct axes, to contract along.
         power : {1, -1}, optional
-            Whether to multiply or divide by the vector.
+            Multiply (1) or divide (-1) by the vectors.
         inplace : bool, optional
             Whether to perform the operation inplace.
 
@@ -1675,23 +1683,44 @@ class PackedArrayCommon:
         -------
         PackedArrayCommon
         """
+        import numpy as np
+
         if power not in (1, -1):
             raise ValueError(f"Unsupported power {power}, expected 1 or -1.")
-        if not isinstance(v, PackedVector):
-            v = PackedVector(v.blocks)
-        if not -self.ndim <= axis < self.ndim:
-            raise ValueError(f"Invalid axis {axis} for {self.ndim}D array.")
-        if axis < 0:
-            axis += self.ndim
+        if isinstance(axis, (tuple, list)):
+            vs, axes = tuple(v), tuple(axis)
+            if len(vs) != len(axes):
+                raise ValueError(
+                    f"Got {len(vs)} vectors for {len(axes)} axes."
+                )
+        else:
+            vs, axes = (v,), (axis,)
+        vs = tuple(
+            v if isinstance(v, PackedVector) else PackedVector(v.blocks)
+            for v in vs
+        )
+        for ax in axes:
+            if not -self.ndim <= ax < self.ndim:
+                raise ValueError(f"Invalid axis {ax} for {self.ndim}D array.")
+        axes = tuple(int(ax) % self.ndim for ax in axes)
+        if len(set(axes)) != len(axes):
+            raise ValueError(f"Repeated axis in {axes}.")
 
         x = self if inplace else self.copy()
+        if not axes:
+            return x
         kernels = get_kernels()
         select, keep, plan = cached_plan(
-            ("muldiag", self.structure_key(), axis, v.structure_key()),
+            (
+                "muldiag",
+                self.structure_key(),
+                axes,
+                tuple(v.structure_key() for v in vs),
+            ),
             calc_plan_muldiag,
             self,
-            v,
-            axis,
+            vs,
+            axes,
         )
         data = self._data
         if select is not None:
@@ -1705,7 +1734,11 @@ class PackedArrayCommon:
                 phases = phases[keep]
             data = kernels.run_copy(splan, data, phases)
             x._set_structure(indices, sectors, shapes, offsets, data)
-        x._data = kernels.run_muldiag(plan, data, v._data, power)
+        if len(vs) == 1:
+            vdata = vs[0]._data
+        else:
+            vdata = np.concatenate([v._data for v in vs])
+        x._data = kernels.run_muldiag(plan, data, vdata, power)
         return x
 
     def ldmul(self, v, inplace=False):
@@ -1727,7 +1760,7 @@ class PackedArrayCommon:
     ):
         if self.structure_key() == other.structure_key():
             new = self if inplace else self.copy()
-            new._data = fn(self._data, other._data)
+            new._data = map_elementwise(fn, self._data, other._data)
             return new
         return self._via_blocksparse(
             "_binary_blockwise_op",
@@ -1917,15 +1950,12 @@ class PackedArrayCommon:
         # left factor, and vice versa
         bond_axis = 1 if charge_side == "left" else 0
         bond_ids = self._sectors[:, bond_axis].tolist()
+        results = decompose_blocks(fn, blocks, kwargs, sub_max_bonds)
         lefts, ss, rights, done, bond_sizes = [], [], [], [], []
-        for i, block in enumerate(blocks):
-            if sub_max_bonds[i] == 0:
+        for i, result in enumerate(results):
+            if result is None:
                 continue
-            if sub_max_bonds[i] is None:
-                split_kwargs = kwargs
-            else:
-                split_kwargs = {**kwargs, "max_bond": sub_max_bonds[i]}
-            left, s, right = fn(block, **split_kwargs)
+            left, s, right = result
             if left is not None:
                 k = left.shape[-1]
                 lefts.append(left)
@@ -1966,9 +1996,7 @@ class PackedArrayCommon:
                 [arrays[j].shape for j in perm], dtype=np.int64
             ).reshape(-1, 2)
             if arrays:
-                factor_data = np.concatenate(
-                    [arrays[j].reshape(-1) for j in perm]
-                )
+                factor_data = gather([arrays[j] for j in perm])
             else:
                 factor_data = self._data[:0]
             factor_offsets = calc_offsets(factor_shapes)

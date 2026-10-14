@@ -67,19 +67,26 @@ def run_copy(plan, src, scales=None):
     return out
 
 
-def plan_muldiag(offsets, shapes, axis, vbase):
+def plan_muldiag(offsets, shapes, axes, vbases):
     n = shapes.shape[0]
     sizes = shapes.prod(axis=1)
     ent = np.repeat(np.arange(n), sizes)
     local = np.arange(int(sizes.sum())) - offsets[:-1][ent]
-    post = shapes[:, axis + 1 :].prod(axis=1)
-    return vbase[ent] + (local // post[ent]) % shapes[ent, axis]
+    plan = []
+    for i, axis in enumerate(axes):
+        post = shapes[:, axis + 1 :].prod(axis=1)
+        plan.append(vbases[ent, i] + (local // post[ent]) % shapes[ent, axis])
+    return plan
 
 
 def run_muldiag(plan, src, v, power):
-    if power == 1:
-        return src * v.take(plan)
-    return src / v.take(plan)
+    if power == -1:
+        # true division always gives a floating dtype
+        v = 1 / v.astype(np.result_type(src, v, 1.0))
+    out = src * v.take(plan[0])
+    for p in plan[1:]:
+        out *= v.take(p)
+    return out
 
 
 def plan_gemm(a_off, rows, inner, b_off, cols, c_off):

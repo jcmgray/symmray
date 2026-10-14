@@ -1474,10 +1474,10 @@ class FlatArrayCommon:
 
         Parameters
         ----------
-        v : FlatVector
-            The vector to contract with.
-        axis : int
-            The axis along which to contract.
+        v : FlatVector or sequence of FlatVector
+            The vector, or one vector per axis if ``axis`` is a sequence.
+        axis : int or sequence of int
+            The axis, or axes, to contract along.
         inplace : bool, optional
             Whether to perform the operation inplace.
 
@@ -1485,6 +1485,14 @@ class FlatArrayCommon:
         -------
         FlatArrayCommon
         """
+        if isinstance(axis, (tuple, list)):
+            if len(v) != len(axis):
+                raise ValueError(f"Got {len(v)} vectors for {len(axis)} axes.")
+            x = self if inplace else self.copy()
+            for vi, ax in zip(v, axis):
+                x = x.multiply_diagonal(vi, ax, power=power, inplace=True)
+            return x
+
         if axis < 0:
             axis += self.ndim
 

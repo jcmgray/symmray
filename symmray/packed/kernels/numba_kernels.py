@@ -1,11 +1,61 @@
 """Packed kernels compiled with numba. Plans are just arrays per block, and the
 kernels loop over blocks and elements directly.
+
+With more than one thread (see :mod:`symmray.packed.parallel`), data kernels
+split their blocks into chunks of about equal work and run them in parallel,
+if there is at least ``PAR_MIN`` work in total. For this, plans store the
+cumulative work of their blocks.
 """
+
+import contextlib
 
 import numba
 import numpy as np
 
+from ..parallel import get_num_threads, limit_blas
+
 NAME = "numba"
+
+# below this total work (~elements or multiply-adds) kernels run serially
+PAR_MIN = 2**18
+
+# chunks per thread, for load balancing
+_OVERSPLIT = 4
+
+
+def _use_parallel(cum_work):
+    return get_num_threads() > 1 and cum_work[-1] >= PAR_MIN
+
+
+def _bounds(cum_work):
+    """Block index boundaries of chunks with about equal work."""
+    nchunks = get_num_threads() * _OVERSPLIT
+    targets = np.linspace(0, cum_work[-1], nchunks + 1)[1:-1]
+    bounds = np.searchsorted(cum_work, targets, side="left")
+    return np.unique(np.concatenate([[0], bounds, [len(cum_work) - 1]]))
+
+
+def _cum_work(work):
+    """Cumulative sum of ``work``, starting at 0."""
+    cum = np.zeros(len(work) + 1, dtype=np.int64)
+    np.cumsum(work, out=cum[1:])
+    return cum
+
+
+@contextlib.contextmanager
+def _parallel():
+    """Run numba parallel loops on the set number of threads, with BLAS
+    limited to one thread.
+    """
+    old = numba.get_num_threads()
+    numba.set_num_threads(
+        min(get_num_threads(), numba.config.NUMBA_NUM_THREADS)
+    )
+    try:
+        with limit_blas():
+            yield
+    finally:
+        numba.set_num_threads(old)
 
 
 @numba.njit(cache=True, nogil=True)
@@ -18,11 +68,13 @@ def _copy_blocks(
     dst_strides,
     shapes,
     scales,
+    lo,
+    hi,
 ):
-    n, nd = shapes.shape
+    nd = shapes.shape[1]
     idx = np.zeros(max(nd, 1), dtype=np.int64)
     use_scales = scales.shape[0] > 0
-    for b in range(n):
+    for b in range(lo, hi):
         size = 1
         for d in range(nd):
             size *= shapes[b, d]
@@ -63,6 +115,33 @@ def _copy_blocks(
                 d -= 1
             if d < 0:
                 break
+
+
+@numba.njit(parallel=True, cache=True, nogil=True)
+def _copy_blocks_parallel(
+    src,
+    dst,
+    src_base,
+    src_strides,
+    dst_base,
+    dst_strides,
+    shapes,
+    scales,
+    bounds,
+):
+    for c in numba.prange(bounds.shape[0] - 1):
+        _copy_blocks(
+            src,
+            dst,
+            src_base,
+            src_strides,
+            dst_base,
+            dst_strides,
+            shapes,
+            scales,
+            bounds[c],
+            bounds[c + 1],
+        )
 
 
 @numba.njit(cache=True, nogil=True)
@@ -137,6 +216,7 @@ def plan_copy(
         shapes,
         int(dst_size),
         bool(fill_zero),
+        _cum_work(shapes.prod(axis=1)),
     )
 
 
@@ -144,7 +224,7 @@ _NO_SCALES = {}
 
 
 def run_copy(plan, src, scales=None):
-    src_base, src_strides, dst_base, dst_strides, shapes, size, fill = plan
+    *blocks, size, fill, cum_work = plan
     if fill:
         dst = np.zeros(size, dtype=src.dtype)
     else:
@@ -156,63 +236,97 @@ def run_copy(plan, src, scales=None):
             scales = _NO_SCALES[src.dtype] = np.zeros(0, dtype=src.dtype)
     else:
         scales = np.asarray(scales, dtype=src.dtype)
-    _copy_blocks(
-        src,
-        dst,
-        src_base,
-        src_strides,
-        dst_base,
-        dst_strides,
-        shapes,
-        scales,
-    )
+    if _use_parallel(cum_work):
+        with _parallel():
+            _copy_blocks_parallel(src, dst, *blocks, scales, _bounds(cum_work))
+    else:
+        _copy_blocks(src, dst, *blocks, scales, 0, len(cum_work) - 1)
     return dst
 
 
 @numba.njit(cache=True, nogil=True)
-def _muldiag(src, dst, offsets, pre, mid, post, vbase, v, power):
-    n = pre.shape[0]
-    for b in range(n):
-        o = offsets[b]
-        vo = vbase[b]
-        m = mid[b]
-        q = post[b]
-        if q == 1:
-            # the axis is the last one, so the vector runs contiguously
-            for i in range(pre[b]):
-                r = o + i * m
-                if power == 1:
-                    for j in range(m):
-                        dst[r + j] = src[r + j] * v[vo + j]
-                else:
-                    for j in range(m):
-                        dst[r + j] = src[r + j] / v[vo + j]
+def _muldiag(src, dst, offsets, shapes, vbases, v, lo, hi):
+    # plans have >= 2 dims. last two are looped directly, the rest stepped.
+    # vbases[b, d] is where dim d's vector starts in v, or -1 for none
+    nd = shapes.shape[1]
+    idx = np.zeros(nd, dtype=np.int64)
+    # fac[d] is the product of the vector elements on dims before d
+    fac = np.ones(nd, dtype=dst.dtype)
+    for b in range(lo, hi):
+        pos = offsets[b]
+        end = offsets[b + 1]
+        if pos == end:
             continue
-        for i in range(pre[b]):
-            for j in range(m):
-                vj = v[vo + j]
-                r = o + (i * m + j) * q
-                if power == 1:
-                    for k in range(q):
-                        dst[r + k] = src[r + k] * vj
+        for d in range(nd - 2):
+            idx[d] = 0
+            vb = vbases[b, d]
+            fac[d + 1] = fac[d] * v[vb] if vb >= 0 else fac[d]
+        ni = shapes[b, nd - 2]
+        vbi = vbases[b, nd - 2]
+        nj = shapes[b, nd - 1]
+        vbj = vbases[b, nd - 1]
+        while True:
+            f0 = fac[nd - 2]
+            for i in range(ni):
+                f = f0 * v[vbi + i] if vbi >= 0 else f0
+                if vbj >= 0:
+                    for j in range(nj):
+                        dst[pos + j] = src[pos + j] * (f * v[vbj + j])
                 else:
-                    for k in range(q):
-                        dst[r + k] = src[r + k] / vj
+                    for j in range(nj):
+                        dst[pos + j] = src[pos + j] * f
+                pos += nj
+            if pos >= end:
+                break
+            # step the index over the outer dims
+            d = nd - 3
+            while idx[d] + 1 == shapes[b, d]:
+                idx[d] = 0
+                d -= 1
+            idx[d] += 1
+            for e in range(d, nd - 2):
+                vb = vbases[b, e]
+                fac[e + 1] = fac[e] * v[vb + idx[e]] if vb >= 0 else fac[e]
 
 
-def plan_muldiag(offsets, shapes, axis, vbase):
+@numba.njit(parallel=True, cache=True, nogil=True)
+def _muldiag_parallel(src, dst, offsets, shapes, vbases, v, bounds):
+    for c in numba.prange(bounds.shape[0] - 1):
+        _muldiag(
+            src, dst, offsets, shapes, vbases, v, bounds[c], bounds[c + 1]
+        )
+
+
+def plan_muldiag(offsets, shapes, axes, vbases):
+    # merge each run of neighbouring dims without a vector into one dim
+    cols, vcols = [], []
+    merging = False
+    for d in range(shapes.shape[1]):
+        if d in axes:
+            cols.append(shapes[:, d])
+            vcols.append(vbases[:, axes.index(d)])
+            merging = False
+        elif merging:
+            cols[-1] = cols[-1] * shapes[:, d]
+        else:
+            cols.append(shapes[:, d])
+            vcols.append(np.full(shapes.shape[0], -1))
+            merging = True
+    # the kernel needs at least two dims
+    if len(cols) == 1:
+        cols.insert(0, np.ones(shapes.shape[0], dtype=np.int64))
+        vcols.insert(0, np.full(shapes.shape[0], -1))
     c = np.ascontiguousarray
     return (
-        c(offsets[:-1], dtype=np.int64),
-        c(shapes[:, :axis].prod(axis=1), dtype=np.int64),
-        c(shapes[:, axis], dtype=np.int64),
-        c(shapes[:, axis + 1 :].prod(axis=1), dtype=np.int64),
-        c(vbase, dtype=np.int64),
+        c(offsets, dtype=np.int64),
+        c(np.stack(cols, axis=1), dtype=np.int64),
+        c(np.stack(vcols, axis=1), dtype=np.int64),
+        _cum_work(shapes.prod(axis=1)),
     )
 
 
 def run_muldiag(plan, src, v, power):
-    offsets, pre, mid, post, vbase = plan
+    *blocks, cum_work = plan
     # true division always gives a floating dtype
     dtype = (
         np.result_type(src, v) if power == 1 else np.result_type(src, v, 1.0)
@@ -221,22 +335,33 @@ def run_muldiag(plan, src, v, power):
         src = src.astype(dtype)
     if v.dtype != dtype:
         v = v.astype(dtype)
+    if power == -1:
+        # v is short, so invert it once and multiply
+        v = 1 / v
     dst = np.empty(src.shape[0], dtype=dtype)
-    _muldiag(src, dst, offsets, pre, mid, post, vbase, v, int(power))
+    if _use_parallel(cum_work):
+        with _parallel():
+            _muldiag_parallel(src, dst, *blocks, v, _bounds(cum_work))
+    else:
+        _muldiag(src, dst, *blocks, v, 0, len(cum_work) - 1)
     return dst
 
 
-# up to this many multiply-adds, a plain loop is faster than calling blas
+# up to this many multiply-adds a plain loop beats calling blas. Higher in
+# parallel, as blas calls from many threads at once contend
 _SMALL_GEMM = 256
+_SMALL_GEMM_PARALLEL = 4096
 
 
 @numba.njit(cache=True, nogil=True)
-def _gemms(a, b, out, a_off, rows, inner, b_off, cols, c_off):
-    for i in range(a_off.shape[0]):
+def _gemms(
+    a, b, out, a_off, rows, inner, b_off, cols, c_off, lo, hi, small_gemm
+):
+    for i in range(lo, hi):
         r = rows[i]
         k = inner[i]
         c = cols[i]
-        if r * k * c > _SMALL_GEMM:
+        if r * k * c > small_gemm:
             np.dot(
                 a[a_off[i] : a_off[i] + r * k].reshape(r, k),
                 b[b_off[i] : b_off[i] + k * c].reshape(k, c),
@@ -256,28 +381,59 @@ def _gemms(a, b, out, a_off, rows, inner, b_off, cols, c_off):
                     out[ci + x * c + z] += f * b[bi + y * c + z]
 
 
+@numba.njit(parallel=True, cache=True, nogil=True)
+def _gemms_parallel(
+    a, b, out, a_off, rows, inner, b_off, cols, c_off, bounds, small_gemm
+):
+    for ch in numba.prange(bounds.shape[0] - 1):
+        _gemms(
+            a,
+            b,
+            out,
+            a_off,
+            rows,
+            inner,
+            b_off,
+            cols,
+            c_off,
+            bounds[ch],
+            bounds[ch + 1],
+            small_gemm,
+        )
+
+
 def plan_gemm(a_off, rows, inner, b_off, cols, c_off):
     c = np.ascontiguousarray
-    return tuple(
+    blocks = tuple(
         c(x, dtype=np.int64) for x in (a_off, rows, inner, b_off, cols, c_off)
     )
+    _, rows, inner, _, cols, _ = blocks
+    # work is the multiply-adds plus a rough fixed cost per product
+    return (*blocks, _cum_work(rows * inner * cols + 64))
 
 
 def run_gemm(plan, a, b, out_size):
+    *blocks, cum_work = plan
     dtype = np.result_type(a, b)
     if dtype.kind not in "fc":
         # numba's dot only supports floating dtypes
         from .numpy_kernels import run_gemm as run_gemm_numpy
 
         return run_gemm_numpy(
-            list(zip(*(x.tolist() for x in plan))), a, b, out_size
+            list(zip(*(x.tolist() for x in blocks))), a, b, out_size
         )
     if a.dtype != dtype:
         a = a.astype(dtype)
     if b.dtype != dtype:
         b = b.astype(dtype)
     out = np.empty(out_size, dtype=dtype)
-    _gemms(a, b, out, *plan)
+    if _use_parallel(cum_work):
+        with _parallel():
+            _gemms_parallel(
+                a, b, out, *blocks, _bounds(cum_work), _SMALL_GEMM_PARALLEL
+            )
+    else:
+        _gemms(a, b, out, *blocks, 0, len(cum_work) - 1, _SMALL_GEMM)
     return out
 
 
@@ -921,16 +1077,28 @@ def tensordot_entries(cl, a_off, inner, cr, b_off, left, right, radices):
 
 
 @numba.njit(cache=True, nogil=True)
-def _scale_blocks(src, dst, offsets, scales):
-    for b in range(scales.shape[0]):
+def _scale_blocks(src, dst, offsets, scales, lo, hi):
+    for b in range(lo, hi):
         f = scales[b]
         for i in range(offsets[b], offsets[b + 1]):
             dst[i] = src[i] * f
 
 
+@numba.njit(parallel=True, cache=True, nogil=True)
+def _scale_blocks_parallel(src, dst, offsets, scales, bounds):
+    for c in numba.prange(bounds.shape[0] - 1):
+        _scale_blocks(src, dst, offsets, scales, bounds[c], bounds[c + 1])
+
+
 def run_scale(src, offsets, scales):
     dst = np.empty_like(src)
-    _scale_blocks(src, dst, offsets, np.asarray(scales, dtype=src.dtype))
+    scales = np.asarray(scales, dtype=src.dtype)
+    # offsets are the cumulative block sizes, i.e. the work
+    if _use_parallel(offsets):
+        with _parallel():
+            _scale_blocks_parallel(src, dst, offsets, scales, _bounds(offsets))
+    else:
+        _scale_blocks(src, dst, offsets, scales, 0, len(scales))
     return dst
 
 

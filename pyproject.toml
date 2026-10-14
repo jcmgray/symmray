@@ -48,6 +48,7 @@ testing = [
     "pytest-cov",
     "pytest",
     "quimb",
+    "threadpoolctl",
 ]
 docs = [
     "astroid",
@@ -107,6 +108,7 @@ numpy = "*"
 pytest = "*"
 pytest-cov = "*"
 quimb = "*"
+threadpoolctl = "*"
 
 [tool.pixi.feature.testing.pypi-dependencies]
 build = "*"

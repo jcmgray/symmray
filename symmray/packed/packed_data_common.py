@@ -4,6 +4,14 @@ stored C contiguous, end to end, in one flat data buffer.
 
 import autoray as ar
 
+from .parallel import (
+    CHUNK_REDUCTIONS,
+    map_elementwise,
+    norm_chunks,
+    reduce_chunks,
+    use_chunks,
+)
+
 
 class PackedCommon:
     """Mixin class for arrays with packed storage, numpy only for now. Copies
@@ -108,7 +116,7 @@ class PackedCommon:
         """Apply ``fn`` inplace to all the data at once. ``fn`` should be
         elementwise, use `apply_to_blocks` otherwise.
         """
-        self._data = fn(self._data)
+        self._data = map_elementwise(fn, self._data)
 
     def apply_to_blocks(self, fn):
         """Apply ``fn`` inplace to the array of each block. ``fn`` need not be
@@ -129,11 +137,15 @@ class PackedCommon:
 
     def _do_reduction_blockwise(self, fn):
         if isinstance(fn, str):
+            if fn in CHUNK_REDUCTIONS and use_chunks(self._data):
+                return reduce_chunks(fn, self._data)
             fn = ar.get_lib_fn(self.backend, fn)
         return fn(self._data)
 
     def norm(self):
         """Get the frobenius norm of the array."""
+        if use_chunks(self._data):
+            return norm_chunks(self._data)
         return ar.do("linalg.norm", self._data)
 
     def is_zero(self, tol=1e-12):
