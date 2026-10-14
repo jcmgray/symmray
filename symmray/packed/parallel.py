@@ -2,25 +2,23 @@
 
 The thread count comes from the first set env var of ``SYMMRAY_NUM_THREADS``,
 ``NUMBA_NUM_THREADS``, ``OMP_NUM_THREADS``, ``MKL_NUM_THREADS`` and
-``OPENBLAS_NUM_THREADS``, else it is 1. Change it with :func:`set_num_threads`. With more than one thread:
+``OPENBLAS_NUM_THREADS``, else it is the number of cores available. Change it
+with :func:`set_num_threads`. With more than one thread:
 
 - numba data kernels (copy, gemm, multiply diagonal, scale) run chunks of
-  blocks in parallel, if there is enough work.
-- big blocks of a split are decomposed on a thread pool. This needs the
-  decompositions to release the GIL, as numpy, scipy and quimb's numba ones do.
+  blocks in parallel, if there is enough work. They never call BLAS, so
+  small gemm blocks use a plain loop.
+- work that calls BLAS, i.e. big gemm blocks and the blocks of a split, runs
+  on a thread pool whose workers limit BLAS and OpenMP to one thread each.
+  This needs ``threadpoolctl``, without it this work runs serially, leaving
+  BLAS to thread it. The main thread is never limited.
 - elementwise ops and reductions on big arrays run on chunks of the data, on
   the thread pool.
 
-BLAS is limited to one thread during these, if ``threadpoolctl`` is
-installed, so that threads don't multiply. Without it there is a warning on
-first use.
-
-Tall QR blocks and wide LQ blocks of a split use quimb's Cholesky QR based
-``"qr:auto"`` on one thread. With more threads, or if quimb has no
-``"qr:auto"``, they use a threaded TSQR.
+Tall QR blocks and wide LQ blocks of a split use a threaded TSQR when the
+pool can run BLAS, else quimb's Cholesky QR based ``"qr:auto"``.
 """
 
-import contextlib
 import functools
 import os
 
@@ -39,7 +37,10 @@ def _default_num_threads():
         value = os.environ.get(var, "").split(",")[0].strip()
         if value.isdigit() and int(value) > 0:
             return int(value)
-    return 1
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
 
 
 _num_threads = _default_num_threads()
@@ -73,7 +74,11 @@ def get_pool():
     if _pool is None:
         from concurrent.futures import ThreadPoolExecutor
 
-        _pool = ThreadPoolExecutor(_num_threads, thread_name_prefix="symmray")
+        _pool = ThreadPoolExecutor(
+            _num_threads,
+            thread_name_prefix="symmray",
+            initializer=_limit_worker,
+        )
     return _pool
 
 
@@ -91,28 +96,24 @@ def _blas_controller():
     try:
         from threadpoolctl import ThreadpoolController
     except ImportError:
-        import warnings
-
-        warnings.warn(
-            "threadpoolctl is not installed, so the packed backend can't "
-            "limit BLAS to one thread while it runs its own threads. The "
-            "cores may be oversubscribed. Install threadpoolctl, or set e.g. "
-            "OPENBLAS_NUM_THREADS=1 or MKL_NUM_THREADS=1.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
         return None
     return ThreadpoolController()
 
 
-def limit_blas():
-    """Context in which BLAS uses one thread. Does nothing if
-    ``threadpoolctl`` is not installed.
+def _limit_worker():
+    """Limit BLAS and OpenMP to one thread for good, in a pool worker. OpenMP
+    thread counts are per thread, so this doesn't reach the main thread.
     """
     controller = _blas_controller()
-    if controller is None:
-        return contextlib.nullcontext()
-    return controller.limit(limits=1, user_api="blas")
+    if controller is not None:
+        controller.limit(limits=1)
+
+
+def use_blas_pool():
+    """Whether to run work that calls BLAS on the thread pool, i.e. there is
+    more than one thread, and ``threadpoolctl`` to limit BLAS in the workers.
+    """
+    return _num_threads > 1 and _blas_controller() is not None
 
 
 # blocks with at least this much work, m * n * min(m, n), go to the pool
@@ -174,8 +175,8 @@ def _has_qr_auto():
 
 
 def _maybe_tall_qr(fn, block, kwargs):
-    """Split a tall QR or wide LQ ``block`` with ``"qr:auto"`` or tsqr. Returns
-    None if neither applies.
+    """Split a tall QR or wide LQ ``block`` with tsqr if the pool can run
+    BLAS, else ``"qr:auto"``. Returns None if neither applies.
     """
     from ..linalg_common import Absorb
 
@@ -189,14 +190,18 @@ def _maybe_tall_qr(fn, block, kwargs):
     else:
         return None
 
+    blas_pool = use_blas_pool()
     if (
-        _num_threads == 1
+        not blas_pool
         and long >= CHOLQR_ASPECT * short
         and long * short**2 >= CHOLQR_MIN
         and _has_qr_auto()
     ):
         return fn(block, **{**kwargs, "method": "qr:auto"})
 
+    # tsqr chunks call BLAS, so need the pool to limit it, or one thread
+    if not (blas_pool or _num_threads == 1):
+        return None
     if long * short < TSQR_MIN or long < TSQR_ASPECT * short:
         return None
     qr_kwargs = {**kwargs, "absorb": Absorb.U_sVH}
@@ -220,29 +225,28 @@ def decompose_blocks(fn, blocks, kwargs, sub_max_bonds):
         and kwargs.get("method") == "qr"
         and set(kwargs) <= {"method", "absorb", "stabilized"}
     )
-    use_pool = _num_threads > 1
+    use_pool = use_blas_pool()
     results = [None] * len(blocks)
     futures = {}
-    with limit_blas() if use_pool else contextlib.nullcontext():
-        for i, block in enumerate(blocks):
-            max_bond = sub_max_bonds[i]
-            if max_bond == 0:
-                continue
-            if max_bond is None:
-                split_kwargs = kwargs
-                if use_tall_qr:
-                    results[i] = _maybe_tall_qr(fn, block, kwargs)
-                    if results[i] is not None:
-                        continue
-            else:
-                split_kwargs = {**kwargs, "max_bond": max_bond}
-            m, n = block.shape
-            if use_pool and (m * n * min(m, n) >= SPLIT_POOL_MIN):
-                futures[i] = get_pool().submit(fn, block, **split_kwargs)
-            else:
-                results[i] = fn(block, **split_kwargs)
-        for i, future in futures.items():
-            results[i] = future.result()
+    for i, block in enumerate(blocks):
+        max_bond = sub_max_bonds[i]
+        if max_bond == 0:
+            continue
+        if max_bond is None:
+            split_kwargs = kwargs
+            if use_tall_qr:
+                results[i] = _maybe_tall_qr(fn, block, kwargs)
+                if results[i] is not None:
+                    continue
+        else:
+            split_kwargs = {**kwargs, "max_bond": max_bond}
+        m, n = block.shape
+        if use_pool and (m * n * min(m, n) >= SPLIT_POOL_MIN):
+            futures[i] = get_pool().submit(fn, block, **split_kwargs)
+        else:
+            results[i] = fn(block, **split_kwargs)
+    for i, future in futures.items():
+        results[i] = future.result()
     return results
 
 

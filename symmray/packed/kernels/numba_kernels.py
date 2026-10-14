@@ -12,7 +12,7 @@ import contextlib
 import numba
 import numpy as np
 
-from ..parallel import get_num_threads, limit_blas
+from ..parallel import get_num_threads, map_threaded, use_blas_pool
 
 NAME = "numba"
 
@@ -44,16 +44,13 @@ def _cum_work(work):
 
 @contextlib.contextmanager
 def _parallel():
-    """Run numba parallel loops on the set number of threads, with BLAS
-    limited to one thread.
-    """
+    """Run numba parallel loops on the set number of threads."""
     old = numba.get_num_threads()
     numba.set_num_threads(
         min(get_num_threads(), numba.config.NUMBA_NUM_THREADS)
     )
     try:
-        with limit_blas():
-            yield
+        yield
     finally:
         numba.set_num_threads(old)
 
@@ -354,39 +351,68 @@ _SMALL_GEMM_PARALLEL = 4096
 
 
 @numba.njit(cache=True, nogil=True)
-def _gemms(
-    a, b, out, a_off, rows, inner, b_off, cols, c_off, lo, hi, small_gemm
-):
-    for i in range(lo, hi):
-        r = rows[i]
-        k = inner[i]
-        c = cols[i]
-        if r * k * c > small_gemm:
-            np.dot(
-                a[a_off[i] : a_off[i] + r * k].reshape(r, k),
-                b[b_off[i] : b_off[i] + k * c].reshape(k, c),
-                out[c_off[i] : c_off[i] + r * c].reshape(r, c),
-            )
-            continue
-        # out[x, z] = sum_y a[x, y] * b[y, z], inner loop contiguous
-        ai = a_off[i]
-        bi = b_off[i]
-        ci = c_off[i]
-        for x in range(r):
+def _gemm_block(a, b, out, ai, r, k, bi, c, ci, small_gemm):
+    if r * k * c > small_gemm:
+        np.dot(
+            a[ai : ai + r * k].reshape(r, k),
+            b[bi : bi + k * c].reshape(k, c),
+            out[ci : ci + r * c].reshape(r, c),
+        )
+        return
+    # out[x, z] = sum_y a[x, y] * b[y, z], inner loop contiguous
+    for x in range(r):
+        for z in range(c):
+            out[ci + x * c + z] = 0
+        for y in range(k):
+            f = a[ai + x * k + y]
             for z in range(c):
-                out[ci + x * c + z] = 0
-            for y in range(k):
-                f = a[ai + x * k + y]
-                for z in range(c):
-                    out[ci + x * c + z] += f * b[bi + y * c + z]
+                out[ci + x * c + z] += f * b[bi + y * c + z]
+
+
+@numba.njit(cache=True, nogil=True)
+def _gemms(a, b, out, a_off, rows, inner, b_off, cols, c_off, small_gemm):
+    for i in range(a_off.shape[0]):
+        _gemm_block(
+            a,
+            b,
+            out,
+            a_off[i],
+            rows[i],
+            inner[i],
+            b_off[i],
+            cols[i],
+            c_off[i],
+            small_gemm,
+        )
+
+
+@numba.njit(cache=True, nogil=True)
+def _gemms_take(
+    a, b, out, a_off, rows, inner, b_off, cols, c_off, idx, lo, hi, small_gemm
+):
+    for t in range(lo, hi):
+        i = idx[t]
+        _gemm_block(
+            a,
+            b,
+            out,
+            a_off[i],
+            rows[i],
+            inner[i],
+            b_off[i],
+            cols[i],
+            c_off[i],
+            small_gemm,
+        )
 
 
 @numba.njit(parallel=True, cache=True, nogil=True)
-def _gemms_parallel(
-    a, b, out, a_off, rows, inner, b_off, cols, c_off, bounds, small_gemm
+def _gemms_take_parallel(
+    a, b, out, a_off, rows, inner, b_off, cols, c_off, idx, bounds
 ):
+    # only small products, as a plain loop, so numba threads never call blas
     for ch in numba.prange(bounds.shape[0] - 1):
-        _gemms(
+        _gemms_take(
             a,
             b,
             out,
@@ -396,9 +422,10 @@ def _gemms_parallel(
             b_off,
             cols,
             c_off,
+            idx,
             bounds[ch],
             bounds[ch + 1],
-            small_gemm,
+            _SMALL_GEMM_PARALLEL,
         )
 
 
@@ -410,6 +437,34 @@ def plan_gemm(a_off, rows, inner, b_off, cols, c_off):
     _, rows, inner, _, cols, _ = blocks
     # work is the multiply-adds plus a rough fixed cost per product
     return (*blocks, _cum_work(rows * inner * cols + 64))
+
+
+def _run_gemms_parallel(a, b, out, blocks):
+    _, rows, inner, _, cols, _ = blocks
+    madds = rows * inner * cols
+    is_big = madds > _SMALL_GEMM_PARALLEL
+
+    small = np.flatnonzero(~is_big)
+    if len(small):
+        cum_work = _cum_work(madds[small] + 64)
+        with _parallel():
+            _gemms_take_parallel(a, b, out, *blocks, small, _bounds(cum_work))
+
+    big = np.flatnonzero(is_big)
+    if not len(big):
+        return
+    if not use_blas_pool():
+        # one at a time, leaving blas to thread them
+        _gemms_take(a, b, out, *blocks, big, 0, len(big), 0)
+        return
+    # on the pool, whose workers limit blas to one thread
+    bounds = _bounds(_cum_work(madds[big]))
+    map_threaded(
+        lambda t: _gemms_take(
+            a, b, out, *blocks, big, bounds[t], bounds[t + 1], 0
+        ),
+        range(len(bounds) - 1),
+    )
 
 
 def run_gemm(plan, a, b, out_size):
@@ -428,12 +483,9 @@ def run_gemm(plan, a, b, out_size):
         b = b.astype(dtype)
     out = np.empty(out_size, dtype=dtype)
     if _use_parallel(cum_work):
-        with _parallel():
-            _gemms_parallel(
-                a, b, out, *blocks, _bounds(cum_work), _SMALL_GEMM_PARALLEL
-            )
+        _run_gemms_parallel(a, b, out, blocks)
     else:
-        _gemms(a, b, out, *blocks, 0, len(cum_work) - 1, _SMALL_GEMM)
+        _gemms(a, b, out, *blocks, _SMALL_GEMM)
     return out
 
 

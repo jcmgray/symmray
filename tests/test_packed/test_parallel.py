@@ -1,3 +1,5 @@
+import os
+
 import autoray as ar
 import numpy as np
 import pytest
@@ -55,7 +57,7 @@ class TestNumThreads:
     @pytest.mark.parametrize(
         "env, expected",
         [
-            ({}, 1),
+            ({}, None),
             ({"OMP_NUM_THREADS": "3"}, 3),
             ({"OMP_NUM_THREADS": "4,2"}, 4),
             ({"MKL_NUM_THREADS": "6"}, 6),
@@ -65,7 +67,7 @@ class TestNumThreads:
             ({"NUMBA_NUM_THREADS": "5", "OMP_NUM_THREADS": "3"}, 5),
             ({"SYMMRAY_NUM_THREADS": "2", "OMP_NUM_THREADS": "3"}, 2),
             ({"SYMMRAY_NUM_THREADS": "", "OMP_NUM_THREADS": "3"}, 3),
-            ({"SYMMRAY_NUM_THREADS": "x"}, 1),
+            ({"SYMMRAY_NUM_THREADS": "x"}, None),
         ],
     )
     def test_default_from_env(self, monkeypatch, env, expected):
@@ -75,6 +77,9 @@ class TestNumThreads:
             monkeypatch.delenv(var, raising=False)
         for var, value in env.items():
             monkeypatch.setenv(var, value)
+        if expected is None:
+            # nothing set, so every core available
+            expected = len(os.sched_getaffinity(0))
         assert parallel._default_num_threads() == expected
 
     def test_set_num_threads(self):
@@ -90,19 +95,21 @@ class TestNumThreads:
         finally:
             parallel.set_num_threads(old)
 
-    def test_warns_without_threadpoolctl(self, monkeypatch):
-        import sys
-
+    def test_blas_pool_needs_threadpoolctl(self, monkeypatch):
         from symmray.packed import parallel
 
-        monkeypatch.setitem(sys.modules, "threadpoolctl", None)
-        parallel._blas_controller.cache_clear()
+        old = parallel.get_num_threads()
         try:
-            with pytest.warns(RuntimeWarning, match="threadpoolctl"):
-                with parallel.limit_blas():
-                    pass
+            parallel.set_num_threads(4)
+            monkeypatch.setattr(parallel, "_blas_controller", lambda: object())
+            assert parallel.use_blas_pool()
+            monkeypatch.setattr(parallel, "_blas_controller", lambda: None)
+            assert not parallel.use_blas_pool()
+            parallel.set_num_threads(1)
+            monkeypatch.setattr(parallel, "_blas_controller", lambda: object())
+            assert not parallel.use_blas_pool()
         finally:
-            parallel._blas_controller.cache_clear()
+            parallel.set_num_threads(old)
 
 
 class TestKernels:
@@ -127,6 +134,26 @@ class TestKernels:
             threaded, lambda: xp.tensordot(yp, ((2, 0), (0, 1)))
         )
         assert_same(a, b)
+
+    @pytest.mark.parametrize("blas_pool", (True, False))
+    def test_tensordot_big_and_small_blocks(
+        self, threaded, monkeypatch, blas_pool
+    ):
+        pytest.importorskip("threadpoolctl")
+        if not blas_pool:
+            monkeypatch.setattr(threaded, "_blas_controller", lambda: None)
+        # products above and below the plain loop limit
+        ix = {0: 20, 1: 1, 2: 16, 3: 2}
+        x = sr.utils.get_rand("U1", (ix, ix, ix), seed=5)
+        y = sr.utils.get_rand(
+            "U1", [x.indices[2].conj(), x.indices[1].conj(), ix], seed=6
+        )
+        xp, yp = x.to_packed(), y.to_packed()
+        a, b = serial_and_threaded(
+            threaded, lambda: xp.tensordot(yp, ((2, 1), (0, 1)))
+        )
+        assert_same(a, b)
+        assert_same(b, sr.tensordot(x, y, ((2, 1), (0, 1))).to_packed())
 
     @pytest.mark.parametrize("power", (1, -1))
     def test_multiply_diagonal(self, threaded, power):
@@ -212,8 +239,13 @@ class TestTsqr:
         right.to_blocksparse().test_allclose(er)
 
     @pytest.mark.parametrize(
-        "num_threads, has_qr_auto, expected",
-        [(1, True, "qr:auto"), (1, False, "tsqr"), (4, True, "tsqr")],
+        "num_threads, has_qr_auto, blas_pool, expected",
+        [
+            (1, True, True, "qr:auto"),
+            (1, False, True, "tsqr"),
+            (4, True, True, "tsqr"),
+            (4, True, False, "qr:auto"),
+        ],
     )
     @pytest.mark.parametrize("method, absorb", [("qr", 1), ("lq", -1)])
     def test_tall_qr_route(
@@ -222,6 +254,7 @@ class TestTsqr:
         monkeypatch,
         num_threads,
         has_qr_auto,
+        blas_pool,
         expected,
         method,
         absorb,
@@ -229,6 +262,10 @@ class TestTsqr:
         decomp = pytest.importorskip("quimb.tensor.decomp")
         if has_qr_auto and not threaded._has_qr_auto():
             pytest.skip("quimb has no qr:auto")
+        if blas_pool:
+            pytest.importorskip("threadpoolctl")
+        else:
+            monkeypatch.setattr(threaded, "_blas_controller", lambda: None)
         monkeypatch.setattr(threaded, "CHOLQR_MIN", 0)
         monkeypatch.setattr(threaded, "_has_qr_auto", lambda: has_qr_auto)
 
