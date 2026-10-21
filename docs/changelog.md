@@ -2,7 +2,28 @@
 
 Release notes for `symmray`. See also the [GitHub releases page](https://github.com/jcmgray/symmray/releases).
 
-## v0.4.0 (unreleased)
+## v0.5.0 (unreleased)
+
+**Enhancements:**
+
+- New `packed` backend, which uses single numpy buffer to store all blocks and numba to accelerate various operations. For sparse data can e.g. be 2-3x faster for U1 and 10-20x faster for U1U1.
+- Fermionic `conj` and `dagger` accept a sequence of outer axes for `phase_dual`. Use `inner_dummy_labels` for dummy modes whose conjugate partners are already in the network. These modes get no dual phase and use virtual conjugate labels.
+- Add `FermionicOperator.vconj`. It flips a mode's dual flag and wraps its label as `("vconj", label)`. Applying it twice restores the original mode.
+- Flat arrays support single-array `einsum` for transpositions and (partial) traces, including fermionic signs.
+- Sparse fusion, contraction and `multiply_diagonal` are faster, especially for fermionic arrays and many small blocks.
+- The sparse fusion cache is now limited by approximate memory use, set with `SYMMRAY_FUSE_CACHE_MAXBYTES`, which replaces `SYMMRAY_FUSE_CACHE_MAXSECTORS`.
+- Add `BlockIndex.from_chargemap`, matching the packed index constructor.
+
+**Bug Fixes:**
+
+- Sparse fusion now works for cupy arrays.
+- Fermionic `conj(phase_dual=True)` and `dagger(phase_dual=True)` now phase dual dummy modes like outer dual indices. This fixes wrong signs in norms and repeated conjugation of arrays with dual dummy modes.
+- Dummy mode labels with mixed types now sort consistently. This fixes contraction signs when site labels and `("squeeze", label, ax)` labels occur together.
+- Fermionic splits, such as `qr` and `svd`, now pass explicit `charge_side` on to the abelian split, so charge, label and dummy modes go on the requested factor.
+
+## v0.4.0 (2026-09-16)
+
+This release adds various fixes and functions that enable **all** of `quimb`'s compression routines to run on fermionic tensor networks.
 
 **Breaking Changes:**
 
@@ -10,7 +31,6 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 
 **Enhancements:**
 
-- New `packed` backend, which uses single numpy buffer to store all blocks and numba to accelerate various operations. For sparse data can e.g. be 2-3x faster for U1 and 10-20x faster for U1U1.
 - Flat array fusion and contraction no longer require `einops`
 - Fermionic arrays expose `dummy_parity`, the combined parity of their dummy modes, while preserving traced backend scalar types for flat arrays.
 - `phase_global(parity=...)` conditionally applies a global fermionic phase and supports traced parity scalars with the flat backend.
@@ -19,8 +39,6 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Truncated SVD and eigendecomposition methods now default to `cutoff_mode="rel"`.
 - Contraction now traces out conjugate `dummy_modes` pairs in a second pass over the sorted modes, so both backends fully reduce them and agree. The flat backend previously only sorted them.
 - Add `gram(axes=-1)` and `symmray.gram` to form `dag(x) @ x`, contracting every other axis against the conjugate. Sparse and flat fermionic arrays use the positive fermionic operator convention, and currently support a single open axis.
-- Fermionic `conj` and `dagger` accept a sequence of outer axes for `phase_dual`. Use `inner_dummy_labels` for dummy modes whose conjugate partners are already in the network. These modes get no dual phase and use virtual conjugate labels.
-- Add `FermionicOperator.vconj`. It flips a mode's dual flag and wraps its label as `("vconj", label)`. Applying it twice restores the original mode.
 
 **Bug Fixes:**
 
@@ -28,10 +46,8 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - 'Fermionic reductions' (`sum`, `max`, `min`, `all`, `any`) and elementwise operations (`abs`, `sqrt`, `clip`, `isfinite`, `real`, `imag`) now `phase_sync` (note some of these are not well-defined but its useful to match the equivalent `to_dense`)
 - Fermionic `item` and `get_scalar_element` now `phase_sync`, including `float`, `complex`, `int` and `bool` conversions.
 - Fusing an empty group of axes now records subindex information for the expanded axis, so that `unfuse` removes it again and the fuse/unfuse round trip is total. Fermionic unfusing also normalizes negative axes before computing phases.
-- Fermionic `conj(phase_dual=True)` and `dagger(phase_dual=True)` now phase dual dummy modes like outer dual indices. This fixes wrong signs in norms and repeated conjugation of arrays with dual dummy modes.
-- Dummy mode labels with mixed types now sort consistently. This fixes contraction signs when site labels and `("squeeze", label, ax)` labels occur together.
-- Fermionic splits, such as `qr` and `svd`, now pass explicit `charge_side` on to the abelian split, so charge, label and dummy modes go on the requested factor.
 
+**Full Changelog**: [v0.3.1...v0.4.0](https://github.com/jcmgray/symmray/compare/v0.3.1...v0.4.0)
 
 ## v0.3.1 (2026-08-25)
 
