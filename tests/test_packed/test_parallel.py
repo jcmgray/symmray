@@ -79,7 +79,11 @@ class TestNumThreads:
             monkeypatch.setenv(var, value)
         if expected is None:
             # nothing set, so every core available
-            expected = len(os.sched_getaffinity(0))
+            if hasattr(os, "sched_getaffinity"):
+                expected = len(os.sched_getaffinity(0))
+            else:
+                # e.g. macos and windows
+                expected = os.cpu_count() or 1
         assert parallel._default_num_threads() == expected
 
     def test_set_num_threads(self):
