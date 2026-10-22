@@ -386,6 +386,29 @@ class TestFuseInfoCache:
             sac._clear_fuseinfo_cache()
 
 
+@pytest.mark.parametrize("fermionic", (False, True))
+def test_add_with_missing_index_charges(fermionic):
+    # x only has sectors with charge 1 on its first and last axes, so its
+    # indices lack the other charges, which y populates
+    import numpy as np
+
+    cls = sr.U1FermionicArray if fermionic else sr.U1Array
+    pmap = [0, 1, 1, 2]
+    dx = np.zeros((4, 1, 4))
+    dx[1, 0, 2] = dx[2, 0, 1] = 1.0
+    x = cls.from_dense(dx, [pmap, [-2], pmap], duals=(False, False, False))
+    x = x.select_charge(0, 1).select_charge(2, 1)
+    dy = np.zeros((4, 1, 4))
+    dy[0, 0, 3] = dy[3, 0, 0] = 2.0
+    y = cls.from_dense(dy, [pmap, [-2], pmap], duals=(False, False, False))
+    assert x.indices[0].chargemap == {1: 2}
+
+    for z in (x + y, y + x):
+        z.check()
+        assert z.indices[0].chargemap == {0: 1, 1: 2, 2: 1}
+        assert_allclose(z.to_dense(), dx + dy)
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize(
     "shape0, shape1",

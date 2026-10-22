@@ -771,6 +771,28 @@ class SparseArrayCommon:
 
         return self
 
+    def _union_index_charges(self, other):
+        """Add, in place, any charges of the indices of ``other`` missing from
+        the indices of this array, e.g. after an 'outer' blockwise operation
+        has kept blocks only present in ``other``.
+        """
+        new_indices = []
+        changed = False
+        for ixa, ixb in zip(self._indices, other.indices):
+            chargemap = ixa.chargemap
+            extra = {
+                c: d for c, d in ixb.chargemap.items() if c not in chargemap
+            }
+            if extra and (ixa.subinfo is None) and (ixb.subinfo is None):
+                ixa = ixa.copy_with(chargemap={**chargemap, **extra})
+                changed = True
+            new_indices.append(ixa)
+
+        if changed:
+            self._indices = tuple(new_indices)
+
+        return self
+
     def _mark_empty_fused(self, axis):
         """Mark the size-1 ``axis`` as the fusion of no indices at all, so that
         unfusing it removes the axis again.
