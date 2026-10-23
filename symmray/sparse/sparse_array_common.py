@@ -1269,6 +1269,7 @@ class SparseArrayCommon:
         charge=None,
         symmetry=None,
         invalid_sectors="warn",
+        tol=1e-12,
         **kwargs,
     ):
         """Create a block array from a dense array by supplying a mapping for
@@ -1285,12 +1286,17 @@ class SparseArrayCommon:
         duals : tuple[bool]
             The dualness of each index.
         charge : hashable
-            The total charge of the array. If not given, it will be
-            taken as the identity / zero element.
+            The total charge of the array. If not given, it is taken from the
+            first non-zero block, or the identity / zero element if every
+            entry is zero.
         symmetry : str or Symmetry, optional
             The symmetry of the array, if not using a specific symmetry class.
         invalid_sectors : {"warn", "raise", "ignore"}, optional
             How to handle invalid sectors that have non-zero entries.
+        tol : float, optional
+            Blocks with no entry larger in absolute value than ``tol`` times
+            the largest absolute entry of ``array`` count as zero. Zero blocks
+            are not stored.
 
         Returns
         -------
@@ -1299,8 +1305,8 @@ class SparseArrayCommon:
         # XXX: warn if invalid blocks are non-zero?
         symmetry = cls.get_class_symmetry(symmetry)
 
-        if charge is None:
-            charge = symmetry.combine()
+        # relative to the largest entry, so the result does not depend on scale
+        tol = tol * ar.do("max", ar.do("abs", array))
 
         # first we work out which indices of which axes belong to which charges
         charge_groups = []
@@ -1337,29 +1343,37 @@ class SparseArrayCommon:
             signed_sector = tuple(
                 symmetry.sign(c, dual) for c, dual in zip(sector, duals)
             )
-            if symmetry.combine(*signed_sector) == charge:
+            block_charge = symmetry.combine(*signed_sector)
+
+            if not ar.do("any", ar.do("abs", ary) > tol):
+                # zero block, not stored
+                continue
+
+            if charge is None:
+                # take the charge from the first non-zero block
+                charge = block_charge
+
+            if block_charge == charge:
                 # ... but only add valid ones:
                 blocks[sector] = ary
+                continue
 
-            elif invalid_sectors != "ignore":
-                # check for non zero entries
-                has_nnz = ar.do("any", ar.do("abs", ary) > 1e-12)
+            base_msg = (
+                f"Block with sector {sector} has non-zero elements"
+                f" but does not match the total charge {charge}."
+            )
+            if invalid_sectors == "warn":
+                warnings.warn(
+                    f"{base_msg} Ignoring them. Set "
+                    "`invalid_sectors` to 'ignore' to suppress "
+                    "this warning, or 'raise' to actively error.",
+                )
+            elif invalid_sectors == "raise":
+                raise ValueError(base_msg)
 
-                if has_nnz:
-                    base_msg = (
-                        f"Block with sector {sector} has non-zero elements"
-                        f" but does not match the total charge {charge}."
-                    )
-
-                    if invalid_sectors == "warn":
-                        warnings.warn(
-                            f"{base_msg} Ignoring them. Set "
-                            "`invalid_sectors` to 'ignore' to suppress "
-                            "this warning, or 'raise' to actively error.",
-                        )
-
-                    elif invalid_sectors == "raise":
-                        raise ValueError(base_msg)
+        if charge is None:
+            # every entry is zero
+            charge = symmetry.combine()
 
         # generate the indices -> the charge_map is simply the group size
         indices = [

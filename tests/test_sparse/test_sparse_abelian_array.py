@@ -131,6 +131,76 @@ def test_AbelianArray_to_dense_index_maps_invalid(index_maps, match):
         x.to_dense(index_maps=index_maps)
 
 
+class TestFromDenseCharge:
+    @pytest.mark.parametrize(
+        "symmetry,charges,charge",
+        [
+            ("Z2", (0, 1), 1),
+            ("Z3", (0, 1, 2), 2),
+            ("U1", (-1, 0, 1, 2), 1),
+            ("Z2Z2", ((0, 0), (0, 1), (1, 0), (1, 1)), (1, 0)),
+            ("U1U1", ((0, 0), (1, 0), (0, -1), (1, -1)), (1, -1)),
+        ],
+    )
+    def test_infer_charge(self, symmetry, charges, charge):
+        import numpy as np
+
+        indices = [
+            sr.BlockIndex({c: 2 for c in charges}, dual=dual)
+            for dual in (False, False, True)
+        ]
+        x = sr.AbelianArray.random(
+            indices, charge=charge, symmetry=symmetry, seed=7
+        )
+        # zero the first block visited, so the charge comes from the next
+        first = min(x.sectors)
+        x.blocks[first] = np.zeros_like(x.blocks[first])
+        index_maps = [
+            [c for c, d in ix.chargemap.items() for _ in range(d)]
+            for ix in x.indices
+        ]
+        y = sr.utils.from_dense(
+            x.to_dense(),
+            symmetry=symmetry,
+            index_maps=index_maps,
+            duals=x.duals,
+            invalid_sectors="raise",
+        )
+        y.check()
+        assert y.charge == x.charge
+        assert sorted(y.sectors) == sorted(set(x.sectors) - {first})
+        assert_allclose(y.to_dense(), x.to_dense())
+
+    def test_all_zero(self):
+        import numpy as np
+
+        x = sr.utils.from_dense(
+            np.zeros((4, 4)),
+            symmetry="U1",
+            index_maps=((0, 1, 1, 2),) * 2,
+            duals=(False, True),
+        )
+        assert x.charge == 0
+        assert x.num_blocks == 0
+
+    def test_tol(self):
+        import numpy as np
+
+        array = np.diag([1e-8, 1e-8, 1.0, 1.0])
+        kws = dict(
+            symmetry="U1", index_maps=((0, 0, 1, 1),) * 2, duals=(False, True)
+        )
+        x = sr.utils.from_dense(array, **kws)
+        assert sorted(x.sectors) == [(0, 0), (1, 1)]
+        x = sr.utils.from_dense(array, tol=1e-6, **kws)
+        assert sorted(x.sectors) == [(1, 1)]
+        # tolerance is relative to the largest entry
+        x = sr.utils.from_dense(1e-10 * array, **kws)
+        assert sorted(x.sectors) == [(0, 0), (1, 1)]
+        x = sr.utils.from_dense(1e10 * array, tol=1e-6, **kws)
+        assert sorted(x.sectors) == [(1, 1)]
+
+
 @pytest.mark.parametrize("symmetry", all_symmetries)
 @pytest.mark.parametrize("missing", (False, True))
 @pytest.mark.parametrize("mode", ["insert", "concat"])

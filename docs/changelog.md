@@ -13,6 +13,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Sparse fusion, contraction and `multiply_diagonal` are faster, especially for fermionic arrays and many small blocks.
 - The sparse fusion cache is now limited by approximate memory use, set with `SYMMRAY_FUSE_CACHE_MAXBYTES`, which replaces `SYMMRAY_FUSE_CACHE_MAXSECTORS`.
 - Add `BlockIndex.from_chargemap`, matching the packed index constructor.
+- {func}`~symmray.utils.from_dense` without `charge` now takes the charge of the first non-zero block, rather than assuming zero charge. Zero blocks are no longer stored, with a new `tol` option, relative to the largest entry, setting what counts as zero.
 
 **Bug Fixes:**
 

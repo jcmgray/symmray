@@ -171,8 +171,8 @@ def build_local_spin_array(
         For each site, the sequence mapping linear index to charge sector.
         Required unless ``symmetry`` is None.
     charge : hashable, optional
-        The total charge of the array. If not given it is taken as the identity
-        / zero element, suitable for charge-conserving operators.
+        The total charge of the array. If not given it is taken from the first
+        non-zero block of the operator.
     like : str, optional
         The backend to use, by default "numpy".
     flat : bool, optional

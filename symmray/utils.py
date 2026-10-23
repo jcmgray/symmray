@@ -789,6 +789,8 @@ def from_dense(
         **kwargs,
     )
     if layout == "flat":
+        # flat arrays need every valid block, including zero ones
+        x.fill_missing_blocks()
         x = x.to_flat()
     elif layout == "packed":
         x = x.to_packed()
