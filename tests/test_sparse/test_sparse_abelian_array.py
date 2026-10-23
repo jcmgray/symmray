@@ -386,27 +386,73 @@ class TestFuseInfoCache:
             sac._clear_fuseinfo_cache()
 
 
-@pytest.mark.parametrize("fermionic", (False, True))
-def test_add_with_missing_index_charges(fermionic):
-    # x only has sectors with charge 1 on its first and last axes, so its
-    # indices lack the other charges, which y populates
-    import numpy as np
+class TestAddMissingCharges:
+    @staticmethod
+    def make_u1_pair(fermionic):
+        # x only has sectors with charge 1 on its first and last axes, so its
+        # indices lack the other charges, which y populates
+        import numpy as np
 
-    cls = sr.U1FermionicArray if fermionic else sr.U1Array
-    pmap = [0, 1, 1, 2]
-    dx = np.zeros((4, 1, 4))
-    dx[1, 0, 2] = dx[2, 0, 1] = 1.0
-    x = cls.from_dense(dx, [pmap, [-2], pmap], duals=(False, False, False))
-    x = x.select_charge(0, 1).select_charge(2, 1)
-    dy = np.zeros((4, 1, 4))
-    dy[0, 0, 3] = dy[3, 0, 0] = 2.0
-    y = cls.from_dense(dy, [pmap, [-2], pmap], duals=(False, False, False))
-    assert x.indices[0].chargemap == {1: 2}
+        cls = sr.U1FermionicArray if fermionic else sr.U1Array
+        pmap = [0, 1, 1, 2]
+        dx = np.zeros((4, 1, 4))
+        dx[1, 0, 2] = dx[2, 0, 1] = 1.0
+        x = cls.from_dense(dx, [pmap, [-2], pmap], duals=(False,) * 3)
+        x = x.select_charge(0, 1).select_charge(2, 1)
+        dy = np.zeros((4, 1, 4))
+        dy[0, 0, 3] = dy[3, 0, 0] = 2.0
+        y = cls.from_dense(dy, [pmap, [-2], pmap], duals=(False,) * 3)
+        return x, y, dx, dy
 
-    for z in (x + y, y + x):
-        z.check()
-        assert z.indices[0].chargemap == {0: 1, 1: 2, 2: 1}
-        assert_allclose(z.to_dense(), dx + dy)
+    @pytest.mark.parametrize("fermionic", (False, True))
+    def test_dense(self, fermionic):
+        x, y, dx, dy = self.make_u1_pair(fermionic)
+        assert x.indices[0].chargemap == {1: 2}
+        for z in (x + y, y + x):
+            z.check()
+            assert z.indices[0].chargemap == {0: 1, 1: 2, 2: 1}
+            assert_allclose(z.to_dense(), dx + dy)
+
+    @pytest.mark.parametrize("symmetry", all_symmetries)
+    @pytest.mark.parametrize("fermionic", (False, True))
+    def test_select_charge(self, symmetry, fermionic):
+        y = sr.utils.get_rand(
+            symmetry, (6, 4, 5), seed=42, fermionic=fermionic
+        )
+        c = next(iter(y.indices[0].chargemap))
+        x = y.select_charge(0, c)
+        assert x.indices[0].chargemap.keys() == {c}
+        for z in (x + y, y + x):
+            z.check()
+            assert [ix.chargemap for ix in z.indices] == [
+                ix.chargemap for ix in y.indices
+            ]
+            # all of the difference is in the selected sector
+            d = z - y
+            assert d.norm() == pytest.approx(x.norm())
+            d.select_charge(0, c).test_allclose(x)
+
+    def test_fused_raises(self):
+        x, y, _, _ = self.make_u1_pair(False)
+        xf, yf = x.fuse((0, 1)), y.fuse((0, 1))
+        with pytest.raises(ValueError, match="fused axis 0"):
+            xf + yf
+
+    def test_size_mismatch_raises(self):
+        # no shared blocks, but charge 1 on axis 0 has different sizes
+        import numpy as np
+
+        ixr = sr.BlockIndex({0: 2, 1: 3}, dual=True)
+        x = sr.U1Array(
+            indices=(sr.BlockIndex({0: 2, 1: 3}), ixr),
+            blocks={(0, 0): np.ones((2, 2))},
+        )
+        y = sr.U1Array(
+            indices=(sr.BlockIndex({0: 2, 1: 4}), ixr),
+            blocks={(1, 1): np.ones((4, 3))},
+        )
+        with pytest.raises(ValueError, match="size 3 for charge 1"):
+            x + y
 
 
 @pytest.mark.parametrize("symmetry", all_symmetries)

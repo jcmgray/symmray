@@ -771,24 +771,40 @@ class SparseArrayCommon:
 
         return self
 
-    def _union_index_charges(self, other):
-        """Add, in place, any charges of the indices of ``other`` missing from
-        the indices of this array, e.g. after an 'outer' blockwise operation
-        has kept blocks only present in ``other``.
+    def _add_missing_charges(self, other):
+        """Add any charges in the indices of ``other`` that are missing from
+        this array's indices, in place.
         """
-        new_indices = []
-        changed = False
-        for ixa, ixb in zip(self._indices, other.indices):
-            chargemap = ixa.chargemap
-            extra = {
-                c: d for c, d in ixb.chargemap.items() if c not in chargemap
-            }
-            if extra and (ixa.subinfo is None) and (ixb.subinfo is None):
-                ixa = ixa.copy_with(chargemap={**chargemap, **extra})
-                changed = True
-            new_indices.append(ixa)
+        new_indices = None
+        for i, (ixa, ixb) in enumerate(zip(self._indices, other.indices)):
+            if ixa is ixb:
+                continue
 
-        if changed:
+            cma = ixa.chargemap
+            cmb = ixb.chargemap
+
+            if DEBUG:
+                for c in cma.keys() & cmb.keys():
+                    if cma[c] != cmb[c]:
+                        raise ValueError(
+                            f"Axis {i} has size {cma[c]} for charge {c} in "
+                            f"one array but {cmb[c]} in the other."
+                        )
+
+            if cmb.keys() <= cma.keys():
+                continue
+
+            if (ixa.subinfo is not None) or (ixb.subinfo is not None):
+                raise ValueError(
+                    f"Can't add arrays whose fused axis {i} has different "
+                    f"charges: {set(cma)} and {set(cmb)}. Unfuse first."
+                )
+
+            if new_indices is None:
+                new_indices = list(self._indices)
+            new_indices[i] = ixa.copy_with(chargemap={**cmb, **cma})
+
+        if new_indices is not None:
             self._indices = tuple(new_indices)
 
         return self

@@ -251,13 +251,11 @@ class BlockCommon:
                     # only left present
                     xy_blocks[sector] = x_block
 
-            # add remaining blocks only present in right
-            xy_blocks.update(other_blocks)
-
-            # arrays (but not vectors) also need to include their charges
-            union_index_charges = getattr(xy, "_union_index_charges", None)
-            if union_index_charges is not None:
-                union_index_charges(other)
+            if other_blocks:
+                # add remaining blocks only present in right
+                xy_blocks.update(other_blocks)
+                # which might have charges not in left
+                xy._add_missing_charges(other)
 
         elif missing == "inner":
             # blocks present in only one of either array are simply dropped
