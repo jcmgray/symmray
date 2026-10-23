@@ -45,6 +45,10 @@ class BlockVector(BlockCommon, VectorCommon, SymmrayCommon):
             other, fn, missing=missing, inplace=inplace
         )
 
+    def _add_missing_charges(self, other):
+        # vectors have no indices to update
+        return self
+
     def check(self):
         """Check that the block vector is well formed."""
         ndims = {ar.ndim(x) for x in self.get_all_blocks()}
