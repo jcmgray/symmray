@@ -2,7 +2,7 @@
 
 Release notes for `symmray`. See also the [GitHub releases page](https://github.com/jcmgray/symmray/releases).
 
-## v0.5.0 (unreleased)
+## v0.5.0 (2026-11-09)
 
 **Enhancements:**
 
@@ -13,6 +13,7 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Sparse fusion, contraction and `multiply_diagonal` are faster, especially for fermionic arrays and many small blocks.
 - The sparse fusion cache is now limited by approximate memory use, set with `SYMMRAY_FUSE_CACHE_MAXBYTES`, which replaces `SYMMRAY_FUSE_CACHE_MAXSECTORS`.
 - Add `BlockIndex.from_chargemap`, matching the packed index constructor.
+- `multiply_diagonal` accepts a sequence of vectors and axes, for both sparse and flat arrays, also available as `multiply_diagonals` via autoray.
 - {func}`~symmray.utils.from_dense` without `charge` now takes the charge of the first non-zero block, rather than assuming zero charge. Zero blocks are no longer stored, with a new `tol` option, relative to the largest entry, setting what counts as zero.
 
 **Bug Fixes:**
@@ -21,6 +22,9 @@ Release notes for `symmray`. See also the [GitHub releases page](https://github.
 - Fermionic `conj(phase_dual=True)` and `dagger(phase_dual=True)` now phase dual dummy modes like outer dual indices. This fixes wrong signs in norms and repeated conjugation of arrays with dual dummy modes.
 - Dummy mode labels with mixed types now sort consistently. This fixes contraction signs when site labels and `("squeeze", label, ax)` labels occur together.
 - Fermionic splits, such as `qr` and `svd`, now pass explicit `charge_side` on to the abelian split, so charge, label and dummy modes go on the requested factor.
+- Adding sparse arrays with `missing="outer"` now extends the result's indices with charges only present in the right operand. Before, this caused a `KeyError` in later `fuse` or `tensordot` calls. Fused axes with different charges now raise an error.
+- Truncated sparse splits of arrays with non-zero charge now remove the correct blocks for either `charge_side`.
+- Eager `max_bond` truncation no longer depends on the order blocks are stored in.
 
 ## v0.4.0 (2026-09-16)
 
