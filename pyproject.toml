@@ -38,12 +38,12 @@ keywords = [
 requires-python = ">=3.11"
 dependencies = [
     "autoray>=0.8.10",
+    "cotengra",
     "threadpoolctl",
 ]
 
 [project.optional-dependencies]
 testing = [
-    "cotengra",
     "coverage",
     "numpy",
     "pytest-cov",
@@ -96,13 +96,13 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 [tool.pixi.dependencies]
 python = ">=3.11"
 autoray = ">=0.8.10"
+cotengra = "*"
 threadpoolctl = "*"
 
 [tool.pixi.pypi-dependencies]
 symmray = { path = ".", editable = true }
 
 [tool.pixi.feature.testing.dependencies]
-cotengra = "*"
 coverage = "*"
 networkx = "*"
 numpy = "*"
@@ -132,7 +132,6 @@ torch = "*"
 
 [tool.pixi.feature.docs.dependencies]
 astroid = "*"
-cotengra = "*"
 furo = "*"
 ipython = "*"
 myst-nb = "*"
